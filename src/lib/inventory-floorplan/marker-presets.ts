@@ -52,3 +52,17 @@ export const LAYER_LABELS: Record<LocationLayer, string> = {
 
 export const isMarkerShape = (v: unknown): v is MarkerShape =>
   (MARKER_SHAPES as readonly string[]).includes(String(v));
+
+/**
+ * The type chips are a FILTER: with one or more types picked, the plan shows
+ * those types and NOTHING else; with none picked ("All") it shows everything.
+ * Several picks are OR-ed, so chips toggle independently.
+ *
+ * Kept here, generic over `typeKey`, so both the map and its tests can use it
+ * without pulling a component — or the database — along with it.
+ */
+export function filterByType<T extends { typeKey: string }>(items: T[], keys: string[]): T[] {
+  if (!keys.length) return items;
+  const want = new Set(keys);
+  return items.filter(i => want.has(i.typeKey));
+}

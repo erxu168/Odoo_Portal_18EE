@@ -28,7 +28,13 @@ interface Props {
   anchors: ManifestAnchor[];
   typesByKey: Record<string, FloorplanTypeInfo>;
   selectedId: number | null;
-  filterType: string | null;
+  /**
+   * True while type chips are narrowing the plan. `anchors` already holds only
+   * what survived the filter; this says the survivors should be OUTLINED —
+   * a detected label is an invisible tap polygon, so a filter that left only
+   * those would otherwise look like an empty plan.
+   */
+  filtered: boolean;
   editable: boolean;
   onTapAnchor: (locationId: number) => void;
   onTapEmpty?: (pt: Pt) => void;
@@ -84,7 +90,7 @@ function aimArrow(w: World, entry: AnchorLayers, from: Leaflet.LatLngExpression,
 }
 
 export default function FloorplanMap({
-  revision, anchors, typesByKey, selectedId, filterType, editable,
+  revision, anchors, typesByKey, selectedId, filtered, editable,
   onTapAnchor, onTapEmpty, onMoveAnchor, onMovePin, flyTo, onDropType,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -486,7 +492,7 @@ export default function FloorplanMap({
       const a = entry.anchor;
       const color = typesByKey[a.typeKey]?.color ?? '#64748B';
       const isSelected = selectedId != null && a.locationId === selectedId;
-      const isFiltered = filterType != null && a.typeKey === filterType;
+      const isFiltered = filtered;
       if (entry.poly) {
         if (isSelected) {
           entry.poly.setStyle({ stroke: true, color, weight: 3, opacity: 0.95, fill: true, fillColor: color, fillOpacity: 0.15 });
@@ -523,14 +529,21 @@ export default function FloorplanMap({
     styleLayers(w);
     // selectedId matters here ONLY in edit mode (it decides which anchor owns
     // the drag handle); plain viewing restyles without rebuilding.
+    //
+    // mapReady is a dependency for the cold-load race: the map is built after
+    // an async leaflet import, and anything that changed the anchor list while
+    // that import was in flight (a type chip tapped on a slow connection) found
+    // no world here and did nothing. Leaflet would then keep the list captured
+    // at import time. Rebuilding on readiness costs one repeat build and makes
+    // the plan always agree with the chips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchors, editable, typesByKey, editable ? selectedId : null]);
+  }, [anchors, editable, typesByKey, editable ? selectedId : null, mapReady]);
 
   useEffect(() => {
     const w = worldRef.current;
     if (w) styleLayers(w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, filterType]);
+  }, [selectedId, filtered, mapReady]);
 
   // Declutter AFTER the layer effects above, and again whenever the view
   // changes — which labels collide depends entirely on the current zoom.
@@ -558,7 +571,7 @@ export default function FloorplanMap({
       w.map.off('moveend', run);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchors, editable, typesByKey, selectedId, filterType, mapReady]);
+  }, [anchors, editable, typesByKey, selectedId, filtered, mapReady]);
 
   // Glide so the target lands ~38% from the top — clear of the bottom sheet.
   const flyRef = useRef<FlyTarget | null>(null);

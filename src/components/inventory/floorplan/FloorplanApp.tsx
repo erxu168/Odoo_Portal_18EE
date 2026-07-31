@@ -15,6 +15,7 @@ import { allowedActionKeysForRole } from '@/lib/permissions';
 import type { FloorplanManifest, FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
 import { cacheFloorplan, getCachedFloorplan } from '@/lib/inventory-floorplan/offline';
 import { pointInPolygon } from '@/lib/inventory-floorplan/geometry';
+import { filterByType } from '@/lib/inventory-floorplan/marker-presets';
 import type { Pt } from '@/lib/inventory-floorplan/types';
 import FloorplanMap, { type FlyTarget } from './FloorplanMap';
 import FloorplanSearch from './FloorplanSearch';
@@ -41,7 +42,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [activeFloorId, setActiveFloorId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sheetId, setSheetId] = useState<number | null>(null);
-  const [filterType, setFilterType] = useState<string | null>(null);
+  /**
+   * Type chips. A FILTER, not a highlight: what is picked is what the plan
+   * shows. Several can be on at once, and each toggles on its own — empty is
+   * the "All" state.
+   */
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
   const [capabilities, setCapabilities] = useState<string[]>(() => allowedActionKeysForRole('staff', {}));
   const [edit, setEdit] = useState(false);
@@ -141,7 +147,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         // must never point into the previous restaurant's spots.
         setResp(prev => {
           if (prev?.manifest && data.manifest && prev.manifest.companyId !== data.manifest.companyId) {
-            setSelectedId(null); setSheetId(null); setFilterType(null);
+            setSelectedId(null); setSheetId(null); setFilterTypes([]);
             setEdit(false); setEditSel(null); setArmed(null); setAddForm(null);
           }
           return data;
@@ -239,11 +245,46 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     return (manifest?.types ?? []).filter(t => present.has(t.key) && !t.hidden);
   }, [activeAnchors, manifest?.types]);
 
+  /**
+   * What the plan actually draws. The chips narrow THIS; everything else —
+   * room inference when adding, the parent suggestions, the places directory —
+   * keeps reading the full `activeAnchors`, so filtering only ever changes what
+   * you look at, never what the app knows.
+   */
+  const visibleAnchors = useMemo(
+    () => filterByType(activeAnchors, filterTypes),
+    [activeAnchors, filterTypes],
+  );
+
+  const toggleFilterType = (key: string) =>
+    setFilterTypes(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+
+  // A type leaves the floor when its last marker is removed, and its chip goes
+  // with it. Drop it from the filter too — otherwise the plan sits empty with
+  // no chip left to switch back off.
+  useEffect(() => {
+    const keys = new Set(chipTypes.map(t => t.key));
+    setFilterTypes(prev => {
+      const next = prev.filter(k => keys.has(k));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [chipTypes]);
+
+  // A marker that filtering just took off the plan must not keep the selection,
+  // the edit bar or the sheet — they would all be pointing at nothing visible.
+  useEffect(() => {
+    if (!filterTypes.length) return;
+    const shown = new Set(visibleAnchors.map(a => a.locationId));
+    if (selectedId != null && !shown.has(selectedId)) setSelectedId(null);
+    if (sheetId != null && !shown.has(sheetId)) setSheetId(null);
+    if (editSel && !shown.has(editSel.locationId)) setEditSel(null);
+  }, [filterTypes, visibleAnchors, selectedId, sheetId, editSel]);
+
   const switchFloor = (floorId: number) => {
     setActiveFloorId(floorId);
     setSelectedId(null);
     setSheetId(null);
-    setFilterType(null);
+    setFilterTypes([]);
     setEditSel(null);   // never keep a Remove-marker bar for an off-screen anchor
     setArmed(null);
     setAddForm(null);
@@ -255,13 +296,17 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const focusLocation = useCallback((locationId: number) => {
     if (!manifest) return;
     // The anchor may live on another floor — switch first, then glide.
-    let anchor = null as null | { floorId: number; cx: number; cy: number };
+    let anchor = null as null | { floorId: number; cx: number; cy: number; typeKey: string };
     for (const [fidStr, list] of Object.entries(manifest.anchors)) {
       const hit = list.find(a => a.locationId === locationId);
-      if (hit) { anchor = { floorId: Number(fidStr), cx: hit.cx, cy: hit.cy }; break; }
+      if (hit) { anchor = { floorId: Number(fidStr), cx: hit.cx, cy: hit.cy, typeKey: hit.typeKey }; break; }
     }
     if (!anchor) { setSheetId(locationId); return; } // not placed → sheet still informs
     if (anchor.floorId !== activeFloorId) switchFloor(anchor.floorId);
+    // Searching for something the chips are hiding wins: flying to a marker
+    // that is filtered off the plan would land on an empty spot. The search
+    // asked for THIS place, so the filter steps aside.
+    setFilterTypes(prev => (prev.length && !prev.includes(anchor!.typeKey) ? [] : prev));
     setSelectedId(locationId);
     setSheetId(locationId);
     setFlyTo({ cx: anchor.cx, cy: anchor.cy, seq: ++seqRef.current });
@@ -295,6 +340,13 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     const d = await res.json();
     if (!res.ok) { toast(d.error ?? 'Could not add the spot'); return; }
     setAddForm(null);
+    // Placing a fridge while the chips are showing only rooms would put it on
+    // the plan and hide it in the same breath. Whatever you just placed, you
+    // get to see: its type joins the filter.
+    const placedType = addForm.existingId != null
+      ? treeLocations.find(l => l.id === addForm.existingId)?.kind ?? null
+      : armed;
+    if (placedType) setFilterTypes(prev => (prev.length && !prev.includes(placedType) ? [...prev, placedType] : prev));
     // Keep the type ARMED: marking a blank plan means placing ten shelves in a
     // row — re-picking the chip every time would double the work. Tap ✓ Done
     // or the chip again to disarm.
@@ -646,21 +698,29 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       {!immersive && <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />}
       <div className={`flex gap-1.5 overflow-x-auto px-3 [scrollbar-width:none] ${immersive ? 'py-1.5' : 'py-2'}`}>
         <button
-          onClick={() => setFilterType(null)}
-          className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-semibold ${filterType === null ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-900'}`}
+          onClick={() => setFilterTypes([])}
+          aria-pressed={filterTypes.length === 0}
+          className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-semibold ${filterTypes.length === 0 ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-900'}`}
         >
           All
         </button>
-        {chipTypes.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setFilterType(filterType === t.key ? null : t.key)}
-            className={`flex h-[34px] flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[12px] font-semibold ${filterType === t.key ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-900'}`}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
-            {t.label}
-          </button>
-        ))}
+        {chipTypes.map(t => {
+          const on = filterTypes.includes(t.key);
+          return (
+            <button
+              key={t.key}
+              onClick={() => toggleFilterType(t.key)}
+              aria-pressed={on}
+              className={`flex h-[34px] flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[12px] font-semibold ${on ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-900'}`}
+            >
+              <span className="h-2 w-2 rounded-full" style={{ background: on ? '#FFFFFF' : t.color }} />
+              {t.label}
+              {/* Several chips can be on at once, so each one has to say how to
+                  get back out of it: tap again and this type drops off again. */}
+              {on && <span aria-hidden className="text-[11px]">✕</span>}
+            </button>
+          );
+        })}
         {canManage && !onClose && (
           <>
             {/* Immersive mode removes back and home, so the way OUT must never
@@ -753,10 +813,10 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           revision={offlineFrom && activeFloor.revision && offlineRasters[activeFloor.revision.id]
             ? { ...activeFloor.revision, rasterUrl: offlineRasters[activeFloor.revision.id] }
             : activeFloor.revision}
-          anchors={activeAnchors}
+          anchors={visibleAnchors}
           typesByKey={typesByKey}
           selectedId={selectedId}
-          filterType={filterType}
+          filtered={filterTypes.length > 0}
           editable={edit}
           onTapAnchor={id => {
             if (edit) {
