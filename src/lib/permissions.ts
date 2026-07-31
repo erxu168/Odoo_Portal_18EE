@@ -94,6 +94,11 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   // admin can now adjust them per role like every other action.
   { key: 'inventory.moingredients.view',    module: 'inventory', label: 'View MO ingredient needs',                       defaultRoles: ['staff', 'manager', 'admin'] },
   { key: 'inventory.drinks.manage',         module: 'inventory', label: 'Scan & edit POS drinks',                         defaultRoles: ['manager', 'admin'] },
+  // Waste Tracker: recording is open to everyone on the floor by default — like
+  // counting, it only works if the person holding the bin can do it in seconds.
+  // The per-department photo switch is a manager decision.
+  { key: 'inventory.waste.record',          module: 'inventory', label: 'Record binned stock (Waste Tracker)',            defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'inventory.waste.settings',        module: 'inventory', label: 'Waste: require a photo (per department)',        defaultRoles: ['manager', 'admin'] },
 
   // ── Prep Planner — a manager-only module (nav tile minRole=manager). Its item/link/forecast
   // API routes had NO server auth at all (open hole); gating them to manager+admin matches the

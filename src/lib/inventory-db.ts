@@ -652,11 +652,26 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
       -- Soft delete, so Undo cannot lose a real entry and the audit trail keeps
       -- the correction. The report ignores voided rows.
       voided_at TEXT,
-      voided_by INTEGER
+      voided_by INTEGER,
+      -- Idempotency handle minted by the CLIENT per entry. Kitchen wifi is
+      -- flaky: an ambiguous retry or a double-tap re-sends the same key and is
+      -- answered with the same row instead of a second one.
+      client_key TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_waste_company_at ON waste_events(company_id, wasted_at);
     CREATE INDEX IF NOT EXISTS idx_waste_product ON waste_events(odoo_product_id);
+
+    -- Per-department switch: must a waste entry carry a photo? OFF by default ON
+    -- PURPOSE — a required photo is the most likely reason someone quietly stops
+    -- recording, and that failure is silent. company_id bounds who may flip it.
+    CREATE TABLE IF NOT EXISTS waste_settings (
+      department_id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      photo_required INTEGER NOT NULL DEFAULT 0,
+      updated_by INTEGER,
+      updated_at TEXT
+    );
 
     CREATE TABLE IF NOT EXISTS stock_receipts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -677,6 +692,15 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_company ON stock_receipts(company_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_product ON stock_receipts(odoo_product_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_received_at ON stock_receipts(received_at)');
+
+  // waste_events shipped one commit before client_key existed, so a database
+  // that already has the table needs the column added (same pattern as
+  // product_flags above). The index is PARTIAL: many rows have no key.
+  const weCols = db.prepare("PRAGMA table_info('waste_events')").all() as { name: string }[];
+  if (!weCols.some(c => c.name === 'client_key')) {
+    db.exec('ALTER TABLE waste_events ADD COLUMN client_key TEXT');
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_waste_client_key ON waste_events(client_key) WHERE client_key IS NOT NULL');
 
   // Product pictures (one primary image per product) — portal-owned, set by
   // camera or upload. Keyed by product id (metadata, like product_flags).
@@ -3447,22 +3471,39 @@ export interface NewWasteEvent {
   note?: string | null;
   photo?: string | null;
   userId: number;
+  /** Idempotency handle: the same key always answers with the same row. */
+  clientKey?: string | null;
 }
 
-/** Record something binned. Returns the new row's id, so Undo has a handle. */
+/** Record something binned. Returns the row's id, so Undo has a handle. */
 export function recordWaste(e: NewWasteEvent): number {
-  if (!(e.qtyBase > 0)) throw new Error('WASTE_INVALID: the amount must be more than zero');
-  const info = getDb().prepare(`
-    INSERT INTO waste_events
-      (company_id, department_id, odoo_product_id, count_location_id, qty_base,
-       crate_qty, loose_qty, units_per_crate, uom, reason, note, photo, wasted_by, wasted_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    e.companyId, e.departmentId ?? null, e.productId, e.locationId ?? 0, e.qtyBase,
-    e.crateQty ?? null, e.looseQty ?? null, e.unitsPerCrate ?? null, e.uom || 'Units',
-    e.reason || null, e.note || null, e.photo || null, e.userId, new Date().toISOString(),
-  );
-  return Number(info.lastInsertRowid);
+  // Finite AND capped, not just positive — Infinity or a fat-fingered 20 million
+  // would pass a bare `> 0` and silently distort every usage figure after it.
+  if (!Number.isFinite(e.qtyBase) || e.qtyBase <= 0 || e.qtyBase > 1e7) {
+    throw new Error('WASTE_INVALID: the amount must be more than zero');
+  }
+  const key = e.clientKey || null;
+  try {
+    const info = getDb().prepare(`
+      INSERT INTO waste_events
+        (company_id, department_id, odoo_product_id, count_location_id, qty_base,
+         crate_qty, loose_qty, units_per_crate, uom, reason, note, photo, wasted_by, wasted_at, client_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      e.companyId, e.departmentId ?? null, e.productId, e.locationId ?? 0, e.qtyBase,
+      e.crateQty ?? null, e.looseQty ?? null, e.unitsPerCrate ?? null, e.uom || 'Units',
+      e.reason || null, e.note || null, e.photo || null, e.userId, new Date().toISOString(), key,
+    );
+    return Number(info.lastInsertRowid);
+  } catch (err) {
+    // A replayed client key hits the unique index: that retry already succeeded,
+    // so answer with the row it created rather than binning the crate twice.
+    if (key) {
+      const existing = getDb().prepare('SELECT id FROM waste_events WHERE client_key = ?').get(key) as { id: number } | undefined;
+      if (existing) return existing.id;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -3509,16 +3550,77 @@ export function sumWasteByProduct(companyIds: number[] | null, from: string, to:
  * thrown away over and over. It is what makes the common case a single tap
  * instead of a search.
  */
-export function recentlyWastedProducts(companyId: number, limit = 8): number[] {
+export function recentlyWastedProducts(companyId: number, limit = 8, departmentId?: number | null): number[] {
+  // "Recently binned HERE": with a department the grid is that department's own
+  // history — the bar's bottles must not fill the kitchen's screen. The caller
+  // falls back to the whole restaurant when a department has none yet.
+  const dept = departmentId ? ' AND department_id = ?' : '';
+  const vals: unknown[] = departmentId ? [companyId, departmentId, limit] : [companyId, limit];
   const rows = getDb().prepare(`
     SELECT odoo_product_id AS pid, MAX(wasted_at) AS last_at
       FROM waste_events
-     WHERE company_id = ? AND voided_at IS NULL
+     WHERE company_id = ? AND voided_at IS NULL${dept}
      GROUP BY odoo_product_id
      ORDER BY last_at DESC
      LIMIT ?
-  `).all(companyId, limit) as { pid: number }[];
+  `).all(...vals) as { pid: number }[];
   return rows.map((r) => r.pid);
+}
+
+/**
+ * One entry by id, voided or not. The route needs to see WHOSE entry it is and
+ * WHICH restaurant's before it lets anyone void or annotate it.
+ */
+export function getWasteEvent(id: number): WasteEvent | null {
+  const row = getDb().prepare('SELECT * FROM waste_events WHERE id = ?').get(id) as WasteEvent | undefined;
+  return row ?? null;
+}
+
+/**
+ * Add the optional extras — reason / note / photo — to an entry that is ALREADY
+ * saved. The mock's "or just walk away": the quantity commits at the numpad and
+ * this only annotates, so nothing here may ever touch the amount. Only the
+ * fields given are set; a voided entry is refused.
+ */
+export function annotateWaste(id: number, patch: { reason?: string | null; note?: string | null; photo?: string | null }): boolean {
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (patch.reason !== undefined) { sets.push('reason = ?'); vals.push(patch.reason || null); }
+  if (patch.note !== undefined) { sets.push('note = ?'); vals.push(patch.note || null); }
+  if (patch.photo !== undefined) { sets.push('photo = ?'); vals.push(patch.photo || null); }
+  if (sets.length === 0) return false;
+  vals.push(id);
+  const r = getDb().prepare(
+    `UPDATE waste_events SET ${sets.join(', ')} WHERE id = ? AND voided_at IS NULL`,
+  ).run(...vals);
+  return r.changes > 0;
+}
+
+/** Must an entry from this department carry a photo? Absent row = no — off by default. */
+export function isWastePhotoRequired(departmentId: number): boolean {
+  const row = getDb().prepare('SELECT photo_required FROM waste_settings WHERE department_id = ?')
+    .get(departmentId) as { photo_required: number } | undefined;
+  return !!row?.photo_required;
+}
+
+/** Flip the per-department photo switch. The route checks the caller may manage this company. */
+export function setWastePhotoRequired(departmentId: number, companyId: number, on: boolean, userId: number): void {
+  getDb().prepare(`
+    INSERT INTO waste_settings (department_id, company_id, photo_required, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(department_id) DO UPDATE SET
+      company_id = excluded.company_id, photo_required = excluded.photo_required,
+      updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  `).run(departmentId, companyId, on ? 1 : 0, userId, new Date().toISOString());
+}
+
+/** Every department switch for one restaurant — what the settings sheet renders. */
+export function wastePhotoRequiredByDepartment(companyId: number): Record<number, boolean> {
+  const rows = getDb().prepare('SELECT department_id, photo_required FROM waste_settings WHERE company_id = ?')
+    .all(companyId) as { department_id: number; photo_required: number }[];
+  const out: Record<number, boolean> = {};
+  for (const r of rows) out[r.department_id] = !!r.photo_required;
+  return out;
 }
 
 /** Recent entries, for the "what did we bin today" list and for Undo. */
