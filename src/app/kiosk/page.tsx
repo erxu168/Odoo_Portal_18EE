@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import KioskSettings from '@/components/kiosk/KioskSettings';
+import KioskWelcome, { WAJ_RED } from '@/components/kiosk/KioskWelcome';
 import { loadKioskSettings, type KioskSettings as KioskSettingsT } from '@/lib/kiosk-settings';
 
 /**
  * Tablet time-clock kiosk (no login). The restaurant is set on the tablet from the
- * gear → settings screen (manager/admin login), saved in localStorage. Staff tap
- * their name and enter a 4-digit PIN to clock IN/OUT (auto) via /api/kiosk/punch.
+ * gear → settings screen (manager/admin login), saved in localStorage. The kiosk rests
+ * on a branded welcome panel; staff tap it to reveal the roster, then tap their name and
+ * enter a 4-digit PIN to clock IN/OUT (auto) via /api/kiosk/punch.
  *
  * Everyone at the restaurant is listed. A staff member without a PIN yet taps their
  * name and sets one up: we email them a 6-digit code (proves it's them), they enter
@@ -42,6 +44,19 @@ function firstName(name: string): string {
   return name.split(/\s+/)[0] || name;
 }
 
+/**
+ * How long a screen may sit untouched before the kiosk drops back to the welcome panel.
+ * Hiding the names is the whole point of that panel, so it has to reclaim the screen when
+ * someone walks away mid-flow, not only after a completed punch.
+ *
+ * Two speeds, because the screens are not equally patient: the roster and the PIN pad are
+ * transient, while reading the attendance rules or fetching a 6-digit code from your email
+ * legitimately takes minutes. Both still expose something (a first name, a masked email),
+ * so neither is allowed to sit there forever.
+ */
+const IDLE_TO_WELCOME_MS = 60_000;
+const IDLE_TO_WELCOME_SLOW_MS = 5 * 60_000;
+
 // Short confirmation beep, created on the punch (a user gesture) so browsers allow it.
 function beep(): void {
   try {
@@ -67,7 +82,7 @@ function beep(): void {
 export default function KioskPage() {
   const [settings, setSettings] = useState<KioskSettingsT | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [screen, setScreen] = useState<'grid' | 'pin' | 'setup' | 'done' | 'rules'>('grid');
+  const [screen, setScreen] = useState<'welcome' | 'grid' | 'pin' | 'setup' | 'done' | 'rules'>('welcome');
   const [rulesText, setRulesText] = useState('');
   const [ackPin, setAckPin] = useState('');
   const [rulesChecked, setRulesChecked] = useState(false);
@@ -93,6 +108,17 @@ export default function KioskPage() {
   const [setupConfirm, setSetupConfirm] = useState('');
   const [setupError, setSetupError] = useState('');
 
+  /**
+   * Guards against replies that land after the kiosk has moved on.
+   *
+   * Every request captures this value and drops its result if it no longer matches. Going
+   * back to the welcome panel bumps it, and so does pointing the tablet at a different
+   * restaurant. Without it a slow punch could re-open the previous person's rules screen
+   * (or their confirmation) seconds after the tablet had gone back to rest, and a slow
+   * roster fetch could repaint the old restaurant's staff over the new one's.
+   */
+  const sessionRef = useRef(0);
+
   const companyId = settings?.companyId ?? null;
   const fullscreenLock = settings?.fullscreenLock ?? true;
   const idleSeconds = settings?.idleSeconds ?? 5;
@@ -106,16 +132,75 @@ export default function KioskPage() {
     return () => clearInterval(t);
   }, []);
 
+  /**
+   * Everything tied to whoever is standing at the tablet right now.
+   *
+   * Both exits use this — going back to the roster and going back to the welcome panel —
+   * so there is ONE definition of "the previous person is finished" rather than a list of
+   * fields each caller has to remember. Bumping the session first means any reply still in
+   * flight for them is dropped instead of painting their name, their rules gate or their
+   * confirmation over the next person.
+   *
+   * Note it deliberately leaves `flash` / `notice` alone: three callers set a banner
+   * immediately before returning to the roster, and it is meant to survive that hop.
+   */
+  const clearPerson = useCallback(() => {
+    sessionRef.current += 1;
+    setBusy(false);
+    setSelected(null);
+    setResult(null);
+    setPin('');
+    setPinError(false);
+    setForgotMsg('');
+    // The rules gate parks the entered PIN in `ackPin` so it can be re-sent after the
+    // acknowledgement, and first-time setup holds a code and a chosen PIN. All three are
+    // credentials that used to outlive the screen that collected them.
+    setAckPin('');
+    setRulesText('');
+    setRulesChecked(false);
+    setSetupStep('start');
+    setSetupCode('');
+    setSetupPin('');
+    setSetupConfirm('');
+    setSetupError('');
+    setSetupEmailMasked('');
+  }, []);
+
   const loadStaff = useCallback(async () => {
     if (!companyId) return;
+    const mySession = sessionRef.current;
     try {
       const r = await fetch(`/api/kiosk/staff?company_id=${companyId}`);
       const d = await r.json();
+      if (sessionRef.current !== mySession) return; // stale: restaurant changed, or we went back to rest
       if (r.ok) setStaff(Array.isArray(d.staff) ? d.staff : []);
     } catch {
       /* keep last list on transient error */
     }
   }, [companyId]);
+
+  /** Back to the resting screen. Unlike backToGrid, this also drops any pending banner. */
+  const goWelcome = useCallback(() => {
+    clearPerson();
+    setFlash('');
+    setNotice('');
+    setScreen('welcome');
+  }, [clearPerson]);
+
+  /**
+   * Pointing the tablet at a different restaurant invalidates everything on screen, not
+   * just the roster — a PIN pad, rules gate or confirmation belonging to someone from the
+   * old restaurant must not survive the switch.
+   *
+   * ORDER MATTERS: effects run in declaration order, and this one must sit ABOVE the staff
+   * loader below. Reversed, the loader would fire first, capture the old session number,
+   * and then have its perfectly good reply thrown away by this reset — leaving the new
+   * restaurant's roster empty until the next 30s poll.
+   */
+  useEffect(() => {
+    goWelcome();
+    setStaff([]);
+  }, [companyId, goWelcome]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -127,13 +212,36 @@ export default function KioskPage() {
   useEffect(() => {
     if (screen !== 'done') return;
     const t = setTimeout(() => {
-      setScreen('grid');
-      setSelected(null);
-      setResult(null);
+      goWelcome();
       loadStaff();
     }, Math.max(1, idleSeconds) * 1000);
     return () => clearTimeout(t);
-  }, [screen, idleSeconds, loadStaff]);
+  }, [screen, idleSeconds, loadStaff, goWelcome]);
+
+  // Reclaim the screen when it is left untouched (see IDLE_TO_WELCOME_MS). 'done' is not
+  // listed: it runs its own, much shorter confirmation dwell just above.
+  useEffect(() => {
+    const idleMs =
+      screen === 'grid' || screen === 'pin'
+        ? IDLE_TO_WELCOME_MS
+        : screen === 'setup' || screen === 'rules'
+          ? IDLE_TO_WELCOME_SLOW_MS
+          : 0;
+    if (!idleMs) return;
+    let t: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      clearTimeout(t);
+      t = setTimeout(goWelcome, idleMs);
+    };
+    arm();
+    window.addEventListener('pointerdown', arm);
+    window.addEventListener('keydown', arm);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('pointerdown', arm);
+      window.removeEventListener('keydown', arm);
+    };
+  }, [screen, goWelcome]);
 
   const enterFullscreen = useCallback(() => {
     const el = document.documentElement;
@@ -153,22 +261,28 @@ export default function KioskPage() {
   }, [fullscreenLock]);
 
   const backToGrid = useCallback(() => {
+    // Retires the in-flight session too: someone can submit a PIN, tap Back, and a second
+    // person can be picked before the first reply lands.
+    clearPerson();
     setScreen('grid');
-    setSelected(null);
-    setPin('');
-    setPinError(false);
-    setForgotMsg('');
-    setSetupStep('start');
-    setSetupCode('');
-    setSetupPin('');
-    setSetupConfirm('');
-    setSetupError('');
-    setSetupEmailMasked('');
     loadStaff(); // refresh clocked-in/out status on return to the grid
-  }, [loadStaff]);
+  }, [clearPerson, loadStaff]);
+
+  /**
+   * Reveal the roster. This is now the first tap of every session, which makes it the
+   * earliest user gesture we get — and browsers only grant full screen from one — so the
+   * lock is claimed here rather than waiting for a name to be tapped.
+   */
+  const startFromWelcome = useCallback(() => {
+    if (fullscreenLock) enterFullscreen();
+    setFlash('');
+    setNotice('');
+    setScreen('grid');
+    loadStaff(); // the list may be minutes stale if the tablet has been resting
+  }, [fullscreenLock, enterFullscreen, loadStaff]);
 
   function pickPerson(s: KioskStaff) {
-    if (fullscreenLock) enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
+    if (fullscreenLock) enterFullscreen(); // belt-and-braces: welcome already tried, and this is a no-op if we're full screen
     setFlash('');
     setNotice('');
     setSelected(s);
@@ -191,6 +305,7 @@ export default function KioskPage() {
   const submitPin = useCallback(
     async (finalPin: string, action: PunchAction, acknowledged = false) => {
       if (!selected || !companyId) return;
+      const mySession = sessionRef.current;
       setBusy(true);
       setPinError(false);
       try {
@@ -207,6 +322,11 @@ export default function KioskPage() {
           }),
         });
         const d = await r.json();
+        // The punch itself was recorded server-side either way — we are only deciding
+        // whether to still paint the outcome. If the kiosk has gone back to rest, painting
+        // it would drop the previous person's name (or their rules gate) in front of
+        // whoever is standing there now.
+        if (sessionRef.current !== mySession) return;
         if (r.ok && d.needsAck) {
           // Attendance-rules gate: show the policy, then re-punch with acknowledged=true.
           setRulesText(typeof d.rulesText === 'string' ? d.rulesText : '');
@@ -228,11 +348,17 @@ export default function KioskPage() {
           backToGrid();
         }
       } catch {
-        // Network / non-JSON failure — not a PIN problem.
+        // Network / non-JSON failure — not a PIN problem. Still guard: a fetch that
+        // rejects AFTER the idle reset would otherwise call backToGrid and re-open the
+        // roster the reset had just hidden.
+        if (sessionRef.current !== mySession) return;
         setNotice('Network problem — please try again.');
         backToGrid();
       } finally {
-        setBusy(false);
+        // Only the session still in charge may re-enable the pad. `finally` runs even
+        // after the stale `return`s above, so an old reply could otherwise unlock the
+        // controls while the current person's request is still running.
+        if (sessionRef.current === mySession) setBusy(false);
       }
     },
     [selected, companyId, settings?.sound, settings?.tabletName, backToGrid],
@@ -253,6 +379,7 @@ export default function KioskPage() {
   // ---- Forgot PIN (email a reset link) ----
   const requestForgot = useCallback(async () => {
     if (!selected || !companyId || busy) return;
+    const mySession = sessionRef.current;
     setBusy(true);
     setForgotMsg('');
     try {
@@ -262,17 +389,20 @@ export default function KioskPage() {
         body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId }),
       });
       const d = await r.json();
+      if (sessionRef.current !== mySession) return; // would print one person's masked email on another's screen
       setForgotMsg(r.ok && d.ok ? `Reset link sent to ${d.emailMasked}. Open it on your phone.` : d.error || 'Could not send the link.');
     } catch {
+      if (sessionRef.current !== mySession) return;
       setForgotMsg('Network error — try again.');
     } finally {
-      setBusy(false);
+      if (sessionRef.current === mySession) setBusy(false);
     }
   }, [selected, companyId, busy]);
 
   // ---- First-time setup: request the email code ----
   const requestSetupCode = useCallback(async () => {
     if (!selected || !companyId || busy) return;
+    const mySession = sessionRef.current;
     setBusy(true);
     setSetupError('');
     try {
@@ -282,6 +412,7 @@ export default function KioskPage() {
         body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId }),
       });
       const d = await r.json();
+      if (sessionRef.current !== mySession) return; // would drop one person's setup step onto another's screen
       if (r.ok && d.ok) {
         setSetupEmailMasked(d.emailMasked || 'your email');
         setSetupStep('code');
@@ -289,9 +420,10 @@ export default function KioskPage() {
         setSetupError(d.error || 'Could not send the code.');
       }
     } catch {
+      if (sessionRef.current !== mySession) return;
       setSetupError('Network error — try again.');
     } finally {
-      setBusy(false);
+      if (sessionRef.current === mySession) setBusy(false);
     }
   }, [selected, companyId, busy]);
 
@@ -301,6 +433,7 @@ export default function KioskPage() {
     if (!/^\d{6}$/.test(setupCode)) { setSetupError('Enter the 6-digit code from your email.'); return; }
     if (!/^\d{4}$/.test(setupPin)) { setSetupError('Your PIN must be 4 digits.'); return; }
     if (setupPin !== setupConfirm) { setSetupError('The two PINs don’t match.'); return; }
+    const mySession = sessionRef.current;
     setBusy(true);
     setSetupError('');
     try {
@@ -310,6 +443,7 @@ export default function KioskPage() {
         body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId, code: setupCode, pin: setupPin }),
       });
       const d = await r.json();
+      if (sessionRef.current !== mySession) return; // the tablet went back to rest while we waited
       if (r.ok && d.action) {
         if (settings?.sound) beep();
         setResult(d as PunchResult);
@@ -322,9 +456,10 @@ export default function KioskPage() {
         setSetupError(d.error || 'Could not set your PIN.');
       }
     } catch {
+      if (sessionRef.current !== mySession) return;
       setSetupError('Network error — try again.');
     } finally {
-      setBusy(false);
+      if (sessionRef.current === mySession) setBusy(false);
     }
   }, [selected, companyId, busy, setupCode, setupPin, setupConfirm, settings?.sound, loadStaff, backToGrid]);
 
@@ -366,7 +501,9 @@ export default function KioskPage() {
   let content: React.ReactNode;
 
   if (!settings) {
-    content = <div className="min-h-screen bg-gray-50" />;
+    // Settings load in a mount effect, so this renders for one frame on every boot and
+    // autodeploy restart. Brand red, not gray — otherwise the tablet flashes white first.
+    content = <div className="min-h-screen" style={{ backgroundColor: WAJ_RED }} />;
   } else if (!companyId) {
     // ---- Not set up yet (no restaurant chosen) ----
     content = (
@@ -427,7 +564,7 @@ export default function KioskPage() {
           )}
           {r.shift && <div className="text-gray-400 mt-4 text-lg">Your shift: {r.shift}</div>}
           <button
-            onClick={backToGrid}
+            onClick={() => { goWelcome(); loadStaff(); }}
             className="mt-8 bg-green-600 text-white px-10 py-3.5 rounded-full text-lg font-bold active:bg-green-700"
           >
             Done
@@ -468,7 +605,8 @@ export default function KioskPage() {
           >
             {busy ? 'One moment…' : 'Clock In'}
           </button>
-          <button onClick={backToGrid} className="mt-3 text-gray-500 font-bold min-h-[44px] px-4 py-2 active:text-gray-700">
+          {/* goWelcome, not backToGrid — cancelling here must also drop the PIN parked in ackPin. */}
+          <button onClick={goWelcome} className="mt-3 text-gray-500 font-bold min-h-[44px] px-4 py-2 active:text-gray-700">
             Cancel
           </button>
         </div>
@@ -655,7 +793,7 @@ export default function KioskPage() {
         </div>
       </div>
     );
-  } else {
+  } else if (screen === 'grid') {
     // ---- Staff grid ----
     const workingNow = staff.filter(s => s.clockedIn).length;
     const onBreakNow = staff.filter(s => s.onBreak).length;
@@ -712,6 +850,20 @@ export default function KioskPage() {
           </footer>
         )}
       </div>
+    );
+  } else {
+    // ---- Resting screen: the roster stays hidden until someone asks for it ----
+    // This is deliberately the FALLBACK arm, not `screen === 'welcome'`. Every branch
+    // above is guarded by more than the screen name ('done' also needs `result`, 'pin'
+    // needs `selected`), so any state we failed to anticipate lands here and shows the
+    // brand panel — never the staff list.
+    content = (
+      <KioskWelcome
+        clock={clock}
+        tabletName={settings.tabletName}
+        onStart={startFromWelcome}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
     );
   }
 

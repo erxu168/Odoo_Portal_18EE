@@ -37,9 +37,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // The push service worker must be reachable without auth — the browser
-  // fetches it during registration and expects JS, not the login HTML.
-  if (pathname === '/sw.js') {
+  // Static files that the no-login screens need. Being under public/ is not enough:
+  // the matcher below only spares /_next, so everything else falls through to the login
+  // redirect and the client gets HTML where it expected a file.
+  //   /sw.js        — the push service worker; the browser expects JS during registration.
+  //   /waj-logo.svg — the brand mark on the public /kiosk welcome screen.
+  if (pathname === '/sw.js' || pathname === '/waj-logo.svg') {
     return NextResponse.next();
   }
 

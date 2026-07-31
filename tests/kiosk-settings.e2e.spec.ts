@@ -61,11 +61,18 @@ test('a manager can set the restaurant and it persists', async ({ page }) => {
   await page.getByRole('button', { name: /Yes, switch restaurant/i }).click();
   await expect(page.getByText('● Current')).toBeVisible();
 
-  // close settings → the clock grid for that company (header always renders)
+  // close settings → the welcome panel, NOT the roster. Staff names stay hidden until
+  // somebody asks for them, so the tablet rests on the brand screen first.
   await page.getByRole('button', { name: /^Done$/ }).click();
+  await expect(page.getByRole('button', { name: /Press here for attendance/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Tap your name to clock in or out')).toHaveCount(0);
+
+  // …and one tap reveals the clock grid for that company
+  await page.getByRole('button', { name: /Press here for attendance/i }).click();
   await expect(page.getByText('Tap your name to clock in or out')).toBeVisible({ timeout: 20_000 });
 
-  // reload → still configured (no "not set up")
+  // reload → still configured (no "not set up"), and back to resting on welcome
   await page.reload();
   await expect(page.getByText('This tablet is not set up yet')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Press here for attendance/i })).toBeVisible({ timeout: 20_000 });
 });
