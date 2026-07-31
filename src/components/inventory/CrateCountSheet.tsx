@@ -37,12 +37,15 @@ interface CrateCountSheetProps {
   onNothingHere?: (on: boolean) => void;
   note?: string;
   onNoteChange?: (note: string) => void;
+  // The save button's verb. Counting says "Save count"; the Waste Tracker says
+  // "Bin it" — same sheet, different promise.
+  saveLabel?: string;
 }
 
 export default function CrateCountSheet({
   open, product, unitsPerCrate, uom, packLabel, looseLabel, initialCrates, initialLoose,
   showSystemQty, systemQty, locationName, onSave, onClose,
-  outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange,
+  outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange, saveLabel,
 }: CrateCountSheetProps) {
   const [crates, setCrates] = useState(0);
   const [loose, setLoose] = useState(0);
@@ -179,7 +182,7 @@ export default function CrateCountSheet({
       <div className="mt-auto px-[18px] pt-4 pb-6">
         <button onClick={() => onSave(crates, looseVal)}
           className="w-full h-14 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.98] transition-all">
-          Save count
+          {saveLabel || 'Save count'}
         </button>
       </div>
 

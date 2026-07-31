@@ -181,12 +181,17 @@ because it is the same kind of event pointing the other way.
 **RAW STOCK ONLY.** Not binned cooked food — that stock left when it was cooked,
 and recording both subtracts it twice. Separate feature.
 
-**Still to build:** `POST/DELETE /api/inventory/waste`, the entry screen on the
-shared department tablet (assembled from `NumpadModal`, `crate-units`, `SearchBar`
-+ `BarcodeScanner`, `shift-attribution`, `PhotoCaptureStrip`, `OptionGrid`), the
-per-department "photo required" toggle, and the waste column in
-`/api/inventory/usage` + `ConsumptionReport`.
-Mock: signed off 2026-07-31.
+**BUILT 2026-07-31** (mock signed off same day):
+
+| Piece | Where |
+|---|---|
+| API | `GET/POST/PATCH/DELETE /api/inventory/waste` — record at the numpad, annotate (reason/photo) AFTER, undo = soft delete. Idempotent on a client key so a wifi retry can't bin twice. Attribution via `shift-attribution`; department via the actor's HR record |
+| Photo rule | `GET/PUT /api/inventory/waste/settings` + `WasteSettingsSheet` — per-department "photo required", OFF by default, enforced server-side at POST (fail-open when the department is unknown — the entry outranks the rule) |
+| Screen | `/waste` (`components/inventory/WasteTracker.tsx`) — recently-binned grid, search, the SAME `NumpadModal`/`CrateCountSheet` counting uses (new `saveLabel` prop says "Bin it"), `OptionGrid` reasons, `PhotoCaptureStrip`, "Binned today" list with Undo |
+| Tile | `StationHome` — "Something binned" 🗑️ on the shared department tablet |
+| Report | `/api/inventory/usage` + `ConsumptionReport`: used = start + received **− binned** − end, same window as the purchases term |
+
+Permissions: `inventory.waste.record` (all roles), `inventory.waste.settings` (managers).
 
 ## Planned — decided, not yet built
 

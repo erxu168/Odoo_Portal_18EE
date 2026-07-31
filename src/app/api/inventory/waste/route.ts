@@ -42,7 +42,7 @@ function activeCompany(searchParams: URLSearchParams): number {
 }
 
 /** The PIN-signed person and their department. Department is best-effort. */
-async function actorContext(user: PortalUser): Promise<{ userId: number; departmentId: number | null; noActor: boolean }> {
+async function actorContext(user: PortalUser, activeCompany: number): Promise<{ userId: number; departmentId: number | null; noActor: boolean }> {
   const { userId, employeeId } = resolveAttribution(user);
   // On a shared tablet, "resolved to the tablet account itself" means nobody is
   // signed in — there is no human to credit.
@@ -51,7 +51,12 @@ async function actorContext(user: PortalUser): Promise<{ userId: number; departm
   if (employeeId) {
     try {
       const ctx = await getEmployeeContext(employeeId);
-      departmentId = ctx?.department_id ?? null;
+      // Only tag a department that belongs to the restaurant being recorded
+      // for. A multi-company caller's home department must not leak its recents
+      // or its photo rule into another restaurant's entries.
+      if (ctx?.department_id && (!ctx.company_id || ctx.company_id === activeCompany)) {
+        departmentId = ctx.department_id;
+      }
     } catch {
       console.warn('[inventory] waste: could not resolve department — recording without one');
     }
@@ -84,7 +89,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Pick a restaurant you can access' }, { status: 400 });
   }
 
-  const { departmentId } = await actorContext(user);
+  const { departmentId } = await actorContext(user, company);
   // The department's own recent history first; a department that has never
   // binned anything yet borrows the whole restaurant's, so the grid is never
   // uselessly empty on day one.
@@ -122,7 +127,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'product_id required' }, { status: 400 });
   }
 
-  const { userId, departmentId, noActor } = await actorContext(user);
+  const { userId, departmentId, noActor } = await actorContext(user, company);
   if (noActor) {
     return NextResponse.json({
       error: 'Sign in with your PIN first, so the entry is credited to you.',
@@ -183,16 +188,20 @@ export async function POST(request: Request) {
 }
 
 /**
- * Whether this caller may touch this entry: managers anywhere in their
- * restaurants, everyone else only what is credited to them.
+ * Whether this caller may touch this entry: waste MANAGERS anywhere in their
+ * restaurants, everyone else only what is credited to them (and only while
+ * they may record at all). Deliberately its own capability — neither the
+ * count-review key nor the photo-settings key may quietly grant the power to
+ * rewrite everyone's waste.
  */
 function mayTouch(user: PortalUser, userId: number, event: WasteEvent): boolean {
   if (!isUnrestrictedAdmin(user)) {
     const allowed = parseCompanyIds(user.allowed_company_ids);
     if (!allowed.includes(event.company_id)) return false;
   }
-  const isManager = roleCan(user.role, 'inventory.review.approve', getPermissionOverrides());
-  return isManager || event.wasted_by === userId;
+  const overrides = getPermissionOverrides();
+  if (roleCan(user.role, 'inventory.waste.manage', overrides)) return true;
+  return event.wasted_by === userId && roleCan(user.role, 'inventory.waste.record', overrides);
 }
 
 export async function PATCH(request: Request) {
@@ -252,8 +261,9 @@ export async function DELETE(request: Request) {
   }
 
   // Two Undo taps must both succeed from the user's side: the second is simply
-  // already done.
-  if (!voidWaste(id, userId) && !event.voided_at) {
+  // already done. Re-read on a zero-change update — a concurrent tap may have
+  // voided it between our read and our write, and that is still "done".
+  if (!voidWaste(id, userId) && !getWasteEvent(id)?.voided_at) {
     return NextResponse.json({ error: 'Could not undo' }, { status: 500 });
   }
   return NextResponse.json({ message: 'Undone' });

@@ -12,10 +12,11 @@ function fmt(n: number) { return Number.isInteger(n) ? String(n) : (Math.round(n
 
 /**
  * Usage report — portal-native, no Odoo.
- *   used = start count + deliveries received − end count
+ *   used = start count + deliveries received − binned (waste) − end count
  * You pick a start count and an end count of the SAME list; the server
  * (/api/inventory/usage) computes per-product usage and flags any product that
- * wasn't counted at both ends.
+ * wasn't counted at both ends. Without the binned term, everything thrown away
+ * would read as something cooked with.
  */
 export default function ConsumptionReport({ onBack }: ConsumptionReportProps) {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -94,7 +95,7 @@ export default function ConsumptionReport({ onBack }: ConsumptionReportProps) {
 
       <div className="px-4 pb-1 flex items-start gap-2 text-[var(--fs-xs)] text-gray-500 leading-snug">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
-        <span>Used = start count + deliveries received {'−'} end count. Pick a start and end count of the same list.</span>
+        <span>Used = start count + deliveries {'−'} binned {'−'} end count. Pick a start and end count of the same list.</span>
       </div>
 
       {loadingSessions ? <Spinner /> : (
@@ -151,7 +152,9 @@ export default function ConsumptionReport({ onBack }: ConsumptionReportProps) {
               </div>
               {r.complete && (
                 <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 font-mono">
-                  start {fmt(r.opening_qty)} + received {fmt(r.received_qty)} {'−'} end {fmt(r.closing_qty)}
+                  start {fmt(r.opening_qty)} + received {fmt(r.received_qty)}
+                  {' −'} <span className={r.wasted_qty > 0 ? 'font-bold text-amber-700' : undefined}>binned {fmt(r.wasted_qty || 0)}</span>
+                  {' −'} end {fmt(r.closing_qty)}
                 </div>
               )}
             </div>

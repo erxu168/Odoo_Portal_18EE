@@ -126,6 +126,16 @@ test('a network retry with the same client key records ONCE', () => {
   expect(db.sumWasteByProduct([WAJ], '2000-01-01', '2999-01-01')[P4]).toBe(4);
 });
 
+test('a reused key for a DIFFERENT entry is refused, not answered with the old row', () => {
+  // The replay answer is only for the entry the key was minted for. A key that
+  // resurfaces on another product / person / restaurant — or with a different
+  // amount — is a bug or an attack; acknowledging it would silently swallow a
+  // real entry.
+  expect(() => db.recordWaste({ companyId: WAJ, productId: P5, qtyBase: 2, userId: 1, clientKey: 'retry-abc-1' })).toThrow();
+  expect(() => db.recordWaste({ companyId: WAJ, productId: P4, qtyBase: 4, userId: 9, clientKey: 'retry-abc-1' })).toThrow();
+  expect(() => db.recordWaste({ companyId: WAJ, productId: P4, qtyBase: 7, userId: 1, clientKey: 'retry-abc-1' })).toThrow();
+});
+
 test('recently binned is per DEPARTMENT when the tablet has one', () => {
   // "Recently binned HERE" — the bar's bottles must not fill the kitchen's grid.
   db.recordWaste({ companyId: WAJ, productId: P4, qtyBase: 1, userId: 1, departmentId: 9201 });

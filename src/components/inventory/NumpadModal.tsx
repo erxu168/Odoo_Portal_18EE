@@ -23,11 +23,14 @@ interface NumpadModalProps {
   // a parent wires it; saved together with the count.
   note?: string;
   onNoteChange?: (note: string) => void;
+  // The save button's verb. Counting says "Save count"; the Waste Tracker says
+  // "Bin it" — same pad, different promise.
+  saveLabel?: string;
 }
 
 export default function NumpadModal({
   open, productName, category, uom, initialValue, outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange,
-  showSystemQty, systemQty, locationName, onSave, onClose,
+  showSystemQty, systemQty, locationName, onSave, onClose, saveLabel,
 }: NumpadModalProps) {
   const [buf, setBuf] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
@@ -154,7 +157,7 @@ export default function NumpadModal({
           </button>
           <button onClick={handleSave}
             className="flex-1 h-14 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.98] transition-all">
-            Save count
+            {saveLabel || 'Save count'}
           </button>
         </div>
       </div>

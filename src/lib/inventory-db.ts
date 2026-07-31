@@ -3498,8 +3498,13 @@ export function recordWaste(e: NewWasteEvent): number {
   } catch (err) {
     // A replayed client key hits the unique index: that retry already succeeded,
     // so answer with the row it created rather than binning the crate twice.
+    // Only for the SAME logical entry — a key resurfacing on another product,
+    // person or restaurant is a bug or an attack, and acknowledging it would
+    // silently swallow a real entry.
     if (key) {
-      const existing = getDb().prepare('SELECT id FROM waste_events WHERE client_key = ?').get(key) as { id: number } | undefined;
+      const existing = getDb().prepare(
+        'SELECT id FROM waste_events WHERE client_key = ? AND company_id = ? AND odoo_product_id = ? AND wasted_by = ? AND qty_base = ?',
+      ).get(key, e.companyId, e.productId, e.userId, e.qtyBase) as { id: number } | undefined;
       if (existing) return existing.id;
     }
     throw err;

@@ -3,15 +3,18 @@ export const dynamic = 'force-dynamic';
  * GET /api/inventory/usage?opening_session=&closing_session=
  *
  * Portal-native consumption report:
- *   consumption = opening count + received (between the two counts) − closing count
- * per product. No Odoo. Guarded by session access; both counts must be the same
- * restaurant.
+ *   consumption = opening count + received − binned (waste) − closing count
+ * per product, both flow terms over the same window. No Odoo. Guarded by
+ * session access; both counts must be the same restaurant.
+ *
+ * Waste is SUBTRACTED because without it every gram thrown away reads as
+ * something cooked with — usage runs high and nothing says why.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, getSession, getSessionEntries, sumReceiptsByProduct } from '@/lib/inventory-db';
+import { initInventoryTables, getSession, getSessionEntries, sumReceiptsByProduct, sumWasteByProduct } from '@/lib/inventory-db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { berlinMidnightMs } from '@/lib/waj-sales-time';
 import { isCanonicalDay } from '@/lib/berlin-date';
@@ -109,11 +112,15 @@ export async function GET(request: Request) {
   }
   const companyIds = opening.company_id != null ? [opening.company_id] : null;
   const received = sumReceiptsByProduct(companyIds, openBoundary, closeBoundary);
+  // The waste term uses the exact same window as the purchases term, so the two
+  // flow figures can never disagree about which period an event belongs to.
+  const wasted = sumWasteByProduct(companyIds, openBoundary, closeBoundary);
 
   const productIds = Array.from(new Set<number>([
     ...Object.keys(openTotals.qty).map(Number),
     ...Object.keys(closeTotals.qty).map(Number),
     ...Object.keys(received).map(Number),
+    ...Object.keys(wasted).map(Number),
     // Products whose quantity is unknown still belong in the report — as a
     // stated gap, not as a silent omission.
     ...Array.from(openTotals.unknown), ...Array.from(closeTotals.unknown),
@@ -125,6 +132,7 @@ export async function GET(request: Request) {
     const opening_qty = openTotals.qty[pid] || 0;
     const closing_qty = closeTotals.qty[pid] || 0;
     const received_qty = received[pid] || 0;
+    const wasted_qty = wasted[pid] || 0;
     const complete = inOpen && inClose;
     // "Couldn't find it" is a DIFFERENT kind of gap from "never counted", and a
     // manager chasing a number needs to know which: one means go and look for
@@ -135,10 +143,12 @@ export async function GET(request: Request) {
       product_id: pid,
       opening_qty,
       received_qty,
+      wasted_qty,
       closing_qty,
       // Only computable when the product was counted at BOTH endpoints — else we
-      // flag it rather than guess.
-      consumption: complete ? opening_qty + received_qty - closing_qty : null,
+      // flag it rather than guess. A negative result is left alone on purpose:
+      // it is evidence of a timing or counting problem, not noise to clamp.
+      consumption: complete ? opening_qty + received_qty - wasted_qty - closing_qty : null,
       complete,
       missing: complete ? null : (notFoundAt || (!inOpen ? 'opening' : 'closing')),
       not_found_at: notFoundAt,

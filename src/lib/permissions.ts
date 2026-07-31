@@ -96,8 +96,10 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'inventory.drinks.manage',         module: 'inventory', label: 'Scan & edit POS drinks',                         defaultRoles: ['manager', 'admin'] },
   // Waste Tracker: recording is open to everyone on the floor by default — like
   // counting, it only works if the person holding the bin can do it in seconds.
-  // The per-department photo switch is a manager decision.
+  // Managing OTHER people's entries and the photo switch are separate manager
+  // decisions on purpose: granting one must not quietly grant the other.
   { key: 'inventory.waste.record',          module: 'inventory', label: 'Record binned stock (Waste Tracker)',            defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'inventory.waste.manage',          module: 'inventory', label: "Edit or undo anyone's waste entries",            defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.waste.settings',        module: 'inventory', label: 'Waste: require a photo (per department)',        defaultRoles: ['manager', 'admin'] },
 
   // ── Prep Planner — a manager-only module (nav tile minRole=manager). Its item/link/forecast
