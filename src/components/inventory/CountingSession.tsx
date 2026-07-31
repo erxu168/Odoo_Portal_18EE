@@ -11,7 +11,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { patchCachedSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
-import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralizePack } from '@/lib/crate-units';
+import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralizePack, parToEntry } from '@/lib/crate-units';
 import { packTotal, countableLevels, splitToLevels, type PackLevel } from '@/lib/packaging';
 import PackCountSheet from './PackCountSheet';
 import GuidedCountingFlow from './GuidedCountingFlow';
@@ -911,8 +911,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               {(() => {
                 const pr = par[p.id];
                 if (!pr || (pr.min == null && pr.max == null)) return null;
-                const range = pr.min != null && pr.max != null ? `${pr.min}–${pr.max}`
-                  : pr.min != null ? `at least ${pr.min}` : `at most ${pr.max}`;
+                // Par is stored in kg for a product counted in cans — the badge
+                // speaks cans, like every other number on this row. The
+                // below-par check stays in base units, like `val` itself.
+                const packPar = isCrate && measure;
+                const show = (n: number) => (packPar ? parToEntry(n, size) : n);
+                const unit = packPar ? ` ${pluralizePack(label, 2)}` : '';
+                const range = pr.min != null && pr.max != null ? `${show(pr.min)}–${show(pr.max)}${unit}`
+                  : pr.min != null ? `at least ${show(pr.min)}${unit}` : `at most ${show(pr.max ?? 0)}${unit}`;
                 const low = pr.min != null && typeof val === 'number' && val < pr.min;
                 return (
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 border ${

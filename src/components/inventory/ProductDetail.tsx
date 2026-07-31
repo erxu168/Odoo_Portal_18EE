@@ -5,7 +5,7 @@ import { Spinner, ProductThumb } from './ui';
 import SpotSheet from './SpotSheet';
 import ManagePackLabels from './ManagePackLabels';
 import ManageCategories from './ManageCategories';
-import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords } from '@/lib/crate-units';
+import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords, parEntryFactor, parToEntry, parToBase, round2 } from '@/lib/crate-units';
 import { CategoryPathButton, CategoryPickerSheet, CategoryForm, type CategoryRow } from './CategoryPicker';
 import PackagingLevels from './PackagingLevels';
 import DropZone from '@/components/ui/DropZone';
@@ -145,7 +145,15 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [requiresPhoto, setRequiresPhoto] = useState(false);
   const [packLabel, setPackLabel] = useState('');
   const [packSize, setPackSize] = useState('');
+  // The pack size the SERVER has — parFactor below reads this, not packSize,
+  // so a half-typed "0.2" on its way to "0.28" never rescales the par fields.
+  const [savedPackSize, setSavedPackSize] = useState('');
   const [looseLabel, setLooseLabel] = useState('');
+  // The saved packaging chain, reported up by <PackagingLevels> when it loads
+  // or saves — read here only to translate a typed par into boxes.
+  const [packChain, setPackChain] = useState<{ name: string; to_base: number }[]>([]);
+  const onChainLevels = React.useCallback(
+    (levels: { name: string; to_base: number }[]) => setPackChain(levels), []);
   // PAR — how much this restaurant wants to hold. Stored per company, unlike
   // pack size above, which is shared: WAJ and Ssam keep different volumes of the
   // same product.
@@ -174,36 +182,105 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   // Editable "Count by" units (seeded from the defaults) + the manage sheet.
   const [packUnits, setPackUnits] = useState<string[]>(PACK_LABELS);
   const [manageUnits, setManageUnits] = useState(false);
+
+  const uomName = uoms.find((u) => u.id === uomId)?.name || product.uom_id?.[1] || 'Units';
+  const measure = baseIsMeasure(uomName);
+  // The word actually in force — the saved one, or the implicit default. The
+  // Suggest button used to hard-code 'crate' here and would quietly overwrite a
+  // kg product's 'piece' with 'crate' the moment someone accepted a suggestion.
+  const effPack = unitWords(uomName, packLabel, looseLabel).pack;
+  // Par speaks the unit staff COUNT in. For a measure-based product with a pack
+  // ("1 can ≈ 0.28 kg") that is cans, not kilograms — this factor converts at
+  // the screen's edge only; the API, the stored row, and the ordering maths
+  // stay in base units. Factor 1 = the base unit already is what staff count.
+  const parFactor = parEntryFactor(uomName, savedPackSize.trim() === '' ? null : Number(savedPackSize));
+  // What the fields held after the last load/save, PLUS the exact base values
+  // the server holds. An untouched bound must keep its stored value to the
+  // last decimal: a legacy 5 kg par displays as "17.86 cans", and re-converting
+  // THAT on a save of the other field would silently drift it to 5.0008.
+  const par0 = useRef<{ min: string; max: string; minBase: number | null; maxBase: number | null }>(
+    { min: '', max: '', minBase: null, maxBase: null });
+  // Newest par load wins: opening the page fires one load at factor 1 before
+  // the saved pack size arrives and one after — without the token, the slow
+  // first response could land last and show kilograms under a cans label.
+  const parReq = useRef(0);
+
   const loadPar = React.useCallback(() => {
     if (!companyId) return;
+    const token = ++parReq.current;
     fetch(`/api/inventory/product-par?company_id=${companyId}&ids=${product.id}`)
       .then((r) => (r.ok ? r.json() : { par: [] }))
       .then((d) => {
+        if (token !== parReq.current) return;
         const row = (d.par || [])[0];
-        setParMin(row?.par_min != null ? String(row.par_min) : '');
-        setParMax(row?.par_max != null ? String(row.par_max) : '');
+        const minBase = row?.par_min ?? null;
+        const maxBase = row?.par_max ?? null;
+        const min = minBase != null ? String(parToEntry(minBase, parFactor)) : '';
+        const max = maxBase != null ? String(parToEntry(maxBase, parFactor)) : '';
+        par0.current = { min, max, minBase, maxBase };
+        setParMin(min);
+        setParMax(max);
       })
       .catch(() => {});
-  }, [companyId, product.id]);
+  }, [companyId, product.id, parFactor]);
   useEffect(() => { loadPar(); }, [loadPar]);
+  // savePar's failure path reloads via this ref: the closure's own loadPar may
+  // belong to a product/company the screen has already left, and reloading
+  // THAT would paint the wrong par (and baseline) over the current one.
+  const loadParRef = useRef(loadPar);
+  loadParRef.current = loadPar;
 
   async function savePar(nextMin: string, nextMax: string) {
     if (readOnly || !companyId) return;
+    const p0 = par0.current;
+    if (nextMin === p0.min && nextMax === p0.max) return;
+    // "1.2.3" or a lone "." slips the input filter; converting its NaN would
+    // store a real ZERO par. Refuse it instead.
+    const bad = [nextMin, nextMax].some((s) => s.trim() !== '' && !Number.isFinite(Number(s)));
+    if (bad) { setParErr('That is not a number — use something like 12 or 3.5.'); return; }
+    // A save supersedes any in-flight load: without this, a slow factor-change
+    // load could land after the save and revert the fields to its older
+    // snapshot. Keeping the token also tells us below whether the screen moved
+    // to another product/company/factor while the save was in flight.
+    const token = ++parReq.current;
+    // Only the EDITED bound is converted from what was typed; an untouched one
+    // is sent back exactly as stored.
+    const minBase = nextMin === p0.min ? p0.minBase
+      : nextMin.trim() === '' ? null : parToBase(Number(nextMin), parFactor);
+    const maxBase = nextMax === p0.max ? p0.maxBase
+      : nextMax.trim() === '' ? null : parToBase(Number(nextMax), parFactor);
     setParErr('');
     try {
       const res = await fetch('/api/inventory/product-par', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           product_id: product.id, company_id: companyId,
-          par_min: nextMin.trim() === '' ? null : Number(nextMin),
-          par_max: nextMax.trim() === '' ? null : Number(nextMax),
+          par_min: minBase, par_max: maxBase,
         }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setParErr(d.error || 'Could not save the par level'); loadPar(); return; }
+      if (!res.ok) { setParErr(d.error || 'Could not save the par level'); loadParRef.current(); return; }
+      if (token !== parReq.current) return;  // the screen moved on — don't poison its baseline
+      par0.current = { min: nextMin, max: nextMax, minBase, maxBase };
       flash('ok', 'Par level saved');
     } catch { setParErr('Network error — the par level was not saved.'); }
   }
+
+  // "12 cans ≈ 3.36 kg = 2 boxes" — the translation under the par fields when
+  // par is typed in packs. Boxes come from the biggest saved level above one
+  // pack, when the chain has one.
+  const parAsBase = (v: string) => {
+    const base = parToBase(Number(v), parFactor);
+    let out = `${round2(base)} ${uomName}`;
+    const big = packChain
+      .filter((l) => Number.isFinite(l.to_base) && l.to_base > parFactor)
+      .sort((a, b) => b.to_base - a.to_base)[0];
+    if (big) {
+      const n = round2(base / big.to_base);
+      out += ` = ${n} ${pluralizePack(big.name, n)}`;
+    }
+    return out;
+  };
 
   const loadUnits = () => fetch('/api/inventory/pack-labels')
     .then((r) => (r.ok ? r.json() : null))
@@ -220,6 +297,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         setRequiresPhoto(!!f.requires_photo);
         setPackLabel(f.pack_label || '');
         setPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
+        setSavedPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
         setLooseLabel(f.loose_label || '');
       }
     })
@@ -231,12 +309,6 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const uomName = uoms.find((u) => u.id === uomId)?.name || product.uom_id?.[1] || 'Units';
-  const measure = baseIsMeasure(uomName);
-  // The word actually in force — the saved one, or the implicit default. The
-  // Suggest button used to hard-code 'crate' here and would quietly overwrite a
-  // kg product's 'piece' with 'crate' the moment someone accepted a suggestion.
-  const effPack = unitWords(uomName, packLabel, looseLabel).pack;
 
   useEffect(() => {
     // Only the newest load may write state. This effect re-runs when the
@@ -316,6 +388,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           setRequiresPhoto(!!f.requires_photo);
           setPackLabel(f.pack_label || '');
           setPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
+          setSavedPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
           setLooseLabel(f.loose_label || '');
         }
         setUoms(uomRes.uoms || []);
@@ -588,6 +661,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); flash('err', d.error || 'Could not save'); return; }
+      setSavedPackSize(size != null ? String(size) : '');
       flash('ok', 'Saved');
       onChanged({ flags: { units_per_crate: size, pack_label: nextLabel || null, loose_label: nextLoose.trim() || null } });
     } catch { flash('err', 'Network error — not saved'); }
@@ -1088,16 +1162,35 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </div>
             {parErr && <p className="text-[var(--fs-xs)] font-semibold text-red-600 mt-1.5">{parErr}</p>}
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
-              In {unitWords(uomName, effPack, looseLabel).looseFor(2)}
-              {Number(packSize) > 0 && (parMin !== '' || parMax !== '') && (
+              {parFactor !== 1 ? (
+                // Par typed in the unit staff COUNT (cans), translated to what
+                // the system stores (kg) — and boxes, when the chain knows one.
                 <>
-                  {' — '}
-                  {parMin !== '' && `${parMin} = ${(Number(parMin) / Number(packSize)).toFixed(2).replace(/\.?0+$/, '')} ${pluralizePack(effPack, 2)}`}
-                  {parMin !== '' && parMax !== '' && ', '}
-                  {parMax !== '' && `${parMax} = ${(Number(parMax) / Number(packSize)).toFixed(2).replace(/\.?0+$/, '')} ${pluralizePack(effPack, 2)}`}
+                  In {pluralizePack(effPack, 2)}
+                  {(parMin !== '' || parMax !== '') && (
+                    <>
+                      {' — '}
+                      {parMin !== '' && `${parMin} ${pluralizePack(effPack, Number(parMin))} ≈ ${parAsBase(parMin)}`}
+                      {parMin !== '' && parMax !== '' && ', '}
+                      {parMax !== '' && `${parMax} ${pluralizePack(effPack, Number(parMax))} ≈ ${parAsBase(parMax)}`}
+                    </>
+                  )}
+                  . {parMin !== '' ? `Below ${parMin} ${pluralizePack(effPack, Number(parMin))}, ordering suggests topping up${parMax !== '' ? ` to ${parMax}` : ''}.` : 'Leave blank for no par.'}
+                </>
+              ) : (
+                <>
+                  In {unitWords(uomName, effPack, looseLabel).looseFor(2)}
+                  {Number(packSize) > 0 && (parMin !== '' || parMax !== '') && (
+                    <>
+                      {' — '}
+                      {parMin !== '' && `${parMin} = ${(Number(parMin) / Number(packSize)).toFixed(2).replace(/\.?0+$/, '')} ${pluralizePack(effPack, 2)}`}
+                      {parMin !== '' && parMax !== '' && ', '}
+                      {parMax !== '' && `${parMax} = ${(Number(parMax) / Number(packSize)).toFixed(2).replace(/\.?0+$/, '')} ${pluralizePack(effPack, 2)}`}
+                    </>
+                  )}
+                  . {parMin !== '' ? `Below ${parMin}, ordering suggests topping up${parMax !== '' ? ` to ${parMax}` : ''}.` : 'Leave blank for no par.'}
                 </>
               )}
-              . {parMin !== '' ? `Below ${parMin}, ordering suggests topping up${parMax !== '' ? ` to ${parMax}` : ''}.` : 'Leave blank for no par.'}
             </p>
           </div>
 
@@ -1109,6 +1202,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             productId={product.id}
             baseWord={unitWords(uomName, effPack, looseLabel).looseFor(2)}
             readOnly={readOnly}
+            onLevels={onChainLevels}
           />
 
           {/* Photo rule */}

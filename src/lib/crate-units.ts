@@ -188,3 +188,27 @@ export function round2(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Number.isInteger(n) ? n : Math.round(n * 100) / 100;
 }
+
+/**
+ * Par <-> what a person types. Par is STORED in base units so the ordering
+ * maths never cares how a product is counted — but a measure-based product
+ * counted in packs ("1 can = 0.28 kg") is asked for and shown in PACKS, the
+ * unit the person deciding "should we order?" actually thinks in. Factor 1
+ * means no conversion: the base unit already IS what staff count.
+ */
+export function parEntryFactor(uom: string, unitsPerCrate: number | null | undefined): number {
+  return baseIsMeasure(uom) && hasCrate(unitsPerCrate) ? unitsPerCrate : 1;
+}
+
+const safeFactor = (factor: number): number =>
+  Number.isFinite(factor) && factor > 0 ? factor : 1;
+
+/** A stored base-unit par, in the entry unit (2dp — this is for reading). */
+export function parToEntry(base: number, factor: number): number {
+  return round2(base / safeFactor(factor));
+}
+
+/** A typed entry-unit par, in base units for storage (full precision). */
+export function parToBase(entry: number, factor: number): number {
+  return roundQty(entry * safeFactor(factor));
+}

@@ -26,11 +26,15 @@ interface LevelRow {
 let seq = 0;
 const newKey = () => `new-${++seq}`;
 
-export default function PackagingLevels({ productId, baseWord, readOnly = false }: {
+export default function PackagingLevels({ productId, baseWord, readOnly = false, onLevels }: {
   productId: number;
   /** What one base unit is called ("pieces", "bottles", "kg"). */
   baseWord: string;
   readOnly?: boolean;
+  /** Reports the SAVED chain — on load and after each successful save — so the
+   *  parent can translate other numbers (the par level) into these levels.
+   *  Never fired for unsaved edits. */
+  onLevels?: (levels: { name: string; to_base: number }[]) => void;
 }) {
   const [rows, setRows] = useState<LevelRow[]>([]);
   const [chain, setChain] = useState('');
@@ -43,6 +47,10 @@ export default function PackagingLevels({ productId, baseWord, readOnly = false 
   // editor that can erase levels the manager never saw.
   const [loaded, setLoaded] = useState(false);
   const reqRef = useRef(0);
+  // Read through a ref inside load() so an inline (unstable) callback prop can
+  // never join load's deps and refetch on every parent render.
+  const onLevelsRef = useRef(onLevels);
+  onLevelsRef.current = onLevels;
 
   const load = useCallback(async () => {
     const token = ++reqRef.current;
@@ -54,6 +62,9 @@ export default function PackagingLevels({ productId, baseWord, readOnly = false 
       if (token !== reqRef.current) return;      // a newer load won
       setRows((d.levels || []).map((l: { id: number; name: string; to_base: number }) => (
         { key: `id-${l.id}`, id: l.id, name: l.name, to_base: l.to_base }
+      )));
+      onLevelsRef.current?.((d.levels || []).map((l: { name: string; to_base: number }) => (
+        { name: l.name, to_base: l.to_base }
       )));
       setChain(d.chain || '');
       setError(null);
