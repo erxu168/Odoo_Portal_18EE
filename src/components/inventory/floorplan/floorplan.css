@@ -152,6 +152,53 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--c, #64748b) 28%, transparent);
 }
 
+/* ---- Leader line -------------------------------------------------------
+   A crowded room runs out of space for its icons, so an icon can be pulled
+   OUT and an arrow drawn back to the spot it marks. The line is dashed so it
+   reads as a pointer rather than as something drawn on the plan itself. */
+.kw-fp-leader {
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+.kw-fp-arrow {
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none;
+}
+.kw-fp-arrowhead {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 13px;
+  height: 13px;
+  /* Points RIGHT at 0deg; aimArrow() rotates it onto the line. The transform
+     itself is written by JS, so none is declared here.
+
+     The origin is the TIP, not the centre. aimArrow translates the tip onto
+     the spot and then rotates about it, so the point of the arrow lands
+     exactly on the coordinate it marks and the body swings out behind it —
+     centring instead would push the tip past the spot by half its length. */
+  transform-origin: 100% 50%;
+  clip-path: polygon(0% 12%, 100% 50%, 0% 88%, 22% 50%);
+  background: var(--c, #64748b);
+}
+/* The spot end of a leader line: a small ring you can drag to move the real
+   position, visually distinct from the icon so the two are never confused. */
+.kw-fp-spot {
+  width: 22px !important;
+  height: 22px !important;
+  margin-left: -11px;
+  margin-top: -11px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--c, #64748b);
+  box-shadow: 0 1px 4px rgba(15, 25, 40, 0.3);
+  cursor: grab;
+}
+.kw-fp-spot:active {
+  cursor: grabbing;
+}
+
 /* Drag handle shown on every anchor in edit mode. */
 .kw-fp-handle {
   width: 26px !important;

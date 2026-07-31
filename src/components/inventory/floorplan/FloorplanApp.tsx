@@ -180,6 +180,23 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     [manifest, activeFloorId],
   );
 
+  /** Is the selected marker's icon currently pulled out of its spot? */
+  const selectedPulledOut = useMemo(() => {
+    if (!editSel) return false;
+    const a = activeAnchors.find(x => x.id === editSel.anchorId);
+    return !!a && a.pinCx != null && a.pinCy != null;
+  }, [editSel, activeAnchors]);
+
+  /**
+   * Only a MARKER can be pulled out. A detected 'overlay' anchor is a shape
+   * drawn on the plan with no icon to move, so it is never offered the action
+   * — an button that always fails is worse than no button.
+   */
+  const selectedCanPullOut = useMemo(() => {
+    if (!editSel) return false;
+    return activeAnchors.find(x => x.id === editSel.anchorId)?.display === 'pin';
+  }, [editSel, activeAnchors]);
+
   // Type chips: only types that actually appear on the active floor.
   const chipTypes = useMemo(() => {
     const present = new Set(activeAnchors.map(a => a.typeKey));
@@ -267,6 +284,116 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       }
       return changed ? { ...prev, manifest: { ...prev.manifest, anchors } } : prev;
     });
+  };
+
+  /** Same optimistic patch, but for where the ICON is drawn. */
+  const patchPin = (anchorId: number, pinCx: number | null, pinCy: number | null) => {
+    setResp(prev => {
+      if (!prev?.manifest) return prev;
+      const anchors: typeof prev.manifest.anchors = {};
+      let changed = false;
+      for (const [fid, list] of Object.entries(prev.manifest.anchors)) {
+        anchors[Number(fid)] = list.map(a => {
+          if (a.id !== anchorId) return a;
+          changed = true;
+          return { ...a, pinCx, pinCy };
+        });
+      }
+      return changed ? { ...prev, manifest: { ...prev.manifest, anchors } } : prev;
+    });
+  };
+
+  /**
+   * Dragging an icon fires one PATCH per drop, so several can be in play for
+   * the SAME anchor. Three separate things have to be true, and each needs its
+   * own mechanism:
+   *
+   *  - seq  — only the NEWEST request may roll back or speak. An older failure
+   *           must not drag the icon back from where the manager has since put it.
+   *  - queue— one request per anchor AT A TIME. Ordering the responses is not
+   *           enough: two in flight can REACH THE SERVER out of order and leave
+   *           the database on the older position while the screen shows the newer.
+   *  - saved— roll back to the last position the SERVER CONFIRMED, not to the
+   *           previous optimistic value, which may itself never have persisted.
+   *
+   * All three are cleared once an anchor goes quiet, so the maps stay small.
+   */
+  const pinSeqRef = useRef<Map<number, number>>(new Map());
+  const pinQueueRef = useRef<Map<number, Promise<unknown>>>(new Map());
+  const pinSavedRef = useRef<Map<number, { pinCx: number | null; pinCy: number | null }>>(new Map());
+
+  const savePin = async (
+    anchor: { id: number; pinCx: number | null; pinCy: number | null },
+    pinCx: number | null, pinCy: number | null, okMsg: string,
+  ) => {
+    const id = anchor.id;
+    // First touch of a quiet anchor: its current value IS the persisted one.
+    if (!pinSavedRef.current.has(id)) {
+      pinSavedRef.current.set(id, { pinCx: anchor.pinCx, pinCy: anchor.pinCy });
+    }
+    const seq = (pinSeqRef.current.get(id) ?? 0) + 1;
+    pinSeqRef.current.set(id, seq);
+    const stillNewest = () => pinSeqRef.current.get(id) === seq;
+
+    // Optimistic move happens NOW, not when the queue reaches this request —
+    // the icon must follow the finger even while an earlier save is in flight.
+    patchPin(id, pinCx, pinCy);
+
+    const send = async () => {
+      try {
+        const res = await fetch(`/api/inventory/floorplan-anchors/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinCx, pinCy }),
+        });
+        if (res.ok) {
+          pinSavedRef.current.set(id, { pinCx, pinCy });
+          if (stillNewest()) toast(okMsg);
+          return;
+        }
+        if (!stillNewest()) return;              // a newer drag owns the screen
+        const saved = pinSavedRef.current.get(id)!;
+        patchPin(id, saved.pinCx, saved.pinCy);
+        toast('Could not save — put back where it was');
+      } catch {
+        // Offline, timeout, reset: fetch REJECTS rather than returning !ok, so
+        // without this the optimistic move would stick on screen unsaved — and
+        // could be written into the offline cache as though it were real.
+        if (!stillNewest()) return;
+        const saved = pinSavedRef.current.get(id)!;
+        patchPin(id, saved.pinCx, saved.pinCy);
+        toast('No connection — put back where it was');
+      } finally {
+        // Anchor is quiet again: drop its bookkeeping so a long session on a
+        // big plan does not accumulate an entry per marker ever touched.
+        if (stillNewest()) {
+          pinQueueRef.current.delete(id);
+          pinSavedRef.current.delete(id);
+          pinSeqRef.current.delete(id);
+        }
+      }
+    };
+
+    const chained = (pinQueueRef.current.get(id) ?? Promise.resolve()).then(send, send);
+    pinQueueRef.current.set(id, chained);
+    await chained;
+  };
+
+  /**
+   * Pull the icon out of a crowded room, or snap it back. The first pull-out
+   * lands the icon up and to the right of its spot — far enough to clear the
+   * room, close enough that the arrow is short and obviously connected. From
+   * there it is dragged wherever there is space.
+   */
+  const togglePullOut = async () => {
+    if (!editSel) return;
+    const anchor = activeAnchors.find(a => a.id === editSel.anchorId);
+    if (!anchor || anchor.display !== 'pin') return;   // shapes have no icon to pull out
+    if (anchor.pinCx != null && anchor.pinCy != null) {
+      await savePin(anchor, null, null, 'Icon back on its spot');
+      return;
+    }
+    const clamp = (v: number) => Math.min(0.98, Math.max(0.02, v));
+    await savePin(anchor, clamp(anchor.cx + 0.09), clamp(anchor.cy - 0.07), 'Pulled out — drag it where there is space');
   };
 
   const moveAnchor = async (anchor: { id: number; polygon: Pt[]; cx: number; cy: number }, polygon: Pt[], cx: number, cy: number) => {
@@ -548,9 +675,22 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       )}
       {editSel && (
         <div className="flex flex-wrap items-center gap-2 bg-amber-50 px-3 py-2">
-          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-amber-900">
-            {editSel.label} — drag it on the plan to reposition
+          <span className="min-w-0 flex-1 break-words text-[12.5px] font-semibold text-amber-900">
+            {selectedPulledOut
+              ? `${editSel.label} — drag the icon to move it, drag the ring to move the spot`
+              : `${editSel.label} — drag it on the plan to reposition`}
           </span>
+          {selectedCanPullOut && (
+            <button
+              onClick={togglePullOut}
+              title={selectedPulledOut
+                ? 'Put the icon back on its spot'
+                : 'Move the icon out of a crowded room; an arrow keeps pointing at the spot'}
+              className="h-9 flex-shrink-0 rounded-full border-[1.5px] border-amber-600 bg-white px-3.5 text-[12px] font-bold text-amber-700"
+            >
+              {selectedPulledOut ? '↙ Snap back' : '↗ Pull out'}
+            </button>
+          )}
           <button onClick={renameSelected} className="h-9 flex-shrink-0 rounded-full border-[1.5px] border-blue-600 bg-white px-3.5 text-[12px] font-bold text-blue-700">Rename</button>
           <button onClick={removeAnchor} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove</button>
           <button onClick={() => { setEditSel(null); setSelectedId(null); }} className="h-9 flex-shrink-0 rounded-full border border-gray-300 bg-white px-3.5 text-[12px] font-bold text-gray-700">Done</button>
@@ -583,6 +723,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             if (edit) setSelectedId(null);
           }}
           onMoveAnchor={(a, polygon, cx, cy) => moveAnchor(a, polygon, cx, cy)}
+          onMovePin={(a, pinCx, pinCy) => savePin(a, pinCx, pinCy, 'Icon moved')}
           onDropType={(typeKey, pt) => { if (edit) openAddForm(typeKey, pt); }}
           flyTo={flyTo}
         />

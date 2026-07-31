@@ -127,6 +127,10 @@ export function initFloorplanTables(): void {
       polygon TEXT NOT NULL,
       cx REAL NOT NULL,
       cy REAL NOT NULL,
+      -- Where the ICON is drawn when it has been pulled out of a crowded room.
+      -- NULL = drawn on the spot itself. See the leader-line note below.
+      pin_cx REAL,
+      pin_cy REAL,
       label TEXT NOT NULL,
       display TEXT NOT NULL DEFAULT 'overlay',
       is_primary INTEGER NOT NULL DEFAULT 1,
@@ -151,6 +155,21 @@ export function initFloorplanTables(): void {
       UNIQUE(company_id, kind)
     );
   `);
+
+  // Anchor migrations (additive, same tolerance as the location_kinds block).
+  // LEADER LINE: a crowded room runs out of room for its icons, so an icon may
+  // be drawn OUTSIDE the room with an arrow back to the spot it marks. cx/cy
+  // stay THE SPOT — every other consumer (counting, routes, the spot sheet)
+  // keeps reading them unchanged. pin_cx/pin_cy are only where the icon is
+  // DRAWN, and NULL means "on the spot", i.e. exactly today's behaviour.
+  const anCols = (db.prepare('PRAGMA table_info(inventory_floor_anchors)').all() as { name: string }[]).map(c => c.name);
+  const addAnCol = (name: string, ddl: string) => {
+    if (anCols.includes(name)) return;
+    try { db.exec(ddl); }
+    catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
+  };
+  addAnCol('pin_cx', 'ALTER TABLE inventory_floor_anchors ADD COLUMN pin_cx REAL');
+  addAnCol('pin_cy', 'ALTER TABLE inventory_floor_anchors ADD COLUMN pin_cy REAL');
 
   // location_kinds migrations (additive, tolerant of a concurrent worker adding first).
   const lkCols = (db.prepare('PRAGMA table_info(location_kinds)').all() as { name: string }[]).map(c => c.name);
@@ -389,6 +408,27 @@ export function updateAnchorPosition(id: number, updates: { polygon: Pt[]; cx: n
     getDb().prepare('UPDATE inventory_floor_anchors SET polygon = ?, cx = ?, cy = ? WHERE id = ?')
       .run(JSON.stringify(updates.polygon), updates.cx, updates.cy, id);
   }
+}
+
+/**
+ * Move the ICON only — the leader-line pull-out. `null` clears it, snapping
+ * the icon back onto its spot. cx/cy (the spot itself) are never touched here,
+ * so pulling an icon out can never move the thing it marks.
+ */
+export function updateAnchorPin(id: number, pin: Pt | null): boolean {
+  initFloorplanTables();
+  // display = 'pin' is enforced HERE, not only in the route. An 'overlay'
+  // anchor is a shape, not an icon, so a pull-out coordinate on one is data
+  // no screen can render — the kind of inconsistency that outlives the bug
+  // that wrote it.
+  //
+  // Returns whether a row actually changed: between the route's check and this
+  // write the anchor can be deleted by another manager, and reporting success
+  // for a write that hit nothing would leave the screen showing a lie.
+  const res = getDb().prepare(
+    "UPDATE inventory_floor_anchors SET pin_cx = ?, pin_cy = ? WHERE id = ? AND display = 'pin'",
+  ).run(pin ? pin.x : null, pin ? pin.y : null, id);
+  return res.changes === 1;
 }
 
 export function getAnchor(id: number): AnchorRow | null {

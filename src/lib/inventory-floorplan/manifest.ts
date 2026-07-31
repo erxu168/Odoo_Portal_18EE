@@ -42,8 +42,12 @@ export interface ManifestAnchor {
   id: number;
   locationId: number;
   polygon: Pt[];
+  /** THE SPOT — what the marker marks. A leader line never moves this. */
   cx: number;
   cy: number;
+  /** Where the ICON is drawn; null = on the spot, i.e. no leader line. */
+  pinCx: number | null;
+  pinCy: number | null;
   display: 'overlay' | 'pin';
   label: string;
   typeKey: string;
@@ -183,6 +187,11 @@ export function buildManifest(
         return {
           id: a.id, locationId: a.count_location_id, polygon: a.polygon,
           cx: a.cx, cy: a.cy, display: a.display, label: a.label,
+          // Only a COMPLETE pair counts as pulled out — half a coordinate is
+          // not a position, and drawing an arrow to a guess would be worse
+          // than drawing none.
+          pinCx: a.pin_cx != null && a.pin_cy != null ? a.pin_cx : null,
+          pinCy: a.pin_cx != null && a.pin_cy != null ? a.pin_cy : null,
           typeKey: loc.kind, room: roomOf(loc.id), path: pathOf(loc.id),
         };
       });

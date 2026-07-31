@@ -33,6 +33,8 @@ interface Props {
   onTapAnchor: (locationId: number) => void;
   onTapEmpty?: (pt: Pt) => void;
   onMoveAnchor?: (anchor: ManifestAnchor, polygon: Pt[], cx: number, cy: number) => void;
+  /** Move only the pulled-out ICON. The spot it marks does not move. */
+  onMovePin?: (anchor: ManifestAnchor, pinCx: number, pinCy: number) => void;
 }
 
 interface AnchorLayers {
@@ -40,6 +42,10 @@ interface AnchorLayers {
   poly?: Leaflet.Polygon;
   pin?: Leaflet.Marker;
   handle?: Leaflet.Marker;
+  /** Leader line: the arrow from a pulled-out icon back to its spot. */
+  leader?: Leaflet.Polyline;
+  arrow?: Leaflet.Marker;
+  target?: Leaflet.Marker;
 }
 
 interface World {
@@ -50,17 +56,44 @@ interface World {
   height: number;
 }
 
+/**
+ * Point the arrowhead along its leader line.
+ *
+ * The angle is measured in SCREEN space, never in fractional space: a plan is
+ * rarely square, so equal fractions are not equal distances and an angle taken
+ * from fractions would visibly miss the spot. CRS.Simple scales uniformly, so
+ * an angle measured at one zoom stays correct at every other.
+ */
+function aimArrow(w: World, entry: AnchorLayers, from: Leaflet.LatLngExpression, to: Leaflet.LatLngExpression): void {
+  const host = entry.arrow?.getElement();
+  const head = host?.querySelector('.kw-fp-arrowhead') as HTMLElement | null;
+  if (!head) return;
+  const p1 = w.map.latLngToLayerPoint(w.L.latLng(from));
+  const p2 = w.map.latLngToLayerPoint(w.L.latLng(to));
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  // A leader only a few pixels long has no stable direction — the angle would
+  // spin wildly on the smallest nudge — and an arrowhead that size is noise.
+  if (Math.hypot(dx, dy) < 8) { head.style.display = 'none'; return; }
+  head.style.display = '';
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  // Leaflet owns the marker element's own transform, so the rotation goes on
+  // the inner span — the same reason .kw-fp-inner exists (see floorplan.css).
+  // translate puts the arrow's TIP on the spot; transform-origin (set in CSS
+  // to the tip) makes the rotation swing the body around that fixed point.
+  head.style.transform = `translate(-100%, -50%) rotate(${deg}deg)`;
+}
+
 export default function FloorplanMap({
   revision, anchors, typesByKey, selectedId, filterType, editable,
-  onTapAnchor, onTapEmpty, onMoveAnchor, flyTo, onDropType,
+  onTapAnchor, onTapEmpty, onMoveAnchor, onMovePin, flyTo, onDropType,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<World | null>(null);
   const resizeObsRef = useRef<ResizeObserver | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   // Callbacks kept current without re-initializing the map.
-  const cbRef = useRef({ onTapAnchor, onTapEmpty, onMoveAnchor, onDropType, editable });
-  cbRef.current = { onTapAnchor, onTapEmpty, onMoveAnchor, onDropType, editable };
+  const cbRef = useRef({ onTapAnchor, onTapEmpty, onMoveAnchor, onMovePin, onDropType, editable });
+  cbRef.current = { onTapAnchor, onTapEmpty, onMoveAnchor, onMovePin, onDropType, editable };
 
   const fracToLatLng = (w: World, p: Pt): Leaflet.LatLngExpression => [w.height * (1 - p.y), w.width * p.x];
   const latLngToFrac = (w: World, ll: Leaflet.LatLng): Pt => ({ x: ll.lng / w.width, y: 1 - ll.lat / w.height });
@@ -166,7 +199,10 @@ export default function FloorplanMap({
   // ---- anchor layers (per anchors/edit change) -----------------------------
   const buildLayers = (w: World) => {
     const { L, map } = w;
-    Array.from(w.layers.values()).forEach(l => { l.poly?.remove(); l.pin?.remove(); l.handle?.remove(); });
+    Array.from(w.layers.values()).forEach(l => {
+      l.poly?.remove(); l.pin?.remove(); l.handle?.remove();
+      l.leader?.remove(); l.arrow?.remove(); l.target?.remove();
+    });
     w.layers.clear();
 
     for (const a of anchors) {
@@ -190,7 +226,14 @@ export default function FloorplanMap({
           iconSize: [0, 0],
           iconAnchor: [0, 0],
         });
-        const pin = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), {
+        // A pulled-out icon is DRAWN away from the spot it marks, with an
+        // arrow between the two. cx/cy remain the spot; pinCx/pinCy are only
+        // where the icon sits, so a crowded room can push its icons outside.
+        const pulledOut = a.pinCx != null && a.pinCy != null;
+        const drawAt = pulledOut ? { x: a.pinCx!, y: a.pinCy! } : { x: a.cx, y: a.cy };
+        const spotAt = { x: a.cx, y: a.cy };
+
+        const pin = L.marker(fracToLatLng(w, drawAt), {
           icon,
           // Edit mode = grab any marker and move it, at whatever zoom you can
           // actually see it. No separate handle, no select-first step.
@@ -198,15 +241,77 @@ export default function FloorplanMap({
           autoPan: true,
         }).addTo(map);
         if (cbRef.current.editable) {
-          pin.on('dragend', () => {
-            const wNow = worldRef.current;
-            if (!wNow || !cbRef.current.onMoveAnchor) return;
-            const to = latLngToFrac(wNow, pin.getLatLng());
-            const clamp = (v: number) => Math.min(1, Math.max(0, v));
-            const dx = clamp(to.x) - a.cx, dy = clamp(to.y) - a.cy;
-            const moved = a.polygon.map(p => ({ x: clamp(p.x + dx), y: clamp(p.y + dy) }));
-            cbRef.current.onMoveAnchor(a, moved, clamp(to.x), clamp(to.y));
-          });
+          // While the icon is out, dragging it moves ONLY the icon — the spot
+          // stays where it is. Redraw the arrow live so it never lags behind.
+          if (pulledOut) {
+            pin.on('drag', () => {
+              const wNow = worldRef.current;
+              if (!wNow) return;
+              entry.leader?.setLatLngs([pin.getLatLng(), fracToLatLng(wNow, spotAt)]);
+              aimArrow(wNow, entry, pin.getLatLng(), fracToLatLng(wNow, spotAt));
+            });
+            pin.on('dragend', () => {
+              const wNow = worldRef.current;
+              if (!wNow || !cbRef.current.onMovePin) return;
+              const to = latLngToFrac(wNow, pin.getLatLng());
+              const clamp = (v: number) => Math.min(1, Math.max(0, v));
+              cbRef.current.onMovePin(a, clamp(to.x), clamp(to.y));
+            });
+          } else {
+            pin.on('dragend', () => {
+              const wNow = worldRef.current;
+              if (!wNow || !cbRef.current.onMoveAnchor) return;
+              const to = latLngToFrac(wNow, pin.getLatLng());
+              const clamp = (v: number) => Math.min(1, Math.max(0, v));
+              const dx = clamp(to.x) - a.cx, dy = clamp(to.y) - a.cy;
+              const moved = a.polygon.map(p => ({ x: clamp(p.x + dx), y: clamp(p.y + dy) }));
+              cbRef.current.onMoveAnchor(a, moved, clamp(to.x), clamp(to.y));
+            });
+          }
+        }
+
+        if (pulledOut) {
+          const from = fracToLatLng(w, drawAt), to = fracToLatLng(w, spotAt);
+          entry.leader = L.polyline([from, to], {
+            className: 'kw-fp-leader', color, weight: 2, opacity: 0.9, interactive: false,
+          }).addTo(map);
+          entry.arrow = L.marker(to, {
+            icon: L.divIcon({ className: 'kw-fp-arrow', html: '<span class="kw-fp-arrowhead"></span>', iconSize: [0, 0], iconAnchor: [0, 0] }),
+            interactive: false,
+            // Under the icon and the spot handle — it is a pointer, not a target.
+            zIndexOffset: -100,
+          }).addTo(map);
+          const ael = entry.arrow.getElement();
+          if (ael) ael.style.setProperty('--c', color);
+          aimArrow(w, entry, from, to);
+
+          // The spot end is draggable too, so the real position stays editable
+          // once the icon has been moved away from it.
+          if (cbRef.current.editable) {
+            const target = L.marker(to, {
+              draggable: true,
+              icon: L.divIcon({ className: 'kw-fp-spot', iconSize: [22, 22] }),
+            }).addTo(map);
+            const tel = target.getElement();
+            if (tel) tel.style.setProperty('--c', color);
+            target.on('drag', () => {
+              const wNow = worldRef.current;
+              if (!wNow) return;
+              entry.leader?.setLatLngs([pin.getLatLng(), target.getLatLng()]);
+              entry.arrow?.setLatLng(target.getLatLng());
+              aimArrow(wNow, entry, pin.getLatLng(), target.getLatLng());
+            });
+            target.on('dragend', () => {
+              const wNow = worldRef.current;
+              if (!wNow || !cbRef.current.onMoveAnchor) return;
+              const t = latLngToFrac(wNow, target.getLatLng());
+              const clamp = (v: number) => Math.min(1, Math.max(0, v));
+              const dx = clamp(t.x) - a.cx, dy = clamp(t.y) - a.cy;
+              const moved = a.polygon.map(p => ({ x: clamp(p.x + dx), y: clamp(p.y + dy) }));
+              cbRef.current.onMoveAnchor(a, moved, clamp(t.x), clamp(t.y));
+            });
+            entry.target = target;
+          }
         }
         const el = pin.getElement();
         if (el) el.style.setProperty('--c', color);
@@ -278,6 +383,12 @@ export default function FloorplanMap({
       if (entry.pin) {
         const el = entry.pin.getElement();
         if (el) el.classList.toggle('kw-fp-sel', isSelected);
+      }
+      // Where several icons have been pulled out of the same corner, the lines
+      // cross. Thickening the selected one shows which spot you are holding.
+      if (entry.leader) {
+        entry.leader.setStyle({ color, weight: isSelected ? 3.5 : 2, opacity: isSelected ? 1 : 0.9 });
+        if (isSelected) entry.leader.bringToFront();
       }
     }
   };

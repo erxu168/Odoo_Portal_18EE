@@ -75,8 +75,12 @@ export interface AnchorRow {
   count_location_id: number;
   source_candidate_id: number | null;
   polygon: Pt[];
+  /** THE SPOT. What the marker marks; never moved by a leader line. */
   cx: number;
   cy: number;
+  /** Where the ICON is drawn. null = on the spot (no leader line). */
+  pin_cx: number | null;
+  pin_cy: number | null;
   label: string;
   display: AnchorDisplay;
   is_primary: number;

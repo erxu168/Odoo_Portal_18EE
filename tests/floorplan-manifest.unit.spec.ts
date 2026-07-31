@@ -9,7 +9,7 @@ process.env.PORTAL_DB_PATH = path.join(TMP, 'portal.db');
 import { getDb } from '../src/lib/db';
 import { initInventoryTables, createCountLocation } from '../src/lib/inventory-db';
 import {
-  createFloor, createFloorDocument, createRevision, insertCandidates,
+  createFloor, createFloorDocument, createRevision, insertCandidates, updateAnchorPin,
 } from '../src/lib/inventory-floorplan/db';
 import { publishRevision } from '../src/lib/inventory-floorplan/publish';
 import { buildManifest, getTypeRegistry, placedProductIds } from '../src/lib/inventory-floorplan/manifest';
@@ -142,4 +142,71 @@ test('hiding a built-in removes it from the library without touching the key', (
   const hidden = getTypeRegistry(CO).find(t => t.key === 'shelf');
   expect(hidden?.hidden).toBe(true);
   expect(getTypeRegistry(CO).filter(t => t.key === 'shelf').length).toBe(1);
+});
+
+/**
+ * Leader line — an icon pulled out of a crowded room.
+ *
+ * The whole design rests on one invariant: pin_cx/pin_cy move where the icon
+ * is DRAWN and never touch cx/cy, which is the spot itself and the thing the
+ * rest of inventory reads. If that ever slips, dragging an icon for looks
+ * would quietly relocate real stock.
+ */
+test('pulling an icon out moves the ICON, never the spot', () => {
+  const m0 = buildManifest(CO, { products: [] });
+  const a0 = m0.anchors[floorId].find(a => a.label === 'SLF 1')!;
+  expect(a0.pinCx).toBeNull();
+  expect(a0.pinCy).toBeNull();
+
+  // Seeded anchors come from detected labels, so they publish as 'overlay'
+  // shapes. Only a MARKER can be pulled out, so make this one a marker first.
+  getDb().prepare("UPDATE inventory_floor_anchors SET display='pin' WHERE id = ?").run(a0.id);
+
+  expect(updateAnchorPin(a0.id, { x: 0.77, y: 0.11 })).toBe(true);
+
+  const a1 = buildManifest(CO, { products: [] }).anchors[floorId].find(a => a.id === a0.id)!;
+  expect(a1.pinCx).toBeCloseTo(0.77);
+  expect(a1.pinCy).toBeCloseTo(0.11);
+  expect(a1.cx).toBeCloseTo(a0.cx);   // the spot has NOT moved
+  expect(a1.cy).toBeCloseTo(a0.cy);
+  expect(a1.polygon).toEqual(a0.polygon);
+
+  // Snap back clears the pull-out and still leaves the spot untouched.
+  expect(updateAnchorPin(a0.id, null)).toBe(true);
+  const a2 = buildManifest(CO, { products: [] }).anchors[floorId].find(a => a.id === a0.id)!;
+  expect(a2.pinCx).toBeNull();
+  expect(a2.pinCy).toBeNull();
+  expect(a2.cx).toBeCloseTo(a0.cx);
+  expect(a2.cy).toBeCloseTo(a0.cy);
+});
+
+test('half a coordinate pair is not a position — the manifest reports no pull-out', () => {
+  const m0 = buildManifest(CO, { products: [] });
+  // FUSE BOX B is archived by an earlier test, so use the shelf — the test
+  // above leaves it snapped back, so it starts from a clean null pair.
+  const a0 = m0.anchors[floorId].find(a => a.label === 'SLF 1')!;
+  // Only one of the two written: a torn write, or an older row. Drawing an
+  // arrow to a guessed coordinate would be worse than drawing none.
+  getDb().prepare('UPDATE inventory_floor_anchors SET pin_cx = 0.5, pin_cy = NULL WHERE id = ?').run(a0.id);
+  const a1 = buildManifest(CO, { products: [] }).anchors[floorId].find(a => a.id === a0.id)!;
+  expect(a1.pinCx).toBeNull();
+  expect(a1.pinCy).toBeNull();
+});
+
+test('a write that hits no row reports failure instead of a false success', () => {
+  expect(updateAnchorPin(99999999, { x: 0.5, y: 0.5 })).toBe(false);
+  expect(updateAnchorPin(99999999, null)).toBe(false);
+});
+
+test('a shape is not a marker — an overlay anchor refuses a pull-out', () => {
+  const m0 = buildManifest(CO, { products: [] });
+  // 'Dry Room' publishes as an overlay: a shape on the plan, with no icon to
+  // move. Enforced in the DB helper, not only in the route, so no code path
+  // can leave a pull-out coordinate on something that cannot render one.
+  const room = m0.anchors[floorId].find(a => a.display === 'overlay')!;
+  expect(room).toBeTruthy();
+  expect(updateAnchorPin(room.id, { x: 0.6, y: 0.6 })).toBe(false);
+  const after = buildManifest(CO, { products: [] }).anchors[floorId].find(a => a.id === room.id)!;
+  expect(after.pinCx).toBeNull();
+  expect(after.pinCy).toBeNull();
 });
