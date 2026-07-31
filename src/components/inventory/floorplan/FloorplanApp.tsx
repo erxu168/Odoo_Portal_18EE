@@ -511,6 +511,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           typesByKey={typesByKey}
           canEditProductPhotos={capabilities.includes('inventory.productsettings.manage')}
           canEditSpotPhoto={canManage}
+          canAssignProducts={canManage || capabilities.includes('inventory.productsettings.manage') || capabilities.includes('inventory.template.manage')}
           onClose={closeSheet}
         />
       )}

@@ -29,10 +29,14 @@ interface Props {
   canEditProductPhotos: boolean;
   /** inventory.location.manage — enables the spot-photo capture right here. */
   canEditSpotPhoto?: boolean;
+  /** May assign products to this spot (the walk-through flow). */
+  canAssignProducts?: boolean;
   onClose: () => void;
 }
 
-export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProductPhotos, canEditSpotPhoto, onClose }: Props) {
+interface CatalogProduct { id: number; name: string }
+
+export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProductPhotos, canEditSpotPhoto, canAssignProducts, onClose }: Props) {
   const router = useRouter();
   const [data, setData] = useState<SheetData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +45,13 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   const fileRef = useRef<HTMLInputElement>(null);
   const spotPhotoRef = useRef<HTMLInputElement>(null);
   const [spotPhotoBusy, setSpotPhotoBusy] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<CatalogProduct[] | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [catalogDown, setCatalogDown] = useState(false);
+  const searchTokenRef = useRef(0);
   const pendingProductRef = useRef<number | null>(null);
   const tokenRef = useRef(0);
 
@@ -59,6 +70,56 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   }, [locationId, imageBust]);
 
   const type = data ? typesByKey[data.location.kind] : undefined;
+
+  // Catalog search for the assign panel (debounced, newest response wins).
+  useEffect(() => {
+    if (!assignOpen) return;
+    const q = query.trim();
+    const token = ++searchTokenRef.current;
+    const t = setTimeout(() => {
+      const url = q.length >= 2
+        ? `/api/inventory/products?search=${encodeURIComponent(q)}&limit=40`
+        : '/api/inventory/products?limit=40';
+      fetch(url)
+        .then(r => (r.ok ? r.json().then(d => ({ ok: true, d })) : { ok: false, d: null }))
+        .then(({ ok, d }) => {
+          if (searchTokenRef.current !== token) return;
+          setCatalogDown(!ok);
+          setResults(ok ? (d.products ?? []) : []);
+        })
+        .catch(() => {
+          if (searchTokenRef.current !== token) return;
+          setCatalogDown(true);   // "can't reach the catalog" ≠ "nothing found"
+          setResults([]);
+        });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [assignOpen, query]);
+
+  const alreadyHere = new Set((data?.products ?? []).map(p => p.id));
+
+  const saveAssignment = async () => {
+    if (!data) return;
+    const add = Array.from(picked).filter(id => !alreadyHere.has(id));
+    const remove = Array.from(alreadyHere).filter(id => !picked.has(id));
+    if (add.length === 0 && remove.length === 0) { setAssignOpen(false); return; }
+    setAssignBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/floorplan/spots/${data.location.id}/products`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ add, remove }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error ?? 'Could not save'); return; }
+      setAssignOpen(false);
+      setQuery('');
+      setImageBust(b => b + 1); // reload the sheet — the list updates in place
+    } catch {
+      setError('Could not save — check your connection');
+    } finally {
+      setAssignBusy(false);
+    }
+  };
 
   const saveSpotPhoto = async (file: File | null | undefined) => {
     if (!file || !data) return;
@@ -227,6 +288,79 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
               </div>
             )}
           </div>
+
+          {canAssignProducts && !assignOpen && (
+            <button
+              onClick={() => {
+                setPicked(new Set((data.products ?? []).map(p => p.id)));
+                setResults(null);
+                setAssignOpen(true);
+              }}
+              className="h-11 w-full rounded-full border-[1.5px] border-blue-600 text-[13.5px] font-bold text-blue-600 active:scale-[0.98]"
+            >
+              + Assign products here
+            </button>
+          )}
+
+          {canAssignProducts && assignOpen && (
+            <div className="rounded-2xl border border-gray-200 p-3">
+              <p className="mb-2 text-[12px] font-semibold text-gray-600">
+                Tick everything stored at {data.location.name}. A product can live in several places.
+              </p>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search your products…"
+                aria-label="Search products"
+                className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] outline-none focus:border-blue-600"
+              />
+              <div className="max-h-52 overflow-y-auto">
+                {results === null && <p className="py-3 text-center text-[12.5px] text-gray-500">Loading…</p>}
+                {results?.length === 0 && (
+                  <p className="py-3 text-center text-[12.5px] text-gray-500">
+                    {catalogDown
+                      ? 'The product list is unavailable right now — check the connection and try again.'
+                      : `Nothing found${query.trim() ? ` for “${query.trim()}”` : ''}.`}
+                  </p>
+                )}
+                {results?.map(p => {
+                  const on = picked.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setPicked(prev => {
+                        const next = new Set(prev);
+                        if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                        return next;
+                      })}
+                      className="flex min-h-[44px] w-full items-center gap-2.5 border-b border-gray-50 px-1 py-1.5 text-left last:border-b-0"
+                    >
+                      <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold text-white ${on ? 'bg-green-600' : 'bg-gray-200'}`}>
+                        {on ? '✓' : ''}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-gray-900">{p.name}</span>
+                      {alreadyHere.has(p.id) && !on && <span className="flex-shrink-0 text-[10.5px] font-bold text-red-500">removing</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => { setAssignOpen(false); setQuery(''); }}
+                  className="h-11 flex-1 rounded-full border-[1.5px] border-gray-200 text-[13.5px] font-bold text-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveAssignment}
+                  disabled={assignBusy}
+                  className="h-11 flex-1 rounded-full bg-green-600 text-[13.5px] font-bold text-white disabled:opacity-50"
+                >
+                  {assignBusy ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={() => router.push(`/inventory/location/${data.location.id}`)}
