@@ -164,6 +164,30 @@ importers.
 
 ---
 
+## Waste Tracker — foundation built 2026-07-31, screen still to do
+
+The third term of the consumption equation. `waste_events` in `lib/inventory-db.ts`,
+shaped deliberately like `stock_receipts` (same columns, same units, same photo)
+because it is the same kind of event pointing the other way.
+
+| Helper | What |
+|---|---|
+| `recordWaste` | one entry; refuses zero/negative |
+| `voidWaste` | Undo — SOFT delete, so a correction leaves a trail |
+| `sumWasteByProduct` | the term the report subtracts. Same signature and same period boundaries as `sumReceiptsByProduct` |
+| `recentlyWastedProducts` | the "recently binned here" grid — what makes it one tap |
+| `listWaste` | recent entries, for the day list and Undo |
+
+**RAW STOCK ONLY.** Not binned cooked food — that stock left when it was cooked,
+and recording both subtracts it twice. Separate feature.
+
+**Still to build:** `POST/DELETE /api/inventory/waste`, the entry screen on the
+shared department tablet (assembled from `NumpadModal`, `crate-units`, `SearchBar`
++ `BarcodeScanner`, `shift-attribution`, `PhotoCaptureStrip`, `OptionGrid`), the
+per-department "photo required" toggle, and the waste column in
+`/api/inventory/usage` + `ConsumptionReport`.
+Mock: signed off 2026-07-31.
+
 ## Planned — decided, not yet built
 
 ### Collapsible trees — SHIPPED 2026-07-30

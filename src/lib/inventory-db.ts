@@ -608,6 +608,56 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   // Goods received ("purchased-in") — portal-owned; feeds the opening + received
   // − closing consumption report. No Odoo.
   db.exec(`
+    -- WASTE TRACKER — the third term in the consumption equation.
+    --
+    -- Krawings runs PERIODIC inventory: nobody records taking stock off a shelf,
+    -- so consumption is derived, not observed:
+    --
+    --     opening count + purchases - waste - closing count = what we used
+    --
+    -- Counts and purchases were already captured. Without waste, every gram
+    -- thrown away shows up as something you cooked with, so usage reads high and
+    -- nothing says why. This table is that missing term.
+    --
+    -- Shaped deliberately like stock_receipts above — same columns, same units,
+    -- same photo handling — because it is the same kind of event pointing the
+    -- other way, and the report adds it as a column beside "received".
+    --
+    -- RAW STOCK ONLY. Not binned cooked food: when a tray of rice is thrown out
+    -- the rice left stock when it was cooked, and recording both subtracts it
+    -- twice. Finished-food waste is a separate feature.
+    CREATE TABLE IF NOT EXISTS waste_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      department_id INTEGER,
+      odoo_product_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL DEFAULT 0,
+      -- qty_base is the ONLY figure the report reads. crate/loose/units_per_crate
+      -- record what the person actually typed ("2 bags"), so an entry can be shown
+      -- back in the words it was entered in rather than as a converted decimal.
+      qty_base REAL NOT NULL,
+      crate_qty REAL,
+      loose_qty REAL,
+      units_per_crate REAL,
+      uom TEXT NOT NULL DEFAULT 'Units',
+      -- Optional by design. A reason you cannot skip is a reason people stop
+      -- recording at all, and a quantity with no reason still closes the equation.
+      reason TEXT,
+      note TEXT,
+      photo TEXT,
+      -- Who it is credited to, resolved from the PIN on the shared department
+      -- tablet — never typed.
+      wasted_by INTEGER NOT NULL,
+      wasted_at TEXT NOT NULL,
+      -- Soft delete, so Undo cannot lose a real entry and the audit trail keeps
+      -- the correction. The report ignores voided rows.
+      voided_at TEXT,
+      voided_by INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_waste_company_at ON waste_events(company_id, wasted_at);
+    CREATE INDEX IF NOT EXISTS idx_waste_product ON waste_events(odoo_product_id);
+
     CREATE TABLE IF NOT EXISTS stock_receipts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -3354,4 +3404,131 @@ export function describeProductUsage(productId: number): ProductUsage {
   // Counting lists are deliberately absent too — same reason as the count tables
   // above. describeCountWorkForProduct handles them, including the JSON array.
   return { blocking, used: blocking.length > 0 };
+}
+
+/* ------------------------------------------------------------------------- *
+ * WASTE TRACKER
+ *
+ * The third input to the consumption equation. See the waste_events table above
+ * for why it exists; these are the reads and writes the screen and the report
+ * need, and nothing more.
+ * ------------------------------------------------------------------------- */
+
+export interface WasteEvent {
+  id: number;
+  company_id: number;
+  department_id: number | null;
+  odoo_product_id: number;
+  count_location_id: number;
+  qty_base: number;
+  crate_qty: number | null;
+  loose_qty: number | null;
+  units_per_crate: number | null;
+  uom: string;
+  reason: string | null;
+  note: string | null;
+  photo: string | null;
+  wasted_by: number;
+  wasted_at: string;
+  voided_at: string | null;
+}
+
+export interface NewWasteEvent {
+  companyId: number;
+  departmentId?: number | null;
+  productId: number;
+  locationId?: number;
+  qtyBase: number;
+  crateQty?: number | null;
+  looseQty?: number | null;
+  unitsPerCrate?: number | null;
+  uom?: string;
+  reason?: string | null;
+  note?: string | null;
+  photo?: string | null;
+  userId: number;
+}
+
+/** Record something binned. Returns the new row's id, so Undo has a handle. */
+export function recordWaste(e: NewWasteEvent): number {
+  if (!(e.qtyBase > 0)) throw new Error('WASTE_INVALID: the amount must be more than zero');
+  const info = getDb().prepare(`
+    INSERT INTO waste_events
+      (company_id, department_id, odoo_product_id, count_location_id, qty_base,
+       crate_qty, loose_qty, units_per_crate, uom, reason, note, photo, wasted_by, wasted_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    e.companyId, e.departmentId ?? null, e.productId, e.locationId ?? 0, e.qtyBase,
+    e.crateQty ?? null, e.looseQty ?? null, e.unitsPerCrate ?? null, e.uom || 'Units',
+    e.reason || null, e.note || null, e.photo || null, e.userId, new Date().toISOString(),
+  );
+  return Number(info.lastInsertRowid);
+}
+
+/**
+ * Undo. A soft delete on purpose: the entry stays, marked void, so a mis-tap
+ * corrected thirty seconds later leaves a trail rather than a hole. The report
+ * ignores voided rows, so the arithmetic is unaffected either way.
+ */
+export function voidWaste(id: number, userId: number): boolean {
+  const r = getDb().prepare(
+    'UPDATE waste_events SET voided_at = ?, voided_by = ? WHERE id = ? AND voided_at IS NULL',
+  ).run(new Date().toISOString(), userId, id);
+  return r.changes > 0;
+}
+
+/**
+ * Waste per product over a period — the term the consumption report subtracts.
+ *
+ * Deliberately the same signature as sumReceiptsByProduct, which supplies the
+ * "purchases" term, so the report can call both the same way. The boundaries
+ * match it too: exclusive at the start, inclusive at the end, so two adjacent
+ * periods never both claim the same event.
+ */
+export function sumWasteByProduct(companyIds: number[] | null, from: string, to: string): Record<number, number> {
+  const where: string[] = ['wasted_at > ?', 'wasted_at <= ?', 'voided_at IS NULL'];
+  const vals: unknown[] = [from, to];
+  if (companyIds) {
+    if (companyIds.length === 0) return {};
+    where.push(`company_id IN (${companyIds.map(() => '?').join(',')})`);
+    vals.push(...companyIds);
+  }
+  const rows = getDb().prepare(
+    `SELECT odoo_product_id AS pid, SUM(qty_base) AS total FROM waste_events
+      WHERE ${where.join(' AND ')} GROUP BY odoo_product_id`,
+  ).all(...vals) as { pid: number; total: number }[];
+  const out: Record<number, number> = {};
+  for (const r of rows) out[r.pid] = r.total;
+  return out;
+}
+
+/**
+ * What this department binned most recently — the "recently binned here" grid.
+ *
+ * Most-recent-first, one row per product, because the same dozen things get
+ * thrown away over and over. It is what makes the common case a single tap
+ * instead of a search.
+ */
+export function recentlyWastedProducts(companyId: number, limit = 8): number[] {
+  const rows = getDb().prepare(`
+    SELECT odoo_product_id AS pid, MAX(wasted_at) AS last_at
+      FROM waste_events
+     WHERE company_id = ? AND voided_at IS NULL
+     GROUP BY odoo_product_id
+     ORDER BY last_at DESC
+     LIMIT ?
+  `).all(companyId, limit) as { pid: number }[];
+  return rows.map((r) => r.pid);
+}
+
+/** Recent entries, for the "what did we bin today" list and for Undo. */
+export function listWaste(companyId: number, opts: { from?: string; to?: string; limit?: number } = {}): WasteEvent[] {
+  const where: string[] = ['company_id = ?', 'voided_at IS NULL'];
+  const vals: unknown[] = [companyId];
+  if (opts.from) { where.push('wasted_at > ?'); vals.push(opts.from); }
+  if (opts.to) { where.push('wasted_at <= ?'); vals.push(opts.to); }
+  vals.push(opts.limit ?? 100);
+  return getDb().prepare(
+    `SELECT * FROM waste_events WHERE ${where.join(' AND ')} ORDER BY wasted_at DESC LIMIT ?`,
+  ).all(...vals) as WasteEvent[];
 }
