@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import KioskSettings from '@/components/kiosk/KioskSettings';
 import KioskWelcome, { WAJ_RED } from '@/components/kiosk/KioskWelcome';
-import { loadKioskSettings, type KioskSettings as KioskSettingsT } from '@/lib/kiosk-settings';
+import { loadKioskSettings, KIOSK_DEFAULTS, type KioskSettings as KioskSettingsT } from '@/lib/kiosk-settings';
 
 /**
  * Tablet time-clock kiosk (no login). The restaurant is set on the tablet from the
@@ -45,17 +45,29 @@ function firstName(name: string): string {
 }
 
 /**
- * How long a screen may sit untouched before the kiosk drops back to the welcome panel.
- * Hiding the names is the whole point of that panel, so it has to reclaim the screen when
- * someone walks away mid-flow, not only after a completed punch.
- *
- * Two speeds, because the screens are not equally patient: the roster and the PIN pad are
- * transient, while reading the attendance rules or fetching a 6-digit code from your email
- * legitimately takes minutes. Both still expose something (a first name, a masked email),
- * so neither is allowed to sit there forever.
+ * The roster and PIN pad use the manager's "Hide the names" setting. The rules and
+ * PIN-setup screens get a longer grace period, because reading the attendance rules or
+ * fetching a 6-digit code from your email legitimately takes minutes — but they still
+ * expose something (a first name, a masked email), so they are never exempt, and they can
+ * never outlast the configured value by accident (see the Math.max below).
  */
-const IDLE_TO_WELCOME_MS = 60_000;
-const IDLE_TO_WELCOME_SLOW_MS = 5 * 60_000;
+const IDLE_TO_WELCOME_SLOW_FLOOR_MS = 5 * 60_000;
+
+/**
+ * While a request is in flight the idle reset is SUSPENDED, not merely lengthened.
+ *
+ * A timed grace period was tried and abandoned. There is no honest constant: every Odoo
+ * RPC is separately bounded at 30s (`src/lib/odoo.ts`) and a resume makes up to eight
+ * sequentially, so any ceiling low enough to be useful can still cut off a punch that
+ * would have succeeded — and cutting one off discards a punch the server has already
+ * written, telling someone they are not clocked in when they are. That is payroll damage.
+ * A lingering screen is not.
+ *
+ * The trade this accepts: a fetch that never settles leaves `busy` true, so the reset
+ * never arms. What sits there is ONE first name on the PIN pad — not the roster — under a
+ * button reading "One moment…", in front of the person waiting for it, with ‹ Back right
+ * there. Visible, recoverable, and far cheaper than a lost punch.
+ */
 
 // Short confirmation beep, created on the punch (a user gesture) so browsers allow it.
 function beep(): void {
@@ -121,7 +133,8 @@ export default function KioskPage() {
 
   const companyId = settings?.companyId ?? null;
   const fullscreenLock = settings?.fullscreenLock ?? true;
-  const idleSeconds = settings?.idleSeconds ?? 5;
+  const idleSeconds = settings?.idleSeconds ?? KIOSK_DEFAULTS.idleSeconds;
+  const hideNamesSeconds = settings?.hideNamesSeconds ?? KIOSK_DEFAULTS.hideNamesSeconds;
 
   useEffect(() => {
     setSettings(loadKioskSettings());
@@ -218,16 +231,26 @@ export default function KioskPage() {
     return () => clearTimeout(t);
   }, [screen, idleSeconds, loadStaff, goWelcome]);
 
-  // Reclaim the screen when it is left untouched (see IDLE_TO_WELCOME_MS). 'done' is not
-  // listed: it runs its own, much shorter confirmation dwell just above.
+  // Reclaim the screen when it is left untouched. 'done' is not listed: it runs its own,
+  // much shorter confirmation dwell just above. hideNamesSeconds is a dependency so that
+  // dragging the slider in settings re-arms the timer at the new value immediately,
+  // instead of on the next screen change.
   useEffect(() => {
+    const hideMs = Math.max(1, hideNamesSeconds) * 1000;
     const idleMs =
       screen === 'grid' || screen === 'pin'
-        ? IDLE_TO_WELCOME_MS
+        ? hideMs
         : screen === 'setup' || screen === 'rules'
-          ? IDLE_TO_WELCOME_SLOW_MS
+          ? // never sooner than the roster's own setting, or a manager who picks 5 minutes
+            // would find the rules screen vanishing before the name list does
+            Math.max(IDLE_TO_WELCOME_SLOW_FLOOR_MS, hideMs)
           : 0;
     if (!idleMs) return;
+    // Suspended while a request is in flight — see the block comment above the component
+    // for why this is a hard suspend and not a longer timeout. `busy` is a dependency, so the full window
+    // starts fresh once the reply lands rather than resuming a countdown that ran while
+    // the person was waiting.
+    if (busy) return;
     let t: ReturnType<typeof setTimeout>;
     const arm = () => {
       clearTimeout(t);
@@ -241,7 +264,7 @@ export default function KioskPage() {
       window.removeEventListener('pointerdown', arm);
       window.removeEventListener('keydown', arm);
     };
-  }, [screen, goWelcome]);
+  }, [screen, goWelcome, hideNamesSeconds, busy]);
 
   const enterFullscreen = useCallback(() => {
     const el = document.documentElement;
@@ -644,7 +667,16 @@ export default function KioskPage() {
               <span key={i} className={`w-4 h-4 rounded-full ${pin.length > i ? 'bg-green-600' : 'border-2 border-gray-300'}`} />
             ))}
           </div>
-          <div className="h-6 mb-2">{pinError && <div className="text-red-600 font-bold">⚠ Wrong PIN — try again</div>}</div>
+          {/* Reserved status line — fixed height so nothing below it jumps. Clocking IN
+              auto-submits on the 4th digit and has no action button, so without this the
+              screen looked frozen for the whole punch. */}
+          <div className="h-6 mb-2">
+            {busy ? (
+              <div className="text-gray-500 font-bold">One moment…</div>
+            ) : pinError ? (
+              <div className="text-red-600 font-bold">⚠ Wrong PIN — try again</div>
+            ) : null}
+          </div>
           <div className="grid grid-cols-3 gap-3 w-full max-w-xs">
             {keys.map(k => (
               <button
@@ -801,7 +833,15 @@ export default function KioskPage() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
         <div className="flex-1 p-6">
-          <div className="text-center text-gray-600 text-lg font-semibold mb-6">Tap your name to clock in or out</div>
+          {/* An explicit way out, so nobody has to wait for the idle timer to hide the
+              names again — or stand there having tapped the welcome panel by accident. */}
+          <button
+            onClick={goWelcome}
+            className="bg-white border border-gray-200 rounded-full px-5 py-3 min-h-[44px] font-bold text-gray-600 active:bg-gray-100"
+          >
+            ‹ Hide names
+          </button>
+          <div className="text-center text-gray-600 text-lg font-semibold mt-4 mb-6">Tap your name to clock in or out</div>
           {flash && (
             <div className="max-w-md mx-auto mb-5 text-center bg-green-50 text-green-700 font-bold rounded-2xl px-5 py-3">
               {flash}

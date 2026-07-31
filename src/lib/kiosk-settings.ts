@@ -11,6 +11,13 @@ export interface KioskSettings {
   tabletName: string;
   fullscreenLock: boolean;
   idleSeconds: number;
+  /**
+   * Seconds of no touching before the name list is hidden again behind the welcome
+   * screen. Distinct from idleSeconds, which is the much shorter dwell on the "clocked
+   * in" confirmation — the two are easy to confuse and must not share a value: 5s is
+   * right for reading a confirmation and far too short to find your name in a list.
+   */
+  hideNamesSeconds: number;
   sound: boolean;
   showWorkingNow: boolean;
 }
@@ -23,6 +30,7 @@ export const KIOSK_DEFAULTS: KioskSettings = {
   tabletName: '',
   fullscreenLock: true,
   idleSeconds: 5,
+  hideNamesSeconds: 60,
   sound: false,
   showWorkingNow: true,
 };
@@ -30,9 +38,34 @@ export const KIOSK_DEFAULTS: KioskSettings = {
 export const IDLE_MIN = 3;
 export const IDLE_MAX = 30;
 
+/**
+ * 10s to 5min. The floor is not 0: "never hide" has to be impossible, because the whole
+ * point of the welcome screen is that a roster left on a tablet by the door is not on
+ * display all day. A manager who wants it effectively off can still choose 5 minutes.
+ */
+export const HIDE_NAMES_MIN = 10;
+export const HIDE_NAMES_MAX = 300;
+export const HIDE_NAMES_STEP = 5;
+
 function clampIdle(n: unknown): number {
   const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : KIOSK_DEFAULTS.idleSeconds;
   return Math.min(IDLE_MAX, Math.max(IDLE_MIN, v));
+}
+
+/** Its own clamp — clampIdle's 3-30s range would silently crush this to 30s. */
+function clampHideNames(n: unknown): number {
+  const v = typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : KIOSK_DEFAULTS.hideNamesSeconds;
+  return Math.min(HIDE_NAMES_MAX, Math.max(HIDE_NAMES_MIN, v));
+}
+
+/** "45 seconds" / "1 minute" / "2 min 30s" — a manager should not have to divide by 60. */
+export function formatHideNames(seconds: number): string {
+  const s = clampHideNames(seconds);
+  if (s < 60) return `${s} seconds`;
+  const mins = Math.floor(s / 60);
+  const rest = s % 60;
+  const minPart = mins === 1 ? '1 minute' : `${mins} minutes`;
+  return rest ? `${minPart} ${rest}s` : minPart;
 }
 
 function companyFromUrl(): number | null {
@@ -54,7 +87,14 @@ export function loadKioskSettings(): KioskSettings {
   let stored: Partial<KioskSettings> = {};
   try {
     const raw = window.localStorage.getItem(KIOSK_SETTINGS_KEY);
-    if (raw) stored = JSON.parse(raw) as Partial<KioskSettings>;
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    // `JSON.parse` succeeds on "null", "42" and "[]" — only the object case is usable.
+    // Spreading a null is harmless; reading `stored.idleSeconds` off it is what throws,
+    // where this function promises never to. A tablet that cannot read its settings must
+    // fall back to defaults, not fail to start.
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      stored = parsed as Partial<KioskSettings>;
+    }
   } catch {
     /* fall back to defaults */
   }
@@ -62,6 +102,7 @@ export function loadKioskSettings(): KioskSettings {
     ...KIOSK_DEFAULTS,
     ...stored,
     idleSeconds: clampIdle(stored.idleSeconds),
+    hideNamesSeconds: clampHideNames(stored.hideNamesSeconds),
   };
   if (!merged.companyId || merged.companyId <= 0) {
     merged.companyId = companyFromUrl();
@@ -73,6 +114,7 @@ export function loadKioskSettings(): KioskSettings {
 export function saveKioskSettings(patch: Partial<KioskSettings>): KioskSettings {
   const next: KioskSettings = { ...loadKioskSettings(), ...patch };
   next.idleSeconds = clampIdle(next.idleSeconds);
+  next.hideNamesSeconds = clampHideNames(next.hideNamesSeconds);
   try {
     window.localStorage.setItem(KIOSK_SETTINGS_KEY, JSON.stringify(next));
   } catch {

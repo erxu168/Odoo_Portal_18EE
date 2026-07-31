@@ -2,7 +2,16 @@
 
 import React, { useState } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { IDLE_MIN, IDLE_MAX, kioskStorageAvailable, type KioskSettings } from '@/lib/kiosk-settings';
+import {
+  IDLE_MIN,
+  IDLE_MAX,
+  HIDE_NAMES_MIN,
+  HIDE_NAMES_MAX,
+  HIDE_NAMES_STEP,
+  formatHideNames,
+  kioskStorageAvailable,
+  type KioskSettings,
+} from '@/lib/kiosk-settings';
 import type { KioskCompany } from './KioskLoginGate';
 
 interface Props {
@@ -126,7 +135,19 @@ export default function KioskSettingsForm({ settings, companies, managerName, on
         <Row label={'Show “working now” count'} hint="Green count at the bottom of the clock">
           <Toggle on={settings.showWorkingNow} onChange={v => onSave({ showWorkingNow: v })} label="Show working now count" />
         </Row>
-        <Row label="Idle reset" hint={`Return to the name list after ${settings.idleSeconds}s`}>
+        <Row label="Hide the names" hint={`Go back to the welcome screen after ${formatHideNames(settings.hideNamesSeconds)} of nobody touching the tablet`}>
+          <input
+            type="range"
+            min={HIDE_NAMES_MIN}
+            max={HIDE_NAMES_MAX}
+            step={HIDE_NAMES_STEP}
+            value={settings.hideNamesSeconds}
+            onChange={e => onSave({ hideNamesSeconds: parseInt(e.target.value, 10) })}
+            aria-label="Hide the name list after this many seconds"
+            className="w-40 accent-green-600"
+          />
+        </Row>
+        <Row label="Confirmation time" hint={`Clear the “clocked in” message after ${settings.idleSeconds}s`}>
           <input
             type="range"
             min={IDLE_MIN}
@@ -134,7 +155,7 @@ export default function KioskSettingsForm({ settings, companies, managerName, on
             step={1}
             value={settings.idleSeconds}
             onChange={e => onSave({ idleSeconds: parseInt(e.target.value, 10) })}
-            aria-label="Idle reset seconds"
+            aria-label="Confirmation seconds"
             className="w-40 accent-green-600"
           />
         </Row>
