@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="view_pos_session_form" model="ir.ui.view">
+        <field name="name">view.pos.session.form.krawings_pos_closing_procedure</field>
+        <field name="model">pos.session</field>
+        <field name="inherit_id" ref="point_of_sale.view_pos_session_form"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//field[@name='cash_register_balance_end_real']" position="after">
+                <field name="closing_staff_name" readonly="1" invisible="not closing_staff_name"/>
+                <field name="closing_employee_id" readonly="1" invisible="not closing_employee_id"/>
+                <field name="closing_user_id" readonly="1" invisible="closing_employee_id"/>
+                <field name="total_sales" readonly="1"/>
+                <field name="total_tips" readonly="1"/>
+                <field name="cash_register_difference" string="Discrepancy" readonly="1"/>
+            </xpath>
+
+            <xpath expr="//group" position="after">
+                <group string="Closing Coins/Bills">
+                    <field name="closing_notes" readonly="1"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

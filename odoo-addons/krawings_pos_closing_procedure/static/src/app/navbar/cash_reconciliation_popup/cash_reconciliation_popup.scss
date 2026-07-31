@@ -1,0 +1,155 @@
+// Closing cash count popup — count the drawer once, set tomorrow's float,
+// deposit the rest. Semantic colours follow the Krawings mobile design system.
+.cash-rec {
+    .cash-rec-instruction {
+        margin-bottom: 12px;
+        text-align: center;
+    }
+
+    .cash-rec-denominations {
+        gap: 4px 24px;
+    }
+
+    .cash-rec-summary {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid #E8E8E8;
+    }
+
+    .cash-rec-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 2px;
+        font-size: 15px;
+
+        span:last-child {
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+    }
+
+    .cash-rec-diff {
+        font-size: 16px;
+
+        &.is-match span:last-child { color: #22C55E; } // success
+        &.is-over   span:last-child { color: #F59E0B; } // warning (surplus)
+        &.is-short  span:last-child { color: #EF4444; } // danger (shortage)
+    }
+
+    .cash-rec-leave-warning {
+        margin-top: 6px;
+        font-size: 13px;
+    }
+
+    // ---- "Leave in drawer for tomorrow" step: copy shortcuts ----
+
+    // One-tap: copy every coin (€2 and below) from the count into the float.
+    .cash-rec-copyall {
+        width: 100%;
+        min-height: 46px;
+        margin-bottom: 12px;
+        border: 1.5px solid #F5800A;
+        border-radius: 12px;
+        background: #FFF4E6;
+        color: #E86000;
+        font-weight: 700;
+        font-size: 14px;
+        transition: background .15s ease, transform .12s ease;
+
+        &:hover { background: #FFE9CE; }
+        &:active { transform: scale(.985); }
+        &:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(245, 128, 10, .35); }
+    }
+
+    // Column headers + rows share one grid so the Copy button and Leave input
+    // line up. `min-width: 0` keeps the counted text from clipping in the flex.
+    $crl-grid: 62px minmax(0, 1fr) auto minmax(120px, 150px);
+
+    .cash-rec-leave-head {
+        display: grid;
+        grid-template-columns: $crl-grid;
+        gap: 8px;
+        align-items: center;
+        padding: 0 2px 4px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #9CA3AF;
+
+        .crl-c-copy, .crl-c-input { text-align: center; }
+    }
+
+    .cash-rec-leave-row {
+        display: grid;
+        grid-template-columns: $crl-grid;
+        gap: 8px;
+        align-items: center;
+        padding: 7px 2px;
+
+        & + .cash-rec-leave-row { border-top: 1px solid #F5F6F8; }
+
+        .crl-den {
+            font-size: 15px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            min-width: 0;
+        }
+        .crl-tag {
+            display: block;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            margin-bottom: 1px;
+            &.is-coin { color: #F5800A; }
+            &.is-note { color: #9CA3AF; }
+        }
+        .crl-counted {
+            font-size: 13px;
+            color: #6B7280;
+            min-width: 0;
+            font-variant-numeric: tabular-nums;
+            b { color: #1A1A1A; font-weight: 700; }
+        }
+
+        // Compact ghost Copy button; turns green once the row is copied.
+        .crl-copy {
+            height: 36px;
+            padding: 0 12px;
+            border-radius: 100px;
+            border: 1px solid #E8E8E8;
+            background: #FFFFFF;
+            color: #6B7280;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+
+            &:hover { border-color: #F5800A; color: #F5800A; background: #FFF4E6; }
+            &.is-copied { border-color: #22C55E; color: #16A34A; background: #E9F7EF; }
+        }
+
+        // Keep the +/- NumericInput compact so the whole row fits on a phone.
+        .crl-input {
+            .form-control { padding: 0; }
+            input { font-variant-numeric: tabular-nums; }
+        }
+
+        // A denomination where more is being left than was counted.
+        &.is-over {
+            .crl-input input { color: #EF4444; }
+            .crl-counted b { color: #EF4444; }
+        }
+    }
+
+    // On the narrowest phones let the row wrap gracefully rather than clip.
+    @media (max-width: 400px) {
+        .cash-rec-leave-head { display: none; }
+        .cash-rec-leave-row {
+            grid-template-columns: 56px minmax(0, 1fr) auto;
+            row-gap: 6px;
+            .crl-input { grid-column: 1 / -1; }
+        }
+    }
+}

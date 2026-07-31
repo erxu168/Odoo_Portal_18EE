@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <!--
+        Krawings: declutter the "Closing Register" summary.
+        Keep only Cash (Counted / Difference / To safe + Recount) and Card
+        (Counted / Difference); drop the opening/payments-in/cash-move lines, the
+        cash-count input, both note boxes and the download/print footer buttons.
+        Values come from the immutable reconciliation snapshot (state.krwCashClosing).
+    -->
+    <t t-name="krawings_pos_closing_procedure.ClosePosPopupTrim"
+       t-inherit="point_of_sale.ClosePosPopup" t-inherit-mode="extension" owl="1">
+
+        <!-- Region 1: replace the whole payment-methods overview with a compact summary -->
+        <xpath expr="//div[hasclass('payment-methods-overview')]" position="replace">
+            <div class="payment-methods-overview krw-close-summary">
+                <t t-set="cc" t-value="state.krwCashClosing"/>
+                <div t-if="pos.config.cash_control" class="krw-sum-card">
+                    <div class="krw-sum-head">Cash</div>
+                    <div class="krw-sum-row">
+                        <span class="krw-lab">Counted</span>
+                        <span class="krw-val" t-esc="env.utils.formatCurrency(cc ? cc.counted : 0)"/>
+                    </div>
+                    <div class="krw-sum-row">
+                        <span class="krw-lab">Difference</span>
+                        <t t-set="d" t-value="cc ? cc.difference : 0"/>
+                        <span t-if="d === 0" class="krw-pill is-match">Matches</span>
+                        <span t-elif="d &lt; 0" class="krw-pill is-short">Short <t t-esc="env.utils.formatCurrency(-d)"/></span>
+                        <span t-else="" class="krw-pill is-over">Over <t t-esc="env.utils.formatCurrency(d)"/></span>
+                    </div>
+                    <div class="krw-sum-row krw-sum-big">
+                        <span class="krw-lab">To safe</span>
+                        <span class="krw-pill is-safe" t-esc="env.utils.formatCurrency(cc ? cc.countedCashOutAmount : 0)"/>
+                    </div>
+                    <button class="btn krw-recount" t-on-click="recountCash">
+                        <i class="fa fa-repeat me-1" role="img" aria-hidden="true"/> Recount cash
+                    </button>
+                </div>
+                <div class="krw-sum-card" t-foreach="props.non_cash_payment_methods" t-as="pm" t-key="pm.id">
+                    <div class="krw-sum-head" t-esc="pm.name"/>
+                    <t t-set="_showDiff" t-value="pm.type === 'bank' and pm.number !== 0"/>
+                    <div class="krw-sum-row">
+                        <span class="krw-lab">Counted</span>
+                        <span class="krw-val" t-esc="env.utils.formatCurrency(_showDiff ? env.utils.parseValidFloat(state.payments[pm.id].counted) : pm.amount)"/>
+                    </div>
+                    <div class="krw-sum-row">
+                        <span class="krw-lab">Difference</span>
+                        <t t-set="pmdiff" t-value="_showDiff ? getDifference(pm.id) : 0"/>
+                        <span t-if="pmdiff === 0" class="krw-pill is-match">Matches</span>
+                        <span t-elif="pmdiff &lt; 0" class="krw-pill is-short">Short <t t-esc="env.utils.formatCurrency(-pmdiff)"/></span>
+                        <span t-else="" class="krw-pill is-over">Over <t t-esc="env.utils.formatCurrency(pmdiff)"/></span>
+                    </div>
+                </div>
+            </div>
+        </xpath>
+
+        <!-- Region 2: remove the single divider -->
+        <xpath expr="//hr" position="replace"/>
+
+        <!-- Region 3: remove the cash-count input row (anchored on its money button) -->
+        <xpath expr="(//button[hasclass('fa-money')]/ancestor::div[hasclass('mb-3')])[1]" position="replace"/>
+
+        <!-- Region 4: remove the opening/closing note boxes -->
+        <xpath expr="//div[hasclass('notes-container')]" position="replace"/>
+
+        <!-- Region 5: keep only Close Register + Discard in the footer -->
+        <xpath expr="//t[@t-set-slot='footer']" position="replace">
+            <t t-set-slot="footer">
+                <div class="w-100 d-flex flex-wrap justify-content-between gap-2" t-att-class="{'container-fluid row p-0': this.ui.isSmall}">
+                    <div t-att-class="{'col-12 col-md-6 p-0': this.ui.isSmall}" class="d-flex gap-2">
+                        <button class="button highlight btn btn-primary" t-att-disabled="!canConfirm()" t-on-click="confirm" t-att-class="this.ui.isSmall ? 'w-100' : 'btn-lg'">Close Register</button>
+                        <button class="button btn btn-secondary" t-att-disabled="!canCancel()" t-on-click="cancel" t-att-class="this.ui.isSmall ? 'w-100' : 'btn-lg'">Discard</button>
+                    </div>
+                </div>
+            </t>
+        </xpath>
+    </t>
+</templates>

@@ -1,0 +1,221 @@
+.popup.close-pos-popup {
+  width: 80%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
+}
+
+.modal-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.total-orders {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #333;
+}
+
+/* Table Styles */
+.payment-methods-overview {
+  width: 100%;
+  max-height: 400px;
+  overflow-y: auto;
+  border-collapse: collapse;
+}
+
+.payment-methods-overview tr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.payment-methods-overview td {
+  padding: 0 5px;
+  line-height: 1.2;
+}
+
+.payment-methods-overview tr:first-of-type,
+.payment-methods-overview tr + br + tr,
+.payment-methods-overview tr ~ t-if tr {
+  font-weight: bold;
+}
+
+.payment-methods-overview tr td:first-child {
+  text-align: left;
+}
+
+/* Level Indentations */
+.payment-methods-overview tr td.detail {
+  padding-left: 10px; /* Slight indentation for clarity */
+}
+
+.payment-methods-overview tr td.sub_detail {
+  padding-left: 20px; /* Further indentation */
+}
+
+.payment-methods-overview tr td.sub_sub_detail {
+  padding-left: 30px; /* Further indentation */
+}
+
+/* Notes Section */
+.notes-container {
+  margin-top: 10px;
+
+  /* The note boxes ship with an inline height: 60px which is far too small to
+     write a shift note. min-height overrides that inline height (min-height
+     wins when larger) so the boxes are comfortably tall and resizable. */
+  .opening-notes,
+  .closing-notes {
+    min-height: 200px;
+    resize: vertical;
+    font-size: 15px;
+  }
+}
+
+/* ============================================================
+   Krawings: decluttered Closing Register summary
+   ============================================================ */
+.krw-close-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: none;
+  overflow: visible;
+
+  .krw-sum-card {
+    border: 1px solid #E8E8E8;
+    border-radius: 16px;
+    padding: 4px 16px 12px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+  }
+
+  .krw-sum-head {
+    padding: 12px 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+  }
+
+  .krw-sum-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-top: 1px solid #F5F6F8;
+    font-size: 15px;
+
+    .krw-lab { color: #6B7280; font-weight: 500; }
+    .krw-val {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    &.krw-sum-big {
+      .krw-lab { color: #1A1A1A; font-weight: 600; }
+    }
+  }
+
+  .krw-pill {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 11px;
+    border-radius: 100px;
+    font-variant-numeric: tabular-nums;
+
+    &.is-match { background: #E9F7EF; color: #16A34A; }
+    &.is-short { background: #FDECEC; color: #EF4444; }
+    &.is-over  { background: #FEF6E7; color: #B45309; }
+    &.is-safe  { background: #FFF4E6; color: #E86000; font-size: 15px; }
+  }
+
+  .krw-recount {
+    width: 100%;
+    margin-top: 12px;
+    min-height: 44px;
+    border: 1px solid #E8E8E8;
+    border-radius: 100px;
+    background: #FFFFFF;
+    color: #6B7280;
+    font-weight: 600;
+    font-size: 14px;
+
+    &:hover { border-color: #F5800A; color: #F5800A; background: #FFF4E6; }
+    &:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(245, 128, 10, .35); }
+  }
+}
+
+/* ============================================================
+   Krawings: cash-to-safe deposit slip popup
+   ============================================================ */
+.krw-deposit-slip {
+  .krw-slip-preview {
+    background: #FDFBF6;
+    border: 1px solid #EFE9DC;
+    border-radius: 10px;
+    padding: 18px 20px;
+    font-family: "SF Mono", "Fira Code", ui-monospace, "Consolas", monospace;
+    color: #232019;
+    margin-bottom: 12px;
+  }
+
+  .krw-slip-title { text-align: center; font-weight: 700; font-size: 14px; }
+  .krw-slip-sub   { text-align: center; font-size: 12px; color: #6b6355; margin-top: 3px; }
+  .krw-slip-rule  { border-top: 1px dashed #C9BFAC; margin: 12px 0; }
+  .krw-slip-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #6b6355;
+    margin-bottom: 6px;
+  }
+  .krw-slip-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+
+    &.krw-slip-none { justify-content: center; font-style: italic; color: #8a8073; }
+  }
+  .krw-slip-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-weight: 700;
+    font-size: 15px;
+
+    span:last-child { font-size: 18px; color: #E86000; font-variant-numeric: tabular-nums; }
+  }
+
+  .krw-slip-state {
+    min-height: 20px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #6B7280;
+
+    &.is-done { color: #16A34A; }
+    &.is-warn { color: #EF4444; }
+  }
+
+  .krw-slip-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .btn { width: 100%; }
+  }
+}

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="krawings_pos_closing_procedure.CashReconciliationPopup" owl="1">
+        <Dialog>
+            <div class="popup popup-confirm cash-rec">
+                <t t-set-slot="header">
+                    <div>
+                        <h4 t-if="state.step === 'count'" class="modal-title">Closing Cash Count</h4>
+                        <h4 t-if="state.step === 'leave'" class="modal-title">Leave in Drawer for Tomorrow</h4>
+                    </div>
+                </t>
+                <div class="cash-rec-body">
+                    <!-- Step 1: count the whole drawer -->
+                    <div t-if="state.step === 'count'">
+                        <h4 class="cash-rec-instruction">Count all the cash in the drawer.</h4>
+                        <div class="cash-rec-denominations mx-auto" t-attf-style="display: grid; grid-template-rows: repeat(calc({{denominations.length}}/{{ui.isSmall ? 1 : 2}}), auto); grid-auto-flow: column;">
+                            <div t-foreach="denominations" t-as="moneyValue" t-key="moneyValue" class="d-flex align-items-center justify-content-center my-1">
+                                <NumericInput class="'w-50'" tModel="[state.drawerMoneyDetails, moneyValue]" min="0"/>
+                                <label class="w-25 text-center" t-att-for="moneyValue">
+                                    <span class="ms-1" t-esc="env.utils.formatCurrency(_parseFloat(moneyValue))"/>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="cash-rec-summary">
+                            <div class="cash-rec-row">
+                                <span>Counted</span>
+                                <span t-esc="env.utils.formatCurrency(countedTotal())"/>
+                            </div>
+                            <div class="cash-rec-row">
+                                <span>Expected</span>
+                                <span t-esc="env.utils.formatCurrency(expectedCash)"/>
+                            </div>
+                            <div class="cash-rec-row cash-rec-diff"
+                                 t-att-class="{ 'is-match': difference() === 0, 'is-over': difference() > 0, 'is-short': difference() &lt; 0 }">
+                                <span>Difference</span>
+                                <span t-if="difference() === 0">Matches</span>
+                                <span t-elif="difference() > 0">Over by <t t-esc="env.utils.formatCurrency(difference())"/></span>
+                                <span t-else="">Short by <t t-esc="env.utils.formatCurrency(-difference())"/></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: count what stays in the drawer for tomorrow -->
+                    <div t-if="state.step === 'leave'">
+                        <h4 class="cash-rec-instruction">Count the cash to leave for tomorrow — or copy it from your count. Coins are usually the float that stays.</h4>
+
+                        <button class="cash-rec-copyall" t-on-click="copyAllCoins">
+                            <i class="fa fa-clone me-1" role="img" aria-hidden="true"/> Copy all coins
+                        </button>
+
+                        <div class="cash-rec-leave-head">
+                            <span class="crl-c-den">Note</span>
+                            <span class="crl-c-counted">Counted</span>
+                            <span class="crl-c-copy">Copy</span>
+                            <span class="crl-c-input">Leave</span>
+                        </div>
+                        <div class="cash-rec-leave-rows">
+                            <div t-foreach="leaveDenominations" t-as="moneyValue" t-key="moneyValue"
+                                 class="cash-rec-leave-row"
+                                 t-att-class="{ 'is-over': !denominationValid(moneyValue) }">
+                                <span class="crl-den">
+                                    <small class="crl-tag" t-att-class="isCoin(moneyValue) ? 'is-coin' : 'is-note'" t-esc="isCoin(moneyValue) ? 'coin' : 'note'"/>
+                                    <span t-esc="env.utils.formatCurrency(_parseFloat(moneyValue))"/>
+                                </span>
+                                <span class="crl-counted">counted <b t-esc="countedFor(moneyValue)"/></span>
+                                <button class="crl-copy btn"
+                                        t-att-class="{ 'is-copied': isCopied(moneyValue) }"
+                                        t-on-click="() => this.copyDenomination(moneyValue)">
+                                    <t t-if="isCopied(moneyValue)"><i class="fa fa-check" aria-hidden="true"/> Copied</t>
+                                    <t t-else="">Copy</t>
+                                </button>
+                                <NumericInput class="'crl-input'" tModel="[state.leaveMoneyDetails, moneyValue]" min="0"/>
+                            </div>
+                        </div>
+
+                        <div class="cash-rec-summary">
+                            <div class="cash-rec-row">
+                                <span>Counted (drawer)</span>
+                                <span t-esc="env.utils.formatCurrency(countedTotal())"/>
+                            </div>
+                            <div class="cash-rec-row">
+                                <span>Leave for tomorrow</span>
+                                <span t-esc="env.utils.formatCurrency(leaveForTomorrow())"/>
+                            </div>
+                            <div class="cash-rec-row cash-rec-diff is-match">
+                                <span>To deposit in safe</span>
+                                <span t-esc="env.utils.formatCurrency(depositToSafe())"/>
+                            </div>
+                            <div class="cash-rec-leave-warning text-danger" t-if="!canConfirm()">
+                                You can't leave more of a coin or note than you counted.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <t t-set-slot="footer">
+                    <div class="footer footer-flex modal-footer justify-content-end">
+                        <button class="button cancel btn btn-lg btn-secondary" t-if="state.step === 'count'" t-on-click="cancel">Cancel</button>
+                        <button class="button highlight btn btn-lg btn-secondary" t-if="state.step === 'leave'" t-on-click="lastStep">Back</button>
+                        <button class="button highlight btn btn-lg btn-primary" t-if="state.step === 'count'" t-on-click="nextStep">Next</button>
+                        <button class="button highlight btn btn-lg btn-primary" t-if="state.step === 'leave'" t-att-disabled="!canConfirm()" t-on-click="confirm">Confirm</button>
+                    </div>
+                </t>
+            </div>
+        </Dialog>
+    </t>
+</templates>
