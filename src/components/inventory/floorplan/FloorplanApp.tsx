@@ -91,6 +91,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [addForm, setAddForm] = useState<{ x: number; y: number; code: string; roomId: number | null; existingId: number | null } | null>(null);
   const [treeLocations, setTreeLocations] = useState<Array<{ id: number; name: string; parent_id: number | null; kind: string }>>([]);
   const [editSel, setEditSel] = useState<{ anchorId: number; locationId: number; label: string } | null>(null);
+  /** Open confirm for a marker being removed — see the two meanings of Remove. */
+  const [removeAsk, setRemoveAsk] = useState<{ anchorId: number; locationId: number; label: string } | null>(null);
+  const [removeErr, setRemoveErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
   const [offlineFrom, setOfflineFrom] = useState<string | null>(null);
@@ -107,6 +110,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     setOfflineRastersRaw(prev => { for (const url of Object.values(prev)) URL.revokeObjectURL(url); return {}; });
   }, []);
   const tokenRef = useRef(0);
+  const treeTokenRef = useRef(0);
   const seqRef = useRef(0);
   const userIdRef = useRef<number | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,6 +153,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           if (prev?.manifest && data.manifest && prev.manifest.companyId !== data.manifest.companyId) {
             setSelectedId(null); setSheetId(null); setFilterTypes([]);
             setEdit(false); setEditSel(null); setArmed(null); setAddForm(null);
+            // A delete confirmation still open here would be aimed at the spot
+            // of the restaurant we just left.
+            setRemoveAsk(null); setRemoveErr(null);
           }
           return data;
         });
@@ -286,6 +293,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     setSheetId(null);
     setFilterTypes([]);
     setEditSel(null);   // never keep a Remove-marker bar for an off-screen anchor
+    setRemoveAsk(null); setRemoveErr(null);
     setArmed(null);
     setAddForm(null);
     if (manifest && typeof window !== 'undefined') {
@@ -317,11 +325,18 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const canManage = capabilities.includes('inventory.location.manage');
 
   const PREFIX: Record<string, string> = { shelf: 'SLF', floorspace: 'FLS', cabinet: 'CAB', fridge: 'REF', freezer: 'FRZ' };
+  /**
+   * Next free number for a type. Counts the whole LOCATION TREE, not just what
+   * is on this plan: a spot taken off the map still exists and still owns its
+   * name, so suggesting from markers alone proposed a name the server then
+   * refused as a duplicate ("SLF 20 already exists" right after removing it).
+   */
   const suggestCode = (typeKey: string): string => {
     const prefix = PREFIX[typeKey] ?? (typesByKey[typeKey]?.label ?? typeKey).toUpperCase();
+    const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ?(\\d+)$`, 'i');
     let max = 0;
-    for (const a of activeAnchors) {
-      const m = a.label.match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ?(\\d+)$`, 'i'));
+    for (const name of [...activeAnchors.map(a => a.label), ...treeLocations.map(l => l.name)]) {
+      const m = name.match(re);
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
     return `${prefix} ${max + 1}`;
@@ -513,20 +528,58 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     load();
   };
 
+  /** Take the marker off the plan; the spot stays in Locations. */
   const removeAnchor = async () => {
     if (!editSel) return;
     const res = await fetch(`/api/inventory/floorplan-anchors/${editSel.anchorId}`, { method: 'DELETE' });
     if (!res.ok) toast('Could not remove the marker');
-    else toast(`${editSel.label} removed from the map — the spot itself still exists`);
+    else toast(`${editSel.label} taken off the map — the spot itself is still in Locations`);
     setEditSel(null);
+    setRemoveAsk(null);
+    load();
+  };
+
+  /**
+   * Delete the spot itself. The server refuses if anything is inside it, on it
+   * or counted against it, and says which — so "delete" is either complete or
+   * it explains itself. It is never a silent half-delete that leaves the name
+   * taken (which is exactly the trap this replaces).
+   */
+  const deleteSpot = async () => {
+    if (!removeAsk) return;
+    setRemoveErr(null);
+    const res = await fetch(`/api/inventory/floorplan/spots/${removeAsk.locationId}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    // The refusal belongs IN the dialog: a toast behind this overlay is dimmed
+    // by it, so the reason you cannot delete would be the one thing you cannot
+    // read. The dialog stays open with "take it off the map" still offered.
+    if (!res.ok) { setRemoveErr(d.error ?? 'Could not delete that spot'); return; }
+    // Drop it from the tree right away: the reload below refreshes it anyway,
+    // but the next code suggestion must not be able to read a spot that is
+    // already gone (that is what made the name look permanently taken).
+    // Bumping the token in the same breath retires any tree request already in
+    // flight — one of those answering late would put the deleted spot back.
+    treeTokenRef.current += 1;
+    setTreeLocations(prev => prev.filter(l => l.id !== removeAsk.locationId));
+    toast(`${removeAsk.label} deleted`);
+    setRemoveAsk(null);
+    setEditSel(null);
+    setSelectedId(null);
     load();
   };
 
   useEffect(() => {
     if (!manifest) return;
+    // Request token, for the reason in the header note: every placement and
+    // every delete reloads the manifest, which re-fires this fetch. Two are
+    // then in flight at once, and the OLDER one answering last used to win —
+    // the tree would quietly go back to including a spot that had just been
+    // deleted, and the next suggested code skipped a number to avoid a name
+    // nothing was using any more.
+    const token = ++treeTokenRef.current;
     fetch(`/api/inventory/count-locations?company_id=${manifest.companyId}`)
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d?.locations) setTreeLocations(d.locations); })
+      .then(d => { if (treeTokenRef.current === token && d?.locations) setTreeLocations(d.locations); })
       .catch(() => { /* link-existing just stays empty */ });
   }, [manifest]);
 
@@ -591,8 +644,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const openAddForm = useCallback((typeKey: string, pt: Pt) => {
     setArmed(typeKey);
     setAddForm({ x: pt.x, y: pt.y, code: suggestCode(typeKey), roomId: inferParent(typeKey, pt), existingId: null });
+    // treeLocations belongs here: suggestCode reads it, and the tree arrives
+    // asynchronously. Without it this callback keeps whichever tree was loaded
+    // when it was last rebuilt — an empty one on first paint, or one still
+    // holding a spot that has since been deleted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inferParent, activeAnchors]);
+  }, [inferParent, activeAnchors, treeLocations]);
 
   const roomOptions = useMemo(
     () => (manifest ? manifest.places.filter(p => p.bucket === 'room' && p.floorId === activeFloorId) : []),
@@ -727,7 +784,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
                 be scrolled off: pin it to the front of the row and keep it
                 stuck there while the type chips scroll under it. */}
             <button
-              onClick={() => { setEdit(e => !e); setArmed(null); setEditSel(null); closeSheet(); }}
+              onClick={() => { setEdit(e => !e); setArmed(null); setEditSel(null); setRemoveAsk(null); setRemoveErr(null); closeSheet(); }}
               className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-bold ${edit ? 'border-green-600 bg-green-600 text-white' : 'border-blue-600 bg-white text-blue-600'} ${immersive ? 'sticky left-0 z-10 order-first shadow-[0_0_0_4px_rgba(249,250,251,1)]' : ''}`}
             >
               {edit ? '✓ Done' : '✏️ Edit'}
@@ -804,7 +861,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             </button>
           )}
           <button onClick={renameSelected} className="h-9 flex-shrink-0 rounded-full border-[1.5px] border-blue-600 bg-white px-3.5 text-[12px] font-bold text-blue-700">Rename</button>
-          <button onClick={removeAnchor} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove</button>
+          <button onClick={() => { setRemoveErr(null); setRemoveAsk(editSel); }} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove</button>
           <button onClick={() => { setEditSel(null); setSelectedId(null); }} className="h-9 flex-shrink-0 rounded-full border border-gray-300 bg-white px-3.5 text-[12px] font-bold text-gray-700">Done</button>
         </div>
       )}
@@ -935,6 +992,34 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             <div className="flex gap-2">
               <button onClick={() => setAddForm(null)} className="h-11 flex-1 rounded-full border-[1.5px] border-gray-200 text-[13.5px] font-bold text-gray-700">Cancel</button>
               <button onClick={placeSpot} className="h-11 flex-1 rounded-full bg-green-600 text-[13.5px] font-bold text-white">Add spot</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Removing has two different meanings and used to have one button. */}
+      {removeAsk && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-gray-900/40 p-6" onClick={() => setRemoveAsk(null)}>
+          <div className="max-h-[90vh] w-full max-w-xs overflow-y-auto rounded-2xl bg-white p-4" onClick={e => e.stopPropagation()}>
+            <h4 className="mb-1 text-[15px] font-bold text-gray-900">Remove {removeAsk.label}?</h4>
+            <p className="mb-3 text-[12px] leading-relaxed text-gray-500">
+              Delete it and the spot is gone for good — its name is free again. Take it off the map
+              and the spot stays in Locations, ready to place somewhere else.
+            </p>
+            {removeErr && (
+              <p className="mb-3 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] font-medium leading-relaxed text-red-700">
+                {removeErr}
+              </p>
+            )}
+            <div className="flex flex-col gap-2">
+              <button onClick={deleteSpot} className="h-11 w-full rounded-full bg-red-600 text-[13.5px] font-bold text-white">
+                Delete the spot
+              </button>
+              <button onClick={removeAnchor} className="h-11 w-full rounded-full border-[1.5px] border-gray-200 text-[13.5px] font-bold text-gray-700">
+                Only take it off the map
+              </button>
+              <button onClick={() => setRemoveAsk(null)} className="h-9 w-full text-[13px] font-semibold text-gray-500">
+                Cancel
+              </button>
             </div>
           </div>
         </div>

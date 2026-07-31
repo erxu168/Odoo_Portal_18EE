@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inventory-floorplan/access';
-import { initFloorplanTables, getPrimaryAnchorForLocation } from '@/lib/inventory-floorplan/db';
+import { initFloorplanTables, getPrimaryAnchorForLocation, getSpotUsage, deleteSpotWithAnchors } from '@/lib/inventory-floorplan/db';
 import { getCountLocation, listCountLocations, listProductImageIds, getPlacements } from '@/lib/inventory-db';
 import { locationPath } from '@/lib/location-tree';
 import { getDb } from '@/lib/db';
@@ -74,4 +74,45 @@ export async function GET(_request: Request, { params }: { params: { locationId:
     products,
     productsUnavailable: products === null,
   });
+}
+
+/**
+ * DELETE — remove the SPOT itself, not just its marker.
+ *
+ * Taking a marker off the plan leaves the spot in Locations, which is right
+ * when you are only repositioning it — but it made "I deleted it" untrue: the
+ * name stayed taken and placing it again was refused as a duplicate. So a spot
+ * nothing has touched can be deleted outright from the map. A spot with
+ * anything inside it, products on it, or history against it is refused with the
+ * reason, because those records point at it by id and would be orphaned.
+ */
+export async function DELETE(_request: Request, { params }: { params: { locationId: string } }) {
+  const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
+  if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
+  initFloorplanTables();
+
+  if (!/^\d+$/.test(params.locationId)) return NextResponse.json({ error: 'Invalid spot' }, { status: 400 });
+  const loc = getCountLocation(parseInt(params.locationId, 10));
+  if (!loc || !canAccessCompany(authz.user, loc.company_id)) {
+    return NextResponse.json({ error: 'Spot not found' }, { status: 404 });
+  }
+
+  const usage = getSpotUsage(loc.id);
+  if (!usage.empty) {
+    const parts: string[] = [];
+    if (usage.children) parts.push(`${usage.children} thing${usage.children === 1 ? '' : 's'} inside it`);
+    if (usage.products) parts.push(`${usage.products} product${usage.products === 1 ? '' : 's'} stored on it`);
+    if (usage.history) parts.push('counting history');
+    if (usage.pastPlans) parts.push('a place on an older version of this plan');
+    if (usage.reviews) parts.push('a plan review pointing at it');
+    return NextResponse.json({
+      error: `“${loc.name}” still has ${parts.join(' and ')} — empty it first, or just take it off the map`,
+      usage,
+    }, { status: 409 });
+  }
+
+  if (!deleteSpotWithAnchors(loc.id, loc.company_id)) {
+    return NextResponse.json({ error: 'Could not delete that spot' }, { status: 409 });
+  }
+  return NextResponse.json({ message: `“${loc.name}” deleted` });
 }

@@ -505,6 +505,97 @@ export function setLocationKindLayer(id: number, companyId: number, layer: numbe
 }
 
 /**
+ * What would be lost if this spot were deleted outright.
+ *
+ * Taking a marker off the plan is cosmetic, but DELETING the spot removes an
+ * inventory record that other tables point at by id. Those references are not
+ * foreign keys, so a delete would silently orphan them — count history that no
+ * longer knows where it was counted. So deletion is offered only for a spot
+ * that nothing has touched yet: exactly the "I just placed this by mistake"
+ * case, where nothing can be lost.
+ */
+export function getSpotUsage(countLocationId: number): {
+  children: number; products: number; history: number; pastPlans: number; reviews: number; empty: boolean;
+} {
+  initFloorplanTables();
+  const db = getDb();
+  const one = (sql: string): number =>
+    ((db.prepare(sql).get(countLocationId) as { n: number } | undefined)?.n ?? 0);
+  const children = one('SELECT COUNT(*) n FROM count_locations WHERE parent_id = ?');
+  const products = one('SELECT COUNT(*) n FROM product_locations WHERE count_location_id = ?');
+  // A marker anywhere but on a LIVE plan is evidence of where this spot used to
+  // be, and those revisions are immutable here. Defined as the negative on
+  // purpose: publishing marks the previous revision 'superseded', and an
+  // archived floor keeps its 'published' one — matching on a status list would
+  // have missed both and let a delete rewrite plan history.
+  const pastPlans = one(`
+    SELECT COUNT(*) n FROM inventory_floor_anchors a
+    JOIN inventory_floor_revisions r ON r.id = a.revision_id
+    JOIN inventory_floors f ON f.id = r.floor_id
+    WHERE a.count_location_id = ?
+      AND NOT (f.active = 1 AND r.status = 'published' AND f.current_revision_id = r.id)
+  `);
+  // A review still pointing at this spot would publish into a hole.
+  const reviews = one(
+    'SELECT COUNT(*) n FROM inventory_floor_candidates WHERE linked_location_id = ?',
+  );
+  // Every table that records WORK against a location. A row in any of them
+  // means real history, and history keeps the spot alive. Tables are checked
+  // for existence first: a module that has not been initialised yet must read
+  // as "no history", never as a 500 that blocks the delete entirely.
+  const present = new Set(
+    (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>)
+      .map(t => t.name),
+  );
+  const history = [
+    'count_entries', 'session_location_status', 'template_product_locations',
+    'session_count_items', 'stock_receipts', 'session_count_locations', 'waste_events',
+  ]
+    .filter(table => present.has(table))
+    .reduce((sum, table) => sum + one(`SELECT COUNT(*) n FROM ${table} WHERE count_location_id = ?`), 0);
+  return {
+    children, products, history, pastPlans, reviews,
+    empty: children + products + history + pastPlans + reviews === 0,
+  };
+}
+
+/**
+ * Delete a spot and its marker, in one transaction. Refuses (returns false,
+ * changing nothing) if anything at all references the spot — the check is
+ * repeated INSIDE the transaction so a concurrent count cannot slip between
+ * the caller's look and this write.
+ *
+ * Only markers on the CURRENT revision are removed, and a spot that appears on
+ * any older revision is not deletable at all (see getSpotUsage), so this can
+ * never rewrite a published plan's history.
+ */
+export function deleteSpotWithAnchors(countLocationId: number, companyId: number): boolean {
+  initFloorplanTables();
+  const db = getDb();
+  let done = false;
+  db.transaction(() => {
+    const loc = db.prepare('SELECT id FROM count_locations WHERE id = ? AND company_id = ?')
+      .get(countLocationId, companyId);
+    if (!loc) return;
+    if (!getSpotUsage(countLocationId).empty) return;
+    // Scoped to LIVE plans even though getSpotUsage has already ruled out any
+    // marker elsewhere — two guards, because the cost of the second one is a
+    // sub-select and the cost of missing it is deleted history.
+    db.prepare(`
+      DELETE FROM inventory_floor_anchors
+      WHERE count_location_id = ? AND revision_id IN (
+        SELECT r.id FROM inventory_floor_revisions r
+        JOIN inventory_floors f ON f.id = r.floor_id
+        WHERE f.active = 1 AND r.status = 'published' AND f.current_revision_id = r.id
+      )
+    `).run(countLocationId);
+    db.prepare('DELETE FROM count_locations WHERE id = ? AND company_id = ?').run(countLocationId, companyId);
+    done = true;
+  })();
+  return done;
+}
+
+/**
  * Where a spot lives on the published map — or null. Only PUBLISHED revisions
  * of ACTIVE floors count: a draft/superseded revision or an archived floor must
  * never leak into staff search, QR deep links, or "Show on map".
