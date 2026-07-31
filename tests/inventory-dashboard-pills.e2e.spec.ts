@@ -21,6 +21,11 @@ async function login(page: Page, email: string, password: string) {
 test('manager: the To review pill opens Review', async ({ page }) => {
   await login(page, MGR.email, MGR.password);
   await page.goto('/inventory');
+  // The dashboard seeds itself with the STAFF capability floor and upgrades
+  // once /api/auth/me answers — the pill becomes tappable at that moment. A
+  // person cannot tap faster than that; a robot must wait for a manager-only
+  // element (the Review tile) before tapping like one.
+  await page.locator('button', { hasText: 'Review' }).first().waitFor({ timeout: 15_000 });
   await page.getByText('To review', { exact: true }).click();
   await expect(page.getByText('Approve or reject submitted counts')).toBeVisible({ timeout: 15_000 });
 });
