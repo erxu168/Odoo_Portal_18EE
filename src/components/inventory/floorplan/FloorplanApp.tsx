@@ -122,6 +122,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           setSelectedId(data.focus.locationId);
           setSheetId(data.focus.locationId);
           setFlyTo({ cx: data.focus.cx, cy: data.focus.cy, seq: ++seqRef.current });
+        } else if (data.focusMissing && spotParam) {
+          // Not on the plan (a drawer inside a fridge never gets its own
+          // marker, and a QR can point at one) — still SHOW the place: its
+          // contents, its products, its photo. The banner explains the rest.
+          setSheetId(parseInt(spotParam, 10));
         }
       })
       .catch(async () => {
@@ -261,12 +266,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   };
 
   useEffect(() => {
-    if (!edit || !manifest) return;
+    if (!manifest) return;
     fetch(`/api/inventory/count-locations?company_id=${manifest.companyId}`)
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d?.locations) setTreeLocations(d.locations); })
       .catch(() => { /* link-existing just stays empty */ });
-  }, [edit, manifest]);
+  }, [manifest]);
 
   const placedEverywhere = useMemo(() => {
     const ids = new Set<number>();
@@ -310,6 +315,25 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     () => (manifest ? manifest.places.filter(p => p.bucket === 'room' && p.floorId === activeFloorId) : []),
     [manifest, activeFloorId],
   );
+
+  /**
+   * Every place this new item could sit INSIDE — the whole tree, not just
+   * rooms: a countertop fridge holds drawers D1..D8, and those drawers belong
+   * under the fridge, not under the kitchen.
+   */
+  const parentOptions = useMemo(() => {
+    const byId = new Map(treeLocations.map(l => [l.id, l]));
+    const pathOf = (l: { id: number; name: string; parent_id: number | null }): string => {
+      const parts: string[] = [l.name];
+      let cur = l.parent_id != null ? byId.get(l.parent_id) : undefined;
+      const seen = new Set<number>([l.id]);
+      while (cur && !seen.has(cur.id)) { parts.unshift(cur.name); seen.add(cur.id); cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined; }
+      return parts.join(' › ');
+    };
+    return treeLocations
+      .map(l => ({ id: l.id, label: pathOf(l) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [treeLocations]);
 
   const header = (
     <AppHeader
@@ -383,7 +407,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       )}
       {resp?.focusMissing && (
         <div className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[12.5px] font-medium text-amber-800">
-          This spot isn’t placed on a floor plan yet — a manager can add it in edit mode.
+          Not marked on the plan itself — it usually sits inside something that is. Details below.
         </div>
       )}
       <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />
@@ -516,6 +540,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           canEditProductPhotos={capabilities.includes('inventory.productsettings.manage')}
           canEditSpotPhoto={canManage}
           canAssignProducts={canManage || capabilities.includes('inventory.productsettings.manage') || capabilities.includes('inventory.template.manage')}
+          onOpenLocation={id => { setSheetId(id); const a = activeAnchors.find(x => x.locationId === id); if (a) { setSelectedId(id); setFlyTo({ cx: a.cx, cy: a.cy, seq: ++seqRef.current }); } }}
           onClose={closeSheet}
         />
       )}
@@ -545,12 +570,16 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
                 <select
                   value={addForm.roomId ?? ''}
                   onChange={e => setAddForm(f => (f ? { ...f, roomId: e.target.value ? Number(e.target.value) : null } : f))}
-                  aria-label="Room"
-                  className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 bg-white px-3 text-[13px] font-semibold text-gray-700 outline-none"
+                  aria-label="Inside"
+                  className="mb-1 h-11 w-full rounded-xl border-[1.5px] border-gray-200 bg-white px-3 text-[13px] font-semibold text-gray-700 outline-none"
                 >
-                  <option value="">· no room ·</option>
-                  {roomOptions.map(r => <option key={r.locationId} value={r.locationId}>{r.label}</option>)}
+                  <option value="">· not inside anything ·</option>
+                  {(parentOptions.length > 0 ? parentOptions : roomOptions.map(r => ({ id: r.locationId, label: r.label })))
+                    .map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
+                <p className="mb-2 text-[11px] text-gray-400">
+                  Pick a room — or a fridge/shelf to nest this inside it (e.g. drawer D1 inside a countertop fridge).
+                </p>
               </>
             )}
             {unplacedLocations.length > 0 && (

@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inventory-floorplan/access';
 import { initFloorplanTables, getPrimaryAnchorForLocation } from '@/lib/inventory-floorplan/db';
-import { getCountLocation, listCountLocations, listProductImageIds } from '@/lib/inventory-db';
+import { getCountLocation, listCountLocations, listProductImageIds, getPlacements } from '@/lib/inventory-db';
 import { locationPath } from '@/lib/location-tree';
 import { getDb } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: { locationId:
     return NextResponse.json({ error: 'Spot not found' }, { status: 404 });
   }
 
-  const all = listCountLocations(loc.company_id) as Array<{ id: number; name: string; parent_id: number | null; sort_order: number }>;
+  const all = listCountLocations(loc.company_id) as Array<{ id: number; name: string; parent_id: number | null; sort_order: number; kind: string }>;
   const placements = getDb().prepare(
     'SELECT odoo_product_id FROM product_locations WHERE count_location_id = ? ORDER BY shelf_sort, odoo_product_id',
   ).all(loc.id) as Array<{ odoo_product_id: number }>;
@@ -52,8 +52,22 @@ export async function GET(_request: Request, { params }: { params: { locationId:
     }
   }
 
+  // What is INSIDE this place (a countertop fridge holds drawers D1..D8).
+  // Nested items don't each need a marker — you find the fridge on the plan,
+  // then drill into it here.
+  const children = all
+    .filter(l => l.parent_id === loc.id)
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+    .map(c => ({
+      id: c.id,
+      name: c.name,
+      kind: c.kind,
+      productCount: getPlacements(c.id).length,
+    }));
+
   const anchor = getPrimaryAnchorForLocation(loc.id);
   return NextResponse.json({
+    children,
     location: { id: loc.id, name: loc.name, kind: loc.kind, photo: loc.photo ?? null, company_id: loc.company_id },
     path: locationPath(loc.id, all).join(' · '),
     anchor: anchor ? { floorId: anchor.floor_id, cx: anchor.cx, cy: anchor.cy } : null,

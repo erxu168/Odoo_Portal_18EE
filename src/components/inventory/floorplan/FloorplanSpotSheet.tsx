@@ -15,10 +15,13 @@ import type { FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
 
 interface SheetProduct { id: number; name: string; category: string | null; hasImage: boolean }
 
+interface SheetChild { id: number; name: string; kind: string; productCount: number }
+
 interface SheetData {
   location: { id: number; name: string; kind: string; photo: string | null };
   path: string;
   anchor: { floorId: number; cx: number; cy: number } | null;
+  children: SheetChild[];
   products: SheetProduct[] | null;
   productsUnavailable: boolean;
 }
@@ -31,12 +34,14 @@ interface Props {
   canEditSpotPhoto?: boolean;
   /** May assign products to this spot (the walk-through flow). */
   canAssignProducts?: boolean;
+  /** Drill into something INSIDE this place (a fridge's drawers). */
+  onOpenLocation?: (locationId: number) => void;
   onClose: () => void;
 }
 
 interface CatalogProduct { id: number; name: string }
 
-export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProductPhotos, canEditSpotPhoto, canAssignProducts, onClose }: Props) {
+export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProductPhotos, canEditSpotPhoto, canAssignProducts, onOpenLocation, onClose }: Props) {
   const router = useRouter();
   const [data, setData] = useState<SheetData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -239,6 +244,32 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
               </div>
             )}
           </div>
+
+          {(data.children?.length ?? 0) > 0 && (
+            <div>
+              <p className="mb-1.5 text-[10.5px] font-bold tracking-[0.08em] text-gray-400">
+                INSIDE ({data.children.length})
+              </p>
+              <div className="max-h-40 overflow-y-auto">
+                {data.children.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => onOpenLocation?.(c.id)}
+                    className="flex min-h-[44px] w-full items-center gap-2.5 border-b border-gray-50 py-1.5 text-left last:border-b-0 active:bg-gray-50"
+                  >
+                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-[14px]">
+                      {typesByKey[c.kind]?.icon ?? '📦'}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-gray-900">{c.name}</span>
+                    <span className="flex-shrink-0 text-[11px] font-semibold text-gray-500">
+                      {c.productCount > 0 ? `${c.productCount} product${c.productCount === 1 ? '' : 's'}` : 'empty'}
+                    </span>
+                    <span className="flex-shrink-0 text-gray-300">›</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <p className="mb-1.5 text-[10.5px] font-bold tracking-[0.08em] text-gray-400">STORED HERE</p>
