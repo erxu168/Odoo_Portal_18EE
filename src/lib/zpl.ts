@@ -17,11 +17,16 @@ export function resolveLabelSize(
   customWidthMm?: number | null,
   customHeightMm?: number | null,
 ): { widthMm: number; heightMm: number } {
-  if (sizeId === 'custom' && customWidthMm && customHeightMm) {
-    return { widthMm: customWidthMm, heightMm: customHeightMm };
-  }
   const preset = LABEL_SIZE_PRESETS.find(p => p.id === sizeId);
   if (preset) return { widthMm: preset.widthMm, heightMm: preset.heightMm };
+  // Non-preset ids ('custom' AND 'saved-<id>') arrive with their resolved
+  // dimensions in the request — saved sizes live in the portal DB, and the
+  // client is the layer that already looked them up. Honoring the numbers
+  // only for 'custom' made every saved size silently print at 55×75 while
+  // the preview showed the right shape (seen live on the ZQ310, 2026-08-01).
+  if (customWidthMm && customHeightMm) {
+    return { widthMm: customWidthMm, heightMm: customHeightMm };
+  }
   return { widthMm: 55, heightMm: 75 };
 }
 
