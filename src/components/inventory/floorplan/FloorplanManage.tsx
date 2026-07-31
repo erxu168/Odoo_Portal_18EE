@@ -12,7 +12,6 @@ import { CompanyPill } from '@/components/ui/CompanyPill';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { processPdf, suggestRooms, buildRevisionFormData, countPdfPages } from '@/lib/inventory-floorplan/pdf-client';
 import { allowedActionKeysForRole } from '@/lib/permissions';
-import { EmojiPicker } from '@/components/ui/EmojiPicker';
 // The marker styles live with the map, but the builder draws REAL markers in
 // its preview and shape picker — without this import every shape rendered as
 // a bare emoji (the stylesheet only loaded on the map screen).
@@ -51,6 +50,26 @@ const MarkerPreview = ({ shape, color, icon, label }: { shape: MarkerShape; colo
       </span>
     </span>
   )
+);
+
+/** One field, your own keyboard: type it, paste it, or use ⌃⌘Space on a Mac. */
+const IconField = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+  <div className="flex items-center gap-2">
+    <input
+      value={value}
+      // Emoji are multi-codepoint (a bell carries a variation selector, a chef
+      // is a ZWJ sequence) — never slice them apart. Keep what was typed,
+      // capped; select-on-focus so typing simply replaces the old symbol.
+      onChange={e => onChange(Array.from(e.target.value).slice(0, 8).join(''))}
+      onFocus={e => e.target.select()}
+      aria-label="Symbol"
+      placeholder="📦"
+      className="h-11 w-16 flex-shrink-0 rounded-xl border-[1.5px] border-gray-200 text-center text-[20px] outline-none focus:border-blue-600"
+    />
+    <span className="text-[11.5px] leading-snug text-gray-500">
+      Type or paste any symbol — on a Mac press <b>⌃⌘Space</b> for the emoji picker.
+    </span>
+  </div>
 );
 
 const LayerPicker = ({ value, onChange }: { value: LocationLayer; onChange: (v: LocationLayer) => void }) => (
@@ -426,7 +445,7 @@ export default function FloorplanManage() {
             <p className="mb-1 mt-2.5 text-[11px] font-semibold text-gray-500">Colour</p>
             <ColorPicker value={newType.color} onChange={v => setNewType(s2 => ({ ...s2, color: v }))} />
             <p className="mb-1 mt-2.5 text-[11px] font-semibold text-gray-500">Symbol</p>
-            <EmojiPicker set="storage" title="" columns={8} value={newType.icon} onPick={v => setNewType(s2 => ({ ...s2, icon: v }))} />
+            <IconField value={newType.icon} onChange={v => setNewType(s2 => ({ ...s2, icon: v }))} />
             <p className="mb-1 mt-2.5 text-[11px] font-semibold text-gray-500">Where does it sit?</p>
             <LayerPicker value={newType.layer} onChange={v => setNewType(s2 => ({ ...s2, layer: v }))} />
             <div className="mt-2.5 flex items-center gap-2">
@@ -503,7 +522,7 @@ export default function FloorplanManage() {
               />
               <ShapePicker value={editType.shape} onChange={v => setEditType(t => (t ? { ...t, shape: v } : t))} color={editType.color} icon={editType.icon} />
               <ColorPicker value={editType.color} onChange={v => setEditType(t => (t ? { ...t, color: v } : t))} />
-              <EmojiPicker set="storage" title="" columns={8} value={editType.icon} onPick={v => setEditType(t => (t ? { ...t, icon: v } : t))} />
+              <IconField value={editType.icon} onChange={v => setEditType(t => (t ? { ...t, icon: v } : t))} />
               <LayerPicker value={editType.layer} onChange={v => setEditType(t => (t ? { ...t, layer: v } : t))} />
               <button
                 onClick={() => { setDeleteType({ id: editType.id, key: editType.key, label: editType.label, custom: editType.custom }); setEditType(null); }}
