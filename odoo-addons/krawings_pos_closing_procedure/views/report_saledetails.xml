@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <template id="report_saledetails" inherit_id="point_of_sale.pos_session_sales_details">
+        <xpath expr="//div[@id='header']/div/div[2]/t" position="after">
+            <br/>
+            <span>
+                Closing Cashier: <t t-out="closing_cashier"/>
+            </span>
+        </xpath>
+    </template>
+
+    <record model="ir.actions.report" id="point_of_sale.sale_details_report">
+        <field name="paperformat_id" ref="base.paperformat_euro"/>
+        <field name="print_report_name">'Sales Details'</field>
+    </record>
+</odoo>

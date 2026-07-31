@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="krawings_pos_closing_procedure.CashDepositSlipPopup" owl="1">
+        <Dialog footer="false">
+            <div class="krw-deposit-slip">
+                <t t-set-slot="header">
+                    <h4 class="modal-title">Cash to Safe</h4>
+                </t>
+
+                <!-- On-screen preview of what will be printed -->
+                <div class="krw-slip-preview">
+                    <div class="krw-slip-title" t-esc="receiptData.restaurant"/>
+                    <div class="krw-slip-sub">
+                        <t t-esc="receiptData.datetime"/> · <t t-esc="receiptData.session"/>
+                    </div>
+                    <div class="krw-slip-sub" t-if="receiptData.closedBy">
+                        Closed by: <t t-esc="receiptData.closedBy"/>
+                    </div>
+                    <div class="krw-slip-rule"/>
+                    <div class="krw-slip-label">Deposited to safe</div>
+                    <t t-if="receiptData.hasCash">
+                        <div class="krw-slip-line" t-foreach="receiptData.lines" t-as="line" t-key="line_index">
+                            <span t-esc="line.label + ' × ' + line.qty"/>
+                            <span t-esc="line.amount"/>
+                        </div>
+                    </t>
+                    <div t-else="" class="krw-slip-line krw-slip-none">No cash deposited</div>
+                    <div class="krw-slip-rule"/>
+                    <div class="krw-slip-total">
+                        <span>TOTAL TO SAFE</span>
+                        <span t-esc="receiptData.total"/>
+                    </div>
+                </div>
+
+                <div class="krw-slip-state" t-if="state.printing">Printing…</div>
+                <div class="krw-slip-state is-done" t-elif="state.printed"><i class="fa fa-check me-1" aria-hidden="true"/> Printed to receipt printer</div>
+                <div class="krw-slip-state is-warn" t-elif="!hasPrinter">No receipt printer connected — you can still continue.</div>
+
+                <div class="krw-slip-actions">
+                    <button class="button btn btn-lg btn-primary"
+                            t-att-disabled="state.printing or !hasPrinter"
+                            t-on-click="print">
+                        <i class="fa fa-print me-1" aria-hidden="true"/> Print deposit slip
+                    </button>
+                    <button class="button btn btn-lg btn-secondary"
+                            t-att-disabled="!state.printed or state.printing"
+                            t-on-click="print">
+                        Reprint
+                    </button>
+                    <button class="button btn btn-lg btn-secondary" t-on-click="done">
+                        Done — continue
+                    </button>
+                </div>
+            </div>
+        </Dialog>
+    </t>
+</templates>

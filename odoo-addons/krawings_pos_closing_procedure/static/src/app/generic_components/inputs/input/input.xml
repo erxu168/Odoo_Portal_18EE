@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="input" t-inherit="point_of_sale.input" t-inherit-mode="extension" owl="1">
+        <xpath expr="//input" position="replace">
+            <t t-if="props.isReadOnly">
+                <input class="border-0 mx-2" type="text" style="min-width: 60px;"
+                        t-on-focus="ev=>ev.target.select()"
+                        t-att-placeholder="props.placeholder"
+                        t-ref="input"
+                       readonly="readonly"
+                        t-att-value="getValue()"
+                        t-on-input="(event) => this.setValue(event.target.value)" />
+            </t>
+            <t t-else="">
+                <input class="border-0 mx-2" type="text" style="min-width: 60px;"
+                        t-on-focus="ev=>ev.target.select()"
+                        t-att-placeholder="props.placeholder"
+                        t-ref="input"
+                        t-att-value="getValue()"
+                        t-on-input="(event) => this.setValue(event.target.value)" />
+            </t>
+        </xpath>
+    </t>
+</templates>

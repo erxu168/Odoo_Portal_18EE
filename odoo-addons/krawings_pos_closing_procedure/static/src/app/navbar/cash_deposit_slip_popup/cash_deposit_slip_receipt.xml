@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <!--
+        Printed on the POS receipt printer at close. Rendered with renderToElement,
+        so the variables (restaurant, datetime, session, closedBy, lines, hasCash,
+        total) come straight from the render context, not from props.
+    -->
+    <t t-name="krawings_pos_closing_procedure.CashDepositSlipReceipt" owl="1">
+        <div class="pos-receipt krw-deposit-receipt">
+            <div class="pos-receipt-center-align" style="font-weight:700;font-size:15px;">CASH TO SAFE</div>
+            <div class="pos-receipt-center-align" t-esc="restaurant"/>
+            <br/>
+            <div t-esc="datetime"/>
+            <div>Session: <t t-esc="session"/></div>
+            <div t-if="closedBy">Closed by: <t t-esc="closedBy"/></div>
+            <div>--------------------------------</div>
+            <div>Deposited to safe:</div>
+            <t t-if="hasCash">
+                <div class="krw-receipt-line" t-foreach="lines" t-as="line" t-key="line_index"
+                     style="display:flex;justify-content:space-between;">
+                    <span t-esc="line.label + ' x ' + line.qty"/>
+                    <span t-esc="line.amount"/>
+                </div>
+            </t>
+            <div t-else="">  No cash deposited</div>
+            <div>--------------------------------</div>
+            <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
+                <span>TOTAL TO SAFE</span>
+                <span t-esc="total"/>
+            </div>
+            <br/>
+            <div class="pos-receipt-center-align" style="font-size:11px;">Deposit in the safe with the sales bag.</div>
+        </div>
+    </t>
+</templates>

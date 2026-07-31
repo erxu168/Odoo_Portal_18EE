@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="krawings_pos_closing_procedure.ClosureConfirmationPopup" owl="1">
+        <Dialog>
+            <div class="text-conter">
+                <t t-set-slot="header">
+                    <div>
+                        <h4 class="modal-title">POS Closure Confirmation</h4>
+                    </div>
+                </t>
+                <div class="popup popup-confirm">
+                    <p class="text-start">
+                        I confirm that I have accurately reconciled all transactions and
+                        that all information entered is correct.
+                        <br/>
+                        <br/>
+                        I acknowledge that this process has been recorded and I will be
+                        held personally responsible and liable for any discrepancies.
+                        <br/>
+                        <br/>
+                        I understand that inaccuracies may lead to disciplinary actions and legal consequences.
+                        <br/>
+                        <br/>
+                        Your manager has been informed about any discrepancies.
+                    </p>
+                    <br/>
+                    <p class="text-start">
+                        <label for="closing_staff_name"><strong>Your name</strong> (required)</label>
+                        <br/>
+                        <input type="text" id="closing_staff_name" class="form-control"
+                               placeholder="Enter your full name"
+                               t-att-value="state.closing_staff_name" t-on-input="onChangeName"/>
+                    </p>
+                    <p>
+                        <input type="checkbox" id="confirmation" t-on-change="onChangeConfirmation"/> Confirm (Check this box to acknowledge before closing the session)
+                    </p>
+                    <p>
+                        <input type="checkbox" id="terminal_reset" t-on-change="onChangeTerminalReset"/> I have reset the daily counter on the card reader terminal
+                    </p>
+                </div>
+                <t t-set-slot="footer">
+                    <div class="w-100 d-flex flex-wrap justify-content-between gap-2" t-att-class="{'container-fluid row p-0': this.ui.isSmall}">
+                        <div t-att-class="{'col-12 col-md-6 p-0': this.ui.isSmall}" class="d-flex gap-2">
+                            <button class="button btn btn-primary" t-att-disabled="!canConfirm" t-on-click="confirm" t-att-class="this.ui.isSmall ? 'w-100' : 'btn-lg'">Confirm</button>
+                            <button class="button btn btn-secondary" t-att-disabled="state.closure_confirmation" t-on-click="cancel" t-att-class="this.ui.isSmall ? 'w-100' : 'btn-lg'">Discard</button>
+                        </div>
+                    </div>
+                </t>
+            </div>
+        </Dialog>
+    </t>
+</templates>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="MoneyDetailsPopup" t-inherit="point_of_sale.MoneyDetailsPopup" t-inherit-mode="extension" owl="1">
+        <!-- Restore the running total (the original override replaced it with a static label). -->
+        <xpath expr="//h4" position="replace">
+            <h4 class="total-section ms-auto py-2">
+                <t t-esc="props.title or 'Coins/Bills'"/> Total: <t t-esc="env.utils.formatCurrency(computeTotal())"/>
+            </h4>
+        </xpath>
+        <!-- Add a Cancel button next to Confirm so the count can be backed out of. -->
+        <xpath expr="//div[@t-on-click='confirm']" position="before">
+            <button class="button cancel btn btn-lg btn-secondary" t-on-click="cancel">Cancel</button>
+        </xpath>
+    </t>
+</templates>

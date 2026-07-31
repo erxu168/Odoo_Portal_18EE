@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="email_template_daily_sales" model="mail.template">
+        <field name="name">Daily Sales Report</field>
+        <field name="model_id" ref="model_pos_session"/>
+        <field name="email_from">{{ (object.company_id.email_formatted or user.email_formatted) }}</field>
+        <field name="email_to">{{ ctx.get('manager_email', False) }}</field>
+        <field name="subject">Daily Sales Report: {{ object.stop_at_user_tz.strftime('%d.%m.%Y') }} Location: {{ object.company_id.name }}</field>
+        <field name="body_html" type="html">
+            <div style="margin: 0px; padding: 0px;">
+                <p>
+                    <h2>Closing Details</h2>
+                    <strong>
+                        Total Sales: <t t-out="format_amount(object.total_sales, object.currency_id)"/>
+                        <br />
+                        Total Tips: <t t-out="format_amount(object.total_tips, object.currency_id)"/>
+                        <br />
+                        <br />
+                        Discrepancy: <t t-out="format_amount(object.cash_register_difference, object.currency_id)"/>
+                        <br />
+                    </strong>
+                    Closing Staff: <t t-out="object.closing_staff_name or object.closing_cashier_name"/>
+                    <br />
+                    Date: <t t-out="object.stop_at_user_tz.strftime('%d.%m.%Y')"/>
+                    <br />
+                    Time: <t t-out="object.stop_at_user_tz.strftime('%H:%M')"/>
+                    <br />
+                </p>
+                <p>Attached: Sales Report <t t-out="object.stop_at.strftime('%d.%m.%Y')"/></p>
+                <p t-if="object.pos_survey_answer_ids">
+                    <h2>Daily Service Report</h2>
+                    <t t-foreach="object.pos_survey_answer_ids" t-as="answer" t-key="answer_index">
+                        <div>
+                            <div><h3><t t-out="answer.question_id.title"/>:</h3></div>
+                            <div><t t-out="answer.display_name"/></div>
+                        </div>
+                    </t>
+                </p>
+            </div>
+        </field>
+        <field name="auto_delete" eval="False"/>
+        <field name="report_template_ids" eval="[(4, ref('point_of_sale.sale_details_report'))]"/>
+    </record>
+
+    <record id="email_template_warning_discrepancies" model="mail.template">
+        <field name="name">Warning of Discrepancies during Closing Session</field>
+        <field name="model_id" ref="model_pos_session"/>
+        <field name="email_from">{{ (object.company_id.email_formatted or user.email_formatted) }}</field>
+        <field name="email_to">{{ object.closing_cashier_email }}</field>
+        <field name="subject">Warning of Discrepancies during Closing Session Date: {{ object.stop_at.strftime('%d.%m.%Y') }} Location: {{ object.company_id.name }}</field>
+        <field name="body_html" type="html">
+            <div style="margin: 0px; padding: 0px;">
+                <p>
+                    Dear <t t-out="object.closing_staff_name or object.closing_cashier_name"/>,
+                    <br />
+                    <br />
+                    We have identified a discrepancy in the POS session closure you completed. The details are as follows:
+                    <br />
+                    <br />
+                    Discrepancy Amount: <t t-out="format_amount(object.cash_register_difference, object.currency_id)"/>
+                    <br />
+                    <br />
+                    This issue is serious and requires immediate attention.
+                    <br />
+                    <br />
+                    We will be in contact shortly to discuss the circumstances leading to this discrepancy and to determine the necessary corrective actions.
+                    <br />
+                    <br />
+                    Thank you for your cooperation.
+                    <br />
+                    <br />
+                    Best regards,
+                    <br />
+                    <br />
+                    <t t-out="object.company_id.name"/>
+                </p>
+            </div>
+        </field>
+        <field name="auto_delete" eval="False"/>
+    </record>
+
+</odoo>
