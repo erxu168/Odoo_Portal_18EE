@@ -30,11 +30,13 @@ export default function FloorplanManage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // human-readable progress
   const [newFloor, setNewFloor] = useState('');
-  const [newType, setNewType] = useState({ label: '', icon: '', color: '#16A34A' });
+  const [newType, setNewType] = useState<{ label: string; icon: string; color: string; shape: 'dot' | 'label' }>(
+    { label: '', icon: '', color: '#16A34A', shape: 'dot' },
+  );
   const [renameFloor, setRenameFloor] = useState<{ id: number; name: string } | null>(null);
   const [dragOverFloor, setDragOverFloor] = useState<number | null>(null);
   const [archiveFloor, setArchiveFloor] = useState<{ id: number; name: string } | null>(null);
-  const [editType, setEditType] = useState<{ id: number; key: string; label: string; icon: string; color: string } | null>(null);
+  const [editType, setEditType] = useState<{ id: number; key: string; label: string; icon: string; color: string; shape: 'dot' | 'label' } | null>(null);
   const [deleteType, setDeleteType] = useState<{ id: number; label: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadFloorRef = useRef<number | null>(null);
@@ -144,7 +146,7 @@ export default function FloorplanManage() {
     if (!editType || !editType.label.trim()) return;
     const res = await fetch('/api/inventory/location-kinds', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editType.id, label: editType.label.trim(), icon: editType.icon.trim(), color: editType.color, company_id: companyId }),
+      body: JSON.stringify({ id: editType.id, label: editType.label.trim(), icon: editType.icon.trim(), color: editType.color, shape: editType.shape, company_id: companyId }),
     });
     if (!res.ok) { setError((await res.json()).error ?? 'Could not save the type'); }
     setEditType(null);
@@ -169,9 +171,47 @@ export default function FloorplanManage() {
     });
     const d = await res.json();
     if (!res.ok) { setError(d.error ?? 'Could not add the type'); return; }
-    setNewType({ label: '', icon: '', color: '#16A34A' });
+    setNewType({ label: '', icon: '', color: '#16A34A', shape: 'dot' });
     load();
   };
+
+  /** Exactly how the marker will look on the plan. */
+  const MarkerPreview = ({ shape, color, icon, label }: { shape: 'dot' | 'label'; color: string; icon: string; label: string }) => (
+    shape === 'label' ? (
+      <span
+        className="inline-flex items-center gap-1 rounded-[7px] border-[1.5px] bg-white px-2.5 py-1 text-[12px] font-bold text-gray-900"
+        style={{ borderColor: color }}
+      >
+        {icon || '📍'} {label || 'Name'}
+      </span>
+    ) : (
+      <span className="inline-flex flex-col items-center gap-0.5">
+        <span
+          className="flex h-8 w-8 items-center justify-center rounded-full border-[3px] bg-white text-[15px]"
+          style={{ borderColor: color }}
+        >
+          {icon || '📍'}
+        </span>
+        <span className="rounded-full border bg-white/95 px-1.5 text-[9.5px] font-bold text-gray-900" style={{ borderColor: color }}>
+          {label || 'Name'}
+        </span>
+      </span>
+    )
+  );
+
+  const ShapePicker = ({ value, onChange }: { value: 'dot' | 'label'; onChange: (v: 'dot' | 'label') => void }) => (
+    <div className="flex gap-1.5">
+      {([['dot', '⬤ Circle — items'], ['label', '▭ Label — rooms & utilities']] as const).map(([v, text]) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          className={`h-10 flex-1 rounded-xl border text-[11.5px] font-bold ${value === v ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'}`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -282,22 +322,31 @@ export default function FloorplanManage() {
             {types.map(t => t.custom ? (
               <button
                 key={t.key}
-                onClick={() => t.id != null && setEditType({ id: t.id, key: t.key, label: t.label, icon: t.icon, color: t.color })}
+                onClick={() => t.id != null && setEditType({ id: t.id, key: t.key, label: t.label, icon: t.icon, color: t.color, shape: t.shape })}
                 className="flex h-10 items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-3 text-[12px] font-semibold text-gray-900 active:scale-95"
+                aria-label={`Edit ${t.label}`}
               >
                 <span>{t.icon}</span>
-                <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
+                <span className={t.shape === 'label' ? 'h-2.5 w-4 rounded-[3px]' : 'h-3 w-3 rounded-full'} style={{ background: t.color }} />
                 {t.label} <span className="text-[10px] text-gray-300">✏️</span>
               </button>
             ) : (
               <span key={t.key} className="flex h-10 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[12px] font-semibold text-gray-900">
                 <span>{t.icon}</span>
-                <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
+                <span className={t.shape === 'label' ? 'h-2.5 w-4 rounded-[3px]' : 'h-3 w-3 rounded-full'} style={{ background: t.color }} />
                 {t.label}
               </span>
             ))}
           </div>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 rounded-xl border border-dashed border-gray-200 p-3">
+            <p className="mb-2 text-[11px] font-bold tracking-[0.06em] text-gray-400">BUILD A NEW TYPE</p>
+            <ShapePicker value={newType.shape} onChange={v => setNewType(s2 => ({ ...s2, shape: v }))} />
+            <div className="mt-2 flex items-center gap-2">
+              <span className="flex-1 text-[11px] text-gray-500">Preview</span>
+              <MarkerPreview shape={newType.shape} color={newType.color} icon={newType.icon} label={newType.label} />
+            </div>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
             <input
               value={newType.icon}
               onChange={e => setNewType(s => ({ ...s, icon: e.target.value }))}
@@ -320,8 +369,10 @@ export default function FloorplanManage() {
             />
             <button onClick={addType} className="h-11 flex-shrink-0 rounded-full bg-green-600 px-4 text-[13px] font-bold text-white active:scale-95">Add</button>
           </div>
-          <p className="mt-2 text-[11.5px] text-gray-500">
-            Types you add appear in the map chips, the edit-mode tray and the Locations screen.
+          <p className="mt-2 text-[11.5px] leading-relaxed text-gray-500">
+            Your library: pick the shape, colour and icon, give it a name — it then appears in the
+            edit-mode tray, the map chips and the Locations screen. Circles suit individual items
+            (fridges, shelves); labels suit rooms and utility points.
           </p>
         </div>
 
@@ -369,6 +420,11 @@ export default function FloorplanManage() {
           onCancel={() => setEditType(null)}
           extra={
             <div className="flex flex-col gap-2">
+              <ShapePicker value={editType.shape} onChange={v => setEditType(t => (t ? { ...t, shape: v } : t))} />
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[11px] text-gray-500">Preview</span>
+                <MarkerPreview shape={editType.shape} color={editType.color} icon={editType.icon} label={editType.label} />
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   value={editType.icon}

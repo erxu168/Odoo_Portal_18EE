@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind, renameLocationKind } from '@/lib/inventory-db';
-import { setLocationKindColor } from '@/lib/inventory-floorplan/db';
+import { setLocationKindColor, setLocationKindShape } from '@/lib/inventory-floorplan/db';
 import { authorizeFloorplan, FLOORPLAN_CAP } from '@/lib/inventory-floorplan/access';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
 
@@ -66,10 +66,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The color must look like #16A34A' }, { status: 400 });
   }
 
+  const shape = body.shape === 'label' ? 'label' : body.shape === 'dot' ? 'dot' : null;
+
   const row = addLocationKind(companyId, label, icon, authz.actor.userId);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (color) setLocationKindColor(row.id, companyId, color);
-  return NextResponse.json({ kind: { ...row, color: color || null } }, { status: 201 });
+  if (shape) setLocationKindShape(row.id, companyId, shape);
+  return NextResponse.json({ kind: { ...row, color: color || null, shape: shape ?? 'dot' } }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -102,6 +105,7 @@ export async function PATCH(request: Request) {
   if (!result.ok && result.dupe) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (!result.ok) return NextResponse.json({ error: 'Type not found' }, { status: 404 });
   if (color !== undefined) setLocationKindColor(id, companyId, color || null);
+  if (body.shape === 'label' || body.shape === 'dot') setLocationKindShape(id, companyId, body.shape);
   return NextResponse.json({ message: 'Type renamed' });
 }
 

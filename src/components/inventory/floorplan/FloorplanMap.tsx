@@ -174,17 +174,39 @@ export default function FloorplanMap({
       const entry: AnchorLayers = { anchor: a };
 
       if (a.display === 'pin') {
-        // Rooms and utility points read as LABELS; storage items as a circle
-        // with the type icon plus its name underneath.
-        const asLabel = a.typeKey === 'room' || a.typeKey === 'area' || a.typeKey === 'floor' || a.typeKey === 'utility';
+        // The TYPE decides the shape (marker library): 'label' draws a rounded
+        // rectangle (rooms, utility points), 'dot' a circle with the icon.
+        const asLabel = (typesByKey[a.typeKey]?.shape ?? 'dot') === 'label';
         const icon = L.divIcon({
           className: `kw-fp-pin${asLabel ? ' kw-fp-label' : ''}`,
           html:
+            '<span class="kw-fp-inner">' +
             `<span class="kw-fp-dot">${escapeHtml(typesByKey[a.typeKey]?.icon ?? '📍')}</span>` +
-            `<span class="kw-fp-dotlbl">${asLabel ? escapeHtml(typesByKey[a.typeKey]?.icon ?? '') + ' ' : ''}${escapeHtml(a.label)}</span>`,
-          iconSize: undefined,
+            `<span class="kw-fp-dotlbl">${asLabel ? escapeHtml(typesByKey[a.typeKey]?.icon ?? '') + ' ' : ''}${escapeHtml(a.label)}</span>` +
+            '</span>',
+          // Zero-size icon anchored EXACTLY at the point; .kw-fp-inner centres
+          // the visible content on it (see floorplan.css).
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
         });
-        const pin = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), { icon }).addTo(map);
+        const pin = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), {
+          icon,
+          // Edit mode = grab any marker and move it, at whatever zoom you can
+          // actually see it. No separate handle, no select-first step.
+          draggable: cbRef.current.editable,
+          autoPan: true,
+        }).addTo(map);
+        if (cbRef.current.editable) {
+          pin.on('dragend', () => {
+            const wNow = worldRef.current;
+            if (!wNow || !cbRef.current.onMoveAnchor) return;
+            const to = latLngToFrac(wNow, pin.getLatLng());
+            const clamp = (v: number) => Math.min(1, Math.max(0, v));
+            const dx = clamp(to.x) - a.cx, dy = clamp(to.y) - a.cy;
+            const moved = a.polygon.map(p => ({ x: clamp(p.x + dx), y: clamp(p.y + dy) }));
+            cbRef.current.onMoveAnchor(a, moved, clamp(to.x), clamp(to.y));
+          });
+        }
         const el = pin.getElement();
         if (el) el.style.setProperty('--c', color);
         pin.on('click', (e: Leaflet.LeafletMouseEvent) => {
@@ -203,9 +225,9 @@ export default function FloorplanMap({
         entry.poly = poly;
       }
 
-      // A handle on EVERY anchor buried the plan under circles — only the
-      // selected marker gets one (tap it, then drag).
-      if (cbRef.current.editable && a.locationId === selectedId) {
+      // Detected-label anchors have no marker of their own to grab, so they
+      // keep a handle — but only the selected one, to avoid burying the plan.
+      if (cbRef.current.editable && a.display === 'overlay' && a.locationId === selectedId) {
         const handle = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), {
           draggable: true,
           icon: L.divIcon({ className: 'kw-fp-handle', iconSize: [26, 26] }),

@@ -161,6 +161,9 @@ export function initFloorplanTables(): void {
   };
   addLkCol('icon', "ALTER TABLE location_kinds ADD COLUMN icon TEXT NOT NULL DEFAULT '📍'");
   addLkCol('color', 'ALTER TABLE location_kinds ADD COLUMN color TEXT');
+  // Marker shape on the plan: 'dot' (a circle — items) or 'label' (a rounded
+  // rectangle — rooms, utility points). Ethan's marker library, 2026-07-31.
+  addLkCol('shape', "ALTER TABLE location_kinds ADD COLUMN shape TEXT NOT NULL DEFAULT 'dot'");
 
   _inited = true;
 }
@@ -400,6 +403,12 @@ export function deleteAnchor(id: number): void {
 export function setLocationKindColor(id: number, companyId: number, color: string | null): void {
   initFloorplanTables();
   getDb().prepare('UPDATE location_kinds SET color = ? WHERE id = ? AND company_id = ?').run(color, id, companyId);
+}
+
+/** Marker shape of a custom type: 'dot' (circle) or 'label' (rounded rectangle). */
+export function setLocationKindShape(id: number, companyId: number, shape: 'dot' | 'label'): void {
+  initFloorplanTables();
+  getDb().prepare('UPDATE location_kinds SET shape = ? WHERE id = ? AND company_id = ?').run(shape, id, companyId);
 }
 
 /**

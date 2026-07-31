@@ -256,6 +256,20 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     else toast('Position saved');
   };
 
+  const renameSelected = async () => {
+    if (!editSel) return;
+    const next = window.prompt('Name this place', editSel.label);
+    if (next == null || !next.trim() || next.trim() === editSel.label) return;
+    const res = await fetch('/api/inventory/count-locations', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editSel.locationId, name: next.trim() }),
+    });
+    if (!res.ok) { toast((await res.json().catch(() => ({}))).error ?? 'Could not rename'); return; }
+    setEditSel(sel => (sel ? { ...sel, label: next.trim() } : sel));
+    toast('Renamed');
+    load();
+  };
+
   const removeAnchor = async () => {
     if (!editSel) return;
     const res = await fetch(`/api/inventory/floorplan-anchors/${editSel.anchorId}`, { method: 'DELETE' });
@@ -462,19 +476,30 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         </div>
       )}
       {edit && (
-        <div className="bg-gray-800 px-3 py-1.5 text-[11.5px] font-medium text-gray-200">
-          {armed
-            ? `Tap or drop where the ${typesByKey[armed]?.label.toLowerCase() ?? 'spot'} is — name it, press Enter, place the next one.`
-            : 'Pick a type and tap the plan (or drag the chip onto it) · tap a marker to move or remove it.'}
+        <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 text-[11.5px] font-medium text-gray-200">
+          <span className="min-w-0 flex-1">
+            {armed
+              ? `Tap or drop where the ${typesByKey[armed]?.label.toLowerCase() ?? 'item'} is — name it, press Enter, place the next one.`
+              : 'Zoom in, then DRAG any marker to place it exactly · tap one to rename or remove · pick a type above to add.'}
+          </span>
+          {armed && (
+            <button
+              onClick={() => setArmed(null)}
+              className="flex-shrink-0 rounded-full border border-gray-500 px-2.5 py-0.5 text-[11px] font-bold text-gray-100"
+            >
+              Stop adding
+            </button>
+          )}
         </div>
       )}
       {editSel && (
-        <div className="flex items-center gap-2 bg-red-50 px-3 py-2">
-          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-red-900">
-            {editSel.label} — drag its handle to move
+        <div className="flex flex-wrap items-center gap-2 bg-amber-50 px-3 py-2">
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-amber-900">
+            {editSel.label} — drag it on the plan to reposition
           </span>
-          <button onClick={removeAnchor} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove marker</button>
-          <button onClick={() => setEditSel(null)} className="h-9 flex-shrink-0 rounded-full border border-gray-300 bg-white px-3.5 text-[12px] font-bold text-gray-700">Cancel</button>
+          <button onClick={renameSelected} className="h-9 flex-shrink-0 rounded-full border-[1.5px] border-blue-600 bg-white px-3.5 text-[12px] font-bold text-blue-700">Rename</button>
+          <button onClick={removeAnchor} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove</button>
+          <button onClick={() => { setEditSel(null); setSelectedId(null); }} className="h-9 flex-shrink-0 rounded-full border border-gray-300 bg-white px-3.5 text-[12px] font-bold text-gray-700">Done</button>
         </div>
       )}
       <div className="relative min-h-0 flex-1">
@@ -489,6 +514,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           editable={edit}
           onTapAnchor={id => {
             if (edit) {
+              // Tapping an existing marker always selects it — even with a type
+              // armed — so you can move or remove it without disarming first.
               const a = activeAnchors.find(x => x.locationId === id);
               if (a) { setEditSel({ anchorId: a.id, locationId: id, label: a.label }); setSelectedId(id); }
               return;

@@ -20,13 +20,23 @@
    say "this thing is here, and it is a fridge". Rooms and utility points are
    text labels instead — an area has no single point to pin. */
 .kw-fp-pin {
-  width: max-content !important;
-  height: auto !important;
-  transform: translate(-50%, -50%);
+  /* Leaflet writes its own transform on this element to position it, which
+     overrode a CSS translate(-50%,-50%) here — every marker was drawn DOWN
+     and RIGHT of its true point. So the outer element is the anchor point
+     itself (zero size) and the inner box centres on it. */
+  width: 0 !important;
+  height: 0 !important;
   cursor: pointer;
+}
+.kw-fp-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
+  pointer-events: auto;
 }
 .kw-fp-dot {
   width: 34px;
@@ -58,6 +68,12 @@
 /* Rooms + utility points: a label, not a dot. */
 .kw-fp-pin.kw-fp-label .kw-fp-dot {
   display: none;
+}
+.kw-fp-pin.leaflet-marker-draggable .kw-fp-inner {
+  cursor: grab;
+}
+.kw-fp-pin.leaflet-marker-draggable:active .kw-fp-inner {
+  cursor: grabbing;
 }
 .kw-fp-pin.kw-fp-label .kw-fp-dotlbl {
   margin-top: 0;

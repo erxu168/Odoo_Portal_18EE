@@ -14,11 +14,15 @@ import { LOCATION_TYPES } from '@/lib/location-types';
 import { initFloorplanTables, listFloors, getRevision, listAnchors } from './db';
 import type { Pt } from './types';
 
+export type MarkerShape = 'dot' | 'label';
+
 export interface FloorplanTypeInfo {
   key: string;
   label: string;
   icon: string;
   color: string;
+  /** How this type draws on the plan: a circle, or a rounded-rectangle label. */
+  shape: MarkerShape;
   custom: boolean;
   /** location_kinds row id — custom types only (rename/recolor/delete). */
   id?: number;
@@ -67,21 +71,28 @@ const BUILTIN_COLORS: Record<string, string> = {
 };
 const CUSTOM_FALLBACK = '#64748B';
 
+/** Built-ins that describe an AREA or a fixed installation read as labels. */
+const LABEL_SHAPED = new Set(['floor', 'area', 'room', 'utility']);
+
 /** Built-in types + the company's custom location_kinds, one flat registry. */
 export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
   initFloorplanTables();
   const builtIns: FloorplanTypeInfo[] = LOCATION_TYPES.map(t => ({
     key: t.key, label: t.label, icon: t.icon,
-    color: BUILTIN_COLORS[t.key] ?? CUSTOM_FALLBACK, custom: false,
+    color: BUILTIN_COLORS[t.key] ?? CUSTOM_FALLBACK,
+    shape: LABEL_SHAPED.has(t.key) ? 'label' : 'dot',
+    custom: false,
   }));
   const seen = new Set(builtIns.map(b => b.key));
   const customs = (getDb().prepare(
-    'SELECT id, kind, label, icon, color FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
-  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null }>)
+    'SELECT id, kind, label, icon, color, shape FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
+  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null; shape: string | null }>)
     .filter(k => !seen.has(k.kind))
     .map(k => ({
       key: k.kind, label: k.label, icon: k.icon || '📍',
-      color: k.color || CUSTOM_FALLBACK, custom: true, id: k.id,
+      color: k.color || CUSTOM_FALLBACK,
+      shape: (k.shape === 'label' ? 'label' : 'dot') as MarkerShape,
+      custom: true, id: k.id,
     }));
   return [...builtIns, ...customs];
 }
