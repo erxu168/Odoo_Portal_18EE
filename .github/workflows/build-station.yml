@@ -78,6 +78,80 @@ jobs:
       - name: Sync Capacitor into the native project
         run: npx cap sync android
 
+      # ── Native printing ──────────────────────────────────────────────────
+      # Staff print food-container and shelf labels from THIS app, and a label
+      # printer speaks classic Bluetooth (serial port profile). An Android
+      # WebView has no Web Bluetooth API, so without native code the Label
+      # Print screen can never connect — its Connect button is disabled.
+      #
+      # Runs AFTER `cap add android` + `cap sync` (both rewrite the generated
+      # project) and BEFORE gradle, which is the only window where an overlay
+      # survives. The plugin's Java is taken from the Portal app rather than
+      # copied into this folder, so there is ONE implementation of printing.
+      - name: Give the app the native Bluetooth printer plugin
+        working-directory: .
+        run: |
+          set -euo pipefail
+          SRC="apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
+          test -f "$SRC" || { echo "::error::The Portal app's ZebraPrintPlugin.java is missing ($SRC). The station app builds its printer support FROM that file — if it moved, update this step."; exit 1; }
+
+          DEST_DIR="apps/department-device/android/app/src/main/java/de/krawings/station"
+          mkdir -p "$DEST_DIR/plugins"
+
+          # Same code, this app's package.
+          sed 's/^package de\.krawings\.portal\.plugins;/package de.krawings.station.plugins;/' \
+            "$SRC" > "$DEST_DIR/plugins/ZebraPrintPlugin.java"
+          grep -q '^package de\.krawings\.station\.plugins;' "$DEST_DIR/plugins/ZebraPrintPlugin.java" \
+            || { echo "::error::Package rewrite did not take — the plugin would not compile into this app."; exit 1; }
+
+          # Replace the generated MainActivity with ours (it registers the plugin).
+          cp apps/department-device/native/java/MainActivity.java "$DEST_DIR/MainActivity.java"
+          grep -q 'registerPlugin(ZebraPrintPlugin.class)' "$DEST_DIR/MainActivity.java" \
+            || { echo "::error::MainActivity does not register the plugin."; exit 1; }
+
+          echo "Injected:"; find "$DEST_DIR" -name '*.java' -print
+
+      # Capacitor's generated manifest has no Bluetooth permissions. Declaring
+      # them is not optional: the runtime request the plugin makes fails
+      # silently against an undeclared permission, which looks exactly like a
+      # printer that will not connect.
+      - name: Declare the Bluetooth permissions in the manifest
+        working-directory: .
+        run: |
+          set -euo pipefail
+          MANIFEST="apps/department-device/android/app/src/main/AndroidManifest.xml"
+          test -f "$MANIFEST" || { echo "::error::No generated manifest at $MANIFEST"; exit 1; }
+          grep -q '<application' "$MANIFEST" || { echo "::error::Manifest has no <application> element to anchor on"; exit 1; }
+
+          python3 - "$MANIFEST" <<'PY'
+          import sys, re
+          path = sys.argv[1]
+          xml = open(path, encoding='utf-8').read()
+          perms = [
+              # Android 11 and older
+              'android.permission.BLUETOOTH',
+              'android.permission.BLUETOOTH_ADMIN',
+              'android.permission.ACCESS_FINE_LOCATION',
+              # Android 12+ (runtime-requested by the plugin)
+              'android.permission.BLUETOOTH_CONNECT',
+              'android.permission.BLUETOOTH_SCAN',
+          ]
+          missing = [p for p in perms if f'android:name="{p}"' not in xml]
+          if missing:
+              block = '\n'.join(f'    <uses-permission android:name="{p}" />' for p in missing)
+              xml, n = re.subn(r'(\n\s*<application\b)', '\n' + block + r'\1', xml, count=1)
+              if n != 1:
+                  sys.exit('Could not find <application> to insert before — manifest patch aborted')
+              open(path, 'w', encoding='utf-8').write(xml)
+          print('permissions now declared:',
+                [p for p in perms if f'android:name="{p}"' in open(path, encoding='utf-8').read()])
+          PY
+
+          for P in BLUETOOTH BLUETOOTH_ADMIN BLUETOOTH_CONNECT BLUETOOTH_SCAN ACCESS_FINE_LOCATION; do
+            grep -q "android.permission.$P" "$MANIFEST" || { echo "::error::$P missing from the manifest after patching"; exit 1; }
+          done
+          echo "OK: Bluetooth permissions declared"
+
       - name: Generate the app icon (legacy + adaptive)
         run: |
           set -e
@@ -100,8 +174,20 @@ jobs:
         working-directory: .
         run: |
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          "$AAPT" dump badging apps/department-device/android/app/build/outputs/apk/debug/app-debug.apk | grep -q "package: name='de.krawings.station'"
-          echo "OK: APK is de.krawings.station"
+          APK=apps/department-device/android/app/build/outputs/apk/debug/app-debug.apk
+          "$AAPT" dump badging "$APK" | grep -q "package: name='de.krawings.station'"
+          # The printer is why staff can use this app for labels — prove the
+          # finished APK really carries it, not just the source tree.
+          "$AAPT" dump badging "$APK" | grep -q "uses-permission: name='android.permission.BLUETOOTH_CONNECT'"
+          "$AAPT" dump badging "$APK" | grep -q "uses-permission: name='android.permission.BLUETOOTH_SCAN'"
+          # Look through EVERY dex (this app spills over several, and ours is
+          # the last one). `strings -a` because the default skips sections.
+          FOUND=0
+          for D in $(unzip -Z1 "$APK" 'classes*.dex'); do
+            if unzip -p "$APK" "$D" | LC_ALL=C strings -a | grep -q 'de/krawings/station/plugins/ZebraPrintPlugin'; then FOUND=1; break; fi
+          done
+          test "$FOUND" = 1 || { echo "::error::The built APK does not contain ZebraPrintPlugin — printing would be dead in this app."; exit 1; }
+          echo "OK: APK is de.krawings.station, with the Bluetooth printer plugin and its permissions"
 
       - name: Upload the APK as a build artifact
         uses: actions/upload-artifact@v4

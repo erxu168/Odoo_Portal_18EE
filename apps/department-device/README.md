@@ -33,6 +33,32 @@ and attached to the run as an artifact.
 3. Open **Krawings Department Device**. A manager sets the tablet up once (email + password →
    pick restaurant); after that staff just tap their name and enter their PIN.
 
+## Label printing (native Bluetooth)
+
+Staff print food-container and shelf labels from this app, so it carries native
+Bluetooth code. This matters because a label printer speaks *classic* Bluetooth
+(serial port profile) and an Android WebView has no Web Bluetooth API at all —
+without native code the Label Print screen's Connect button is simply disabled,
+no matter how well the printer is paired in Android settings.
+
+- `native/java/MainActivity.java` — committed here; replaces Capacitor's
+  generated one and registers the printer plugin.
+- The plugin's Java is **not** duplicated in this folder. The build takes the
+  Portal app's `ZebraPrintPlugin.java` and rewrites its package, so printing has
+  ONE implementation. Move that file and this build fails loudly, by design.
+- The workflow injects both *after* `cap add android` + `cap sync` (they rewrite
+  the generated project) and *before* gradle, then declares the Bluetooth
+  permissions in the generated manifest — a runtime permission request against
+  an undeclared permission fails silently, which looks exactly like a printer
+  that will not connect.
+- The build then proves the finished APK really contains the plugin class and
+  the permissions, so a silent regression cannot ship.
+
+On the tablet: pair the printer once in Android settings, then connect from
+Label Print inside this app. A paired printer sitting under "Previously
+connected devices" with no live connection is normal — nothing holds a serial
+link open until an app asks for one.
+
 ## Icon
 
 `docs/android-station/assets/icon-only.png` (1024×1024) is the Krawings Department Device app icon —
