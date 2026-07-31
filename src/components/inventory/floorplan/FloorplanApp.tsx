@@ -233,8 +233,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     const d = await res.json();
     if (!res.ok) { toast(d.error ?? 'Could not add the spot'); return; }
     setAddForm(null);
-    setArmed(null);
-    toast(addForm.existingId != null ? 'Placed on the plan — same location, now with a marker' : `${addForm.code} placed — drag its handle to fine-tune`);
+    // Keep the type ARMED: marking a blank plan means placing ten shelves in a
+    // row — re-picking the chip every time would double the work. Tap ✓ Done
+    // or the chip again to disarm.
+    toast(addForm.existingId != null
+      ? 'Placed — same location, now on the plan'
+      : `${addForm.code} placed · tap again for the next ${typesByKey[armed ?? '']?.label.toLowerCase() ?? 'one'}`);
     load();
   };
 
@@ -436,8 +440,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       {edit && (
         <div className="bg-gray-800 px-3 py-1.5 text-[11.5px] font-medium text-gray-200">
           {armed
-            ? `Drop or tap where the ${typesByKey[armed]?.label.toLowerCase() ?? 'spot'} is — you name it next.`
-            : 'Drag a type onto the plan to add it · tap a marker to move or remove it.'}
+            ? `Tap or drop where the ${typesByKey[armed]?.label.toLowerCase() ?? 'spot'} is — name it, press Enter, place the next one.`
+            : 'Pick a type and tap the plan (or drag the chip onto it) · tap a marker to move or remove it.'}
         </div>
       )}
       {editSel && (
@@ -517,7 +521,14 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       )}
       {addForm && armed && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-gray-900/40 p-6" onClick={() => setAddForm(null)}>
-          <div className="max-h-[90vh] w-full max-w-xs overflow-y-auto rounded-2xl bg-white p-4" onClick={e => e.stopPropagation()}>
+          <div
+            className="max-h-[90vh] w-full max-w-xs overflow-y-auto rounded-2xl bg-white p-4"
+            onClick={e => e.stopPropagation()}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); void placeSpot(); }
+              if (e.key === 'Escape') setAddForm(null);
+            }}
+          >
             <h4 className="mb-3 text-[15px] font-bold text-gray-900">
               {typesByKey[armed]?.icon} Add {typesByKey[armed]?.label.toLowerCase()} here
             </h4>
@@ -527,6 +538,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
                   value={addForm.code}
                   onChange={e => setAddForm(f => (f ? { ...f, code: e.target.value } : f))}
                   aria-label="Name"
+                  autoFocus
+                  onFocus={e => e.target.select()}
                   className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
                 />
                 <select

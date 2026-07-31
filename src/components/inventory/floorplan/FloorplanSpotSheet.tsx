@@ -81,11 +81,12 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
         ? `/api/inventory/products?search=${encodeURIComponent(q)}&limit=40`
         : '/api/inventory/products?limit=40';
       fetch(url)
-        .then(r => (r.ok ? r.json().then(d => ({ ok: true, d })) : { ok: false, d: null }))
+        .then(async (r): Promise<{ ok: boolean; d: { products?: CatalogProduct[] } | null }> =>
+          r.ok ? { ok: true, d: await r.json() } : { ok: false, d: null })
         .then(({ ok, d }) => {
           if (searchTokenRef.current !== token) return;
           setCatalogDown(!ok);
-          setResults(ok ? (d.products ?? []) : []);
+          setResults(ok ? (d?.products ?? []) : []);
         })
         .catch(() => {
           if (searchTokenRef.current !== token) return;
