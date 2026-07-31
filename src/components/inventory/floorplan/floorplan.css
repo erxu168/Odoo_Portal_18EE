@@ -27,21 +27,37 @@
   width: 0 !important;
   height: 0 !important;
   cursor: pointer;
+  /* ONE source of truth for the dot's size: .kw-fp-dot sizes itself from it
+     and .kw-fp-inner offsets by half of it. Changing the marker size here
+     keeps the dot centred on its point automatically. */
+  --kw-fp-dot: 36px;
 }
 .kw-fp-inner {
   position: absolute;
   left: 0;
   top: 0;
-  transform: translate(-50%, -50%);
+  /* Centre the DOT on the point, not the dot-plus-label stack. Centring the
+     whole stack made the name's length move the marker: every extra line of
+     a wrapped label lifted the dot further above the spot it marks. Half the
+     dot's height is independent of how many lines the label runs to, so the
+     label simply flows below without ever moving the marker. */
+  transform: translate(-50%, calc(var(--kw-fp-dot, 36px) / -2));
   display: flex;
   flex-direction: column;
   align-items: center;
   pointer-events: auto;
 }
+/* A room/utility pin has no dot, so the LABEL is the marker and centres. */
+.kw-fp-pin.kw-fp-label .kw-fp-inner {
+  transform: translate(-50%, -50%);
+}
 .kw-fp-dot {
   position: relative;
-  width: 36px;
-  height: 36px;
+  /* The fallback matters: the type builder renders a .kw-fp-dot preview with
+     no .kw-fp-pin around it (and overrides the size inline for the small
+     shape swatches), so the variable is not always in scope. */
+  width: var(--kw-fp-dot, 36px);
+  height: var(--kw-fp-dot, 36px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -73,15 +89,30 @@
 .kw-fp-shape-star > * { font-size: 13px; }
 .kw-fp-dotlbl {
   margin-top: 3px;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* NEVER truncate a place name. "CHANGING R…" tells a staff member nothing
+     and sends them to the wrong room — the same reason the product chips
+     stopped clipping in 11e32ab9. Wrap to as many lines as the name needs.
+     Sized PHONE-FIRST: 112px is under a third of a 360px screen, so two
+     labels sit side by side and still read in full; 11px is the smallest
+     size that stays legible on a phone held at arm's length in a kitchen. */
+  /* width:max-content is LOAD-BEARING. .kw-fp-inner is absolutely positioned
+     in a zero-size box, so it shrink-to-fits to min-content — the longest
+     WORD — and "Changing Room" would break after "Changing" while 112px sat
+     unused. max-content asks for the whole name on one line; max-width then
+     caps it, so a name wraps only when it genuinely does not fit. */
+  width: max-content;
+  max-width: 112px;
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-align: center;
+  line-height: 1.25;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--c, #64748b);
-  border-radius: 100px;
-  padding: 1px 7px;
-  font-size: 10.5px;
+  /* A rounded rectangle, not a 100px pill: a pill only looks right on one
+     line, and these now wrap to two or three. */
+  border-radius: 9px;
+  padding: 2px 7px;
+  font-size: 11px;
   font-weight: 700;
   color: #111827;
 }
@@ -98,11 +129,20 @@
 .kw-fp-pin.kw-fp-label .kw-fp-dotlbl {
   margin-top: 0;
   font-size: 12px;
+  /* A room name carries further than an item's, and at 12px it needs a little
+     more width before it wraps — still phone-safe on a 360px screen. */
+  max-width: 128px;
   padding: 3px 10px;
   border-radius: 7px;
   border-width: 1.5px;
   background: #fff;
   box-shadow: 0 2px 6px rgba(15, 25, 40, 0.18);
+}
+/* Tablet and desktop have the room the phone does not — let a name use one
+   line where it fits, instead of wrapping it for a width that is not there. */
+@media (min-width: 640px) {
+  .kw-fp-dotlbl { max-width: 150px; }
+  .kw-fp-pin.kw-fp-label .kw-fp-dotlbl { max-width: 176px; }
 }
 .kw-fp-pin.kw-fp-sel .kw-fp-dot {
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--c, #64748b) 32%, transparent),

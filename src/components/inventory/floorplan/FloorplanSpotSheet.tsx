@@ -227,8 +227,10 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
       {!data && !error && <div className="py-6 text-center text-[13px] text-gray-500">Loading…</div>}
       {data && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-[12.5px] text-gray-500">
-            <span className="truncate">{data.path}</span>
+          <div className="flex items-start gap-2 text-[12.5px] text-gray-500">
+            {/* The full path, never clipped — a shelf is identified by the path
+                that leads to it, so "…" is the one part you cannot lose. */}
+            <span className="min-w-0 break-words">{data.path}</span>
             {type && (
               <span
                 className="flex-shrink-0 rounded-full px-2.5 py-0.5 text-[10.5px] font-bold text-white"

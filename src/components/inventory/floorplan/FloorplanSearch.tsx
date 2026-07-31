@@ -129,8 +129,10 @@ export default function FloorplanSearch({ manifest, activeFloorId, onPick }: Pro
             >
               <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ background: r.color }} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-semibold text-gray-900">{r.icon} {r.main}</span>
-                <span className="block truncate text-[11.5px] text-gray-500">{r.sub}</span>
+                {/* Two results can share a name and differ only deep in the
+                    path, so both lines wrap rather than clip. */}
+                <span className="block break-words text-[13.5px] font-semibold text-gray-900">{r.icon} {r.main}</span>
+                <span className="block break-words text-[11.5px] text-gray-500">{r.sub}</span>
               </span>
               <span className="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">{r.tag}</span>
             </button>
