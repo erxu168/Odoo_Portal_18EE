@@ -164,7 +164,7 @@ importers.
 
 ---
 
-## Waste Tracker — foundation built 2026-07-31, screen still to do
+## Waste Tracker — COMPLETE 2026-07-31, live on staging
 
 The third term of the consumption equation. `waste_events` in `lib/inventory-db.ts`,
 shaped deliberately like `stock_receipts` (same columns, same units, same photo)
