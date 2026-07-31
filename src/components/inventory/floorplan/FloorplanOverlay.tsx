@@ -8,7 +8,7 @@ import FloorplanApp from './FloorplanApp';
 
 export default function FloorplanOverlay({ locationId, onClose }: { locationId: number; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-gray-50">
+    <div className="fixed inset-0 z-[1200] flex flex-col bg-gray-50">
       <div className="flex flex-shrink-0 items-center gap-2 bg-gray-900 px-4 py-2 text-white">
         <span className="min-w-0 flex-1 truncate text-[12px] font-bold">
           Finding the spot — your count is safe, close to continue

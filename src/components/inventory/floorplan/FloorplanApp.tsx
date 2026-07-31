@@ -436,13 +436,15 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       {edit && (
         <div className="bg-gray-800 px-3 py-1.5 text-[11.5px] font-medium text-gray-200">
           {armed
-            ? `Tap the plan where the ${typesByKey[armed]?.label.toLowerCase() ?? 'spot'} is.`
-            : 'Drag a round handle to move a marker · tap a marker to remove it · pick a type above to add one.'}
+            ? `Drop or tap where the ${typesByKey[armed]?.label.toLowerCase() ?? 'spot'} is — you name it next.`
+            : 'Drag a type onto the plan to add it · tap a marker to move or remove it.'}
         </div>
       )}
       {editSel && (
         <div className="flex items-center gap-2 bg-red-50 px-3 py-2">
-          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-red-900">{editSel.label}</span>
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-red-900">
+            {editSel.label} — drag its handle to move
+          </span>
           <button onClick={removeAnchor} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove marker</button>
           <button onClick={() => setEditSel(null)} className="h-9 flex-shrink-0 rounded-full border border-gray-300 bg-white px-3.5 text-[12px] font-bold text-gray-700">Cancel</button>
         </div>
@@ -460,7 +462,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           onTapAnchor={id => {
             if (edit) {
               const a = activeAnchors.find(x => x.locationId === id);
-              if (a) setEditSel({ anchorId: a.id, locationId: id, label: a.label });
+              if (a) { setEditSel({ anchorId: a.id, locationId: id, label: a.label }); setSelectedId(id); }
               return;
             }
             setSelectedId(id); setSheetId(id);
@@ -469,6 +471,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             if (edit && armed) { openAddForm(armed, pt); return; }
             if (!edit) closeSheet();
             setEditSel(null);
+            if (edit) setSelectedId(null);
           }}
           onMoveAnchor={(a, polygon, cx, cy) => moveAnchor(a, polygon, cx, cy)}
           onDropType={(typeKey, pt) => { if (edit) openAddForm(typeKey, pt); }}
@@ -512,8 +515,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         />
       )}
       {addForm && armed && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/40 p-6" onClick={() => setAddForm(null)}>
-          <div className="w-full max-w-xs rounded-2xl bg-white p-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-gray-900/40 p-6" onClick={() => setAddForm(null)}>
+          <div className="max-h-[90vh] w-full max-w-xs overflow-y-auto rounded-2xl bg-white p-4" onClick={e => e.stopPropagation()}>
             <h4 className="mb-3 text-[15px] font-bold text-gray-900">
               {typesByKey[armed]?.icon} Add {typesByKey[armed]?.label.toLowerCase()} here
             </h4>

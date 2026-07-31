@@ -174,9 +174,14 @@ export default function FloorplanMap({
       const entry: AnchorLayers = { anchor: a };
 
       if (a.display === 'pin') {
+        // Rooms and utility points read as LABELS; storage items as a circle
+        // with the type icon plus its name underneath.
+        const asLabel = a.typeKey === 'room' || a.typeKey === 'area' || a.typeKey === 'floor' || a.typeKey === 'utility';
         const icon = L.divIcon({
-          className: 'kw-fp-pin',
-          html: `<span>${escapeHtml(typesByKey[a.typeKey]?.icon ?? '📍')}</span>${escapeHtml(a.label)}`,
+          className: `kw-fp-pin${asLabel ? ' kw-fp-label' : ''}`,
+          html:
+            `<span class="kw-fp-dot">${escapeHtml(typesByKey[a.typeKey]?.icon ?? '📍')}</span>` +
+            `<span class="kw-fp-dotlbl">${asLabel ? escapeHtml(typesByKey[a.typeKey]?.icon ?? '') + ' ' : ''}${escapeHtml(a.label)}</span>`,
           iconSize: undefined,
         });
         const pin = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), { icon }).addTo(map);
@@ -198,7 +203,9 @@ export default function FloorplanMap({
         entry.poly = poly;
       }
 
-      if (cbRef.current.editable) {
+      // A handle on EVERY anchor buried the plan under circles — only the
+      // selected marker gets one (tap it, then drag).
+      if (cbRef.current.editable && a.locationId === selectedId) {
         const handle = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), {
           draggable: true,
           icon: L.divIcon({ className: 'kw-fp-handle', iconSize: [26, 26] }),
@@ -257,8 +264,10 @@ export default function FloorplanMap({
     if (!w) return;
     buildLayers(w);
     styleLayers(w);
+    // selectedId matters here ONLY in edit mode (it decides which anchor owns
+    // the drag handle); plain viewing restyles without rebuilding.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchors, editable, typesByKey]);
+  }, [anchors, editable, typesByKey, editable ? selectedId : null]);
 
   useEffect(() => {
     const w = worldRef.current;

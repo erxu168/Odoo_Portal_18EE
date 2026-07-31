@@ -3,35 +3,77 @@
 
 .kw-fp-viewport {
   background: #e7ebef;
+  /* Leaflet's panes/controls carry z-index 400-800. Without a stacking
+     context of its own they compete GLOBALLY and paint over dialogs
+     (the Add-spot form appeared "cut off" — it was behind the map). */
+  isolation: isolate;
 }
 .kw-fp-viewport .leaflet-container {
   background: #e7ebef;
   font: inherit;
 }
 
-/* App-added spots (display: 'pin'): white pills with the type icon. divIcon
-   markers keep constant screen size at every zoom — exactly what we want. */
+/* Every placed item is the SAME shape — a circle with its type icon (Ethan's
+   call, 2026-07-31): a circle drops anywhere, never needs rotating or
+   resizing, and stays finger-sized at every zoom. The PLAN itself already
+   draws the real outlines of fridges and shelves, so the marker only has to
+   say "this thing is here, and it is a fridge". Rooms and utility points are
+   text labels instead — an area has no single point to pin. */
 .kw-fp-pin {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  background: #fff;
-  border: 2.5px solid var(--c, #64748b);
-  border-radius: 100px;
-  padding: 4px 10px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #111827;
-  white-space: nowrap;
   width: max-content !important;
   height: auto !important;
-  box-shadow: 0 2px 6px rgba(15, 25, 40, 0.22);
   transform: translate(-50%, -50%);
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.kw-fp-pin.kw-fp-sel {
-  box-shadow: 0 0 0 5px color-mix(in srgb, var(--c, #64748b) 30%, transparent),
-    0 2px 6px rgba(15, 25, 40, 0.22);
+.kw-fp-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--c, #64748b);
+  box-shadow: 0 2px 6px rgba(15, 25, 40, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+.kw-fp-dotlbl {
+  margin-top: 3px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--c, #64748b);
+  border-radius: 100px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #111827;
+}
+/* Rooms + utility points: a label, not a dot. */
+.kw-fp-pin.kw-fp-label .kw-fp-dot {
+  display: none;
+}
+.kw-fp-pin.kw-fp-label .kw-fp-dotlbl {
+  margin-top: 0;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 7px;
+  border-width: 1.5px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(15, 25, 40, 0.18);
+}
+.kw-fp-pin.kw-fp-sel .kw-fp-dot {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--c, #64748b) 32%, transparent),
+    0 2px 6px rgba(15, 25, 40, 0.25);
+}
+.kw-fp-pin.kw-fp-sel .kw-fp-dotlbl {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c, #64748b) 28%, transparent);
 }
 
 /* Drag handle shown on every anchor in edit mode. */
