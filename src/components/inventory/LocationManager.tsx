@@ -22,7 +22,7 @@ import type { CountLocation } from '@/types/inventory';
  * then a "+ Add inside" button. Depth 0 is a card; deeper levels are lighter,
  * indented rows. Drag-reorder stays within each sibling group at every level.
  */
-function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope, placedIds }: {
+function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope, placedIds, markerKinds }: {
   node: LocationTreeNode<CountLocation>;
   depth: number;
   /** Expansion scope — per screen, so a picker sheet opens independently. */
@@ -34,6 +34,8 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
   iconOf?: (kind: string | null | undefined) => string;
   /** Locations placed on a published floor plan — shows the 🗺 badge. */
   placedIds?: Set<number>;
+  /** Types that MARK a thing (valve, fuse box) — nothing nests inside those. */
+  markerKinds?: Set<string>;
 }) {
   const isRoot = depth === 0;
   const hasChildren = node.children.length > 0;
@@ -141,7 +143,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={node.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {node.children.map((child) => (
-                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} placedIds={placedIds} />
+                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} placedIds={placedIds} markerKinds={markerKinds} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -149,7 +151,9 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
                 unambiguous whether a "+ Shelf/Drawer/…" adds a layer INSIDE this
                 unit vs inside its parent — the two rows otherwise stack with only
                 a small indent between them and read as one. */}
-            <div className="py-2.5 pr-3" style={{ paddingLeft: childPad }}>
+            {/* A marker type marks the thing itself — a shut-off valve, a fuse
+                box — so there is nothing to put inside it (Ethan, 2026-07-31). */}
+            <div className="py-2.5 pr-3" style={{ paddingLeft: childPad, display: markerKinds?.has((node.kind || '').toLowerCase()) ? 'none' : undefined }}>
               <div className="text-[11px] font-semibold text-gray-400 mb-1.5">
                 <span className="text-green-600" aria-hidden="true">{'↳'}</span> Add inside {node.name}
               </div>
@@ -191,6 +195,7 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
   // Type icons incl. this company's CUSTOM types (built-ins + custom).
   const { iconOf } = useLocationTypes(companyId);
   const [placedIds, setPlacedIds] = useState<Set<number>>(new Set());
+  const [markerKinds, setMarkerKinds] = useState<Set<string>>(new Set());
   useEffect(() => {
     let stale = false;
     const q = companyId ? `?company_id=${companyId}` : '';
@@ -222,6 +227,7 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
       if (!locRes.ok) { setLoadError(true); setLocations([]); return; }
       const d = await locRes.json();
       setLocations(d.locations || []);
+      setMarkerKinds(new Set<string>((d.marker_kinds || []).map((k: string) => k.toLowerCase())));
     } catch {
       setLoadError(true);
     } finally { setLoading(false); }
@@ -406,6 +412,7 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
               <LocationNode
                 key={area.id}
                 placedIds={placedIds}
+                markerKinds={markerKinds}
                 node={area}
                 depth={0}
                 sensors={sensors}

@@ -2386,6 +2386,24 @@ export function deleteCountPhotos(source: PhotoSource, sourceId: number) {
 // COUNT LOCATIONS (the digital twin — portal-owned, company-scoped)
 // ===
 
+
+/**
+ * Kinds this company treats as MARKERS. Read straight from location_kinds so
+ * this module never has to import the floorplan layer (which imports this one).
+ * 'utility' is the built-in of that shape unless the company said otherwise.
+ */
+function markerOnlyKindSet(companyId: number): Set<string> {
+  const db = getDb();
+  const hasCol = (db.prepare('PRAGMA table_info(location_kinds)').all() as { name: string }[])
+    .some((c) => c.name === 'marker_only');
+  if (!hasCol) return new Set(['utility']);
+  const rows = db.prepare('SELECT kind, marker_only FROM location_kinds WHERE company_id = ?')
+    .all(companyId) as { kind: string; marker_only: number | null }[];
+  const set = new Set(rows.filter((r) => r.marker_only === 1).map((r) => r.kind.toLowerCase()));
+  if (rows.find((r) => r.kind === 'utility')?.marker_only !== 0) set.add('utility');
+  return set;
+}
+
 export function createCountLocation(data: {
   parent_id?: number | null;
   company_id: number;
@@ -2397,6 +2415,16 @@ export function createCountLocation(data: {
   created_by: number;
 }): number {
   const db = getDb();
+  // Nothing nests inside a MARKER — a shut-off valve has no shelves. Checked
+  // here rather than per screen, so the floorplan's bulk "add levels", the
+  // Locations manager and any direct request all obey the same rule.
+  if (data.parent_id != null) {
+    const parent = db.prepare('SELECT kind FROM count_locations WHERE id = ?')
+      .get(data.parent_id) as { kind: string } | undefined;
+    if (parent && markerOnlyKindSet(data.company_id).has((parent.kind || '').toLowerCase())) {
+      throw new Error('That place is a marker (a valve, a fuse box) — nothing goes inside it');
+    }
+  }
   const ts = now();
   // Default sort_order = max sibling + 10 within the same company + parent.
   const sib = db.prepare(
@@ -2426,6 +2454,26 @@ export function updateCountLocation(id: number, companyId: number, data: Partial
   sort_order: number; odoo_location_id: number | null; parent_id: number | null; active: boolean;
 }>): void {
   const db = getDb();
+  // Retyping THIS location into a marker is the same act as converting the
+  // type — it hides the row from the product picker — so it meets the same
+  // refusal: not while it holds products or contains other places.
+  if (data.kind !== undefined) {
+    const markers = markerOnlyKindSet(companyId);
+    if (markers.has((data.kind || '').toLowerCase())) {
+      const cur = db.prepare('SELECT kind FROM count_locations WHERE id = ? AND company_id = ?')
+        .get(id, companyId) as { kind: string } | undefined;
+      const wasMarker = markers.has((cur?.kind || '').toLowerCase());
+      if (cur && !wasMarker) {
+        const products = (db.prepare('SELECT COUNT(*) n FROM product_locations WHERE count_location_id = ?')
+          .get(id) as { n: number }).n;
+        const children = (db.prepare('SELECT COUNT(*) n FROM count_locations WHERE parent_id = ? AND active = 1')
+          .get(id) as { n: number }).n;
+        if (products > 0 || children > 0) {
+          throw new Error('That type is a marker — empty this place first (it still has products or things inside it)');
+        }
+      }
+    }
+  }
   const sets: string[] = []; const vals: unknown[] = [];
   const put = (col: string, v: unknown) => { sets.push(`${col} = ?`); vals.push(v); };
   if (data.name !== undefined) put('name', data.name);
@@ -2550,6 +2598,31 @@ export function setProductsSpotsBulk(
     const valid = new Set((db.prepare(
       'SELECT id FROM count_locations WHERE company_id = ? AND active = 1'
     ).all(companyId) as { id: number }[]).map((r) => r.id));
+    // MARKER INVARIANT (here, so every writer is covered — the product sheet,
+    // the spot-first assign, the bulk arranger): a marker type marks a thing,
+    // it is not somewhere products live. Hiding the button was never enough;
+    // a stale screen or a direct request would still have written the row.
+    const markers = markerOnlyKindSet(companyId);
+    if (markers.size > 0) {
+      const kindOf = db.prepare('SELECT kind FROM count_locations WHERE id = ?');
+      const alreadyThere = db.prepare(
+        'SELECT count_location_id AS id FROM product_locations WHERE odoo_product_id = ?',
+      );
+      for (const e of entries) {
+        // Only NEW placements are refused. One that already exists (data from
+        // before a type became a marker) is carried through untouched —
+        // otherwise a screen that cannot even show that row would be unable to
+        // save anything at all.
+        const existing = new Set((alreadyThere.all(e.product_id) as { id: number }[]).map(r => r.id));
+        for (const id of e.spot_ids) {
+          if (existing.has(id)) continue;
+          const k = (kindOf.get(id) as { kind: string } | undefined)?.kind ?? '';
+          if (markers.has(k.toLowerCase())) {
+            throw new Error('That place is a marker (a valve, a fuse box) — products are not stored there');
+          }
+        }
+      }
+    }
     // OVERLAP INVARIANT (enforced here so EVERY caller is covered — the product
     // sheet, the bulk "arrange spots" writer, anything future): a product may
     // never be homed at both a place and something inside it. Each placement is
@@ -2893,6 +2966,8 @@ export interface LocationKindRow {
   label: string;  // what managers see in the Type dropdown
   icon: string;   // emoji shown in the tree / spot picker / printed labels
   sort_order: number;
+  /** 1 = marks a thing (valve, fuse box): holds nothing, nests nothing. */
+  marker_only?: number | null;
 }
 
 /**
@@ -2903,8 +2978,14 @@ export interface LocationKindRow {
  */
 export function listLocationKinds(companyId: number): LocationKindRow[] {
   const db = getDb();
+  // marker_only rides along so a caller can tell a PLACE (shelf, fridge) from a
+  // MARKER (shut-off valve, fuse box) without a second query. The column is
+  // added by the floorplan init; COALESCE keeps this working on a database
+  // that has not run it yet.
+  const hasMarker = (db.prepare('PRAGMA table_info(location_kinds)').all() as { name: string }[])
+    .some(c => c.name === 'marker_only');
   return db.prepare(
-    'SELECT id, company_id, kind, label, icon, sort_order FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id'
+    `SELECT id, company_id, kind, label, icon, sort_order${hasMarker ? ', marker_only' : ''} FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id`
   ).all(companyId) as LocationKindRow[];
 }
 
@@ -2953,10 +3034,13 @@ export function deleteLocationKind(id: number, companyId: number): { ok: boolean
   // Compare in JS: SQLite lower() only folds ASCII, and German type names
   // (Kühlraum…) are realistic here. JS toLowerCase() is Unicode-correct.
   const target = row.kind.toLowerCase();
-  // Types apply to AREAS (roots) only — a child spot's legacy kind must not
-  // count as "in use", or a type used solely by old spots could never be deleted.
+  // In use means in use at ANY depth. This once looked at roots only, on the
+  // reasoning that types describe areas — but the floorplan's own types (a
+  // fuse box, a shelf, a marker) live NESTED under a room, so deleting one
+  // took its settings with it and left every location of that type behaving
+  // like an ordinary kind nobody had defined.
   const used = (db.prepare(
-    'SELECT kind FROM count_locations WHERE company_id = ? AND active = 1 AND parent_id IS NULL'
+    'SELECT kind FROM count_locations WHERE company_id = ? AND active = 1'
   ).all(companyId) as { kind: string }[])
     .filter((l) => (l.kind || '').toLowerCase() === target).length;
   if (used > 0) return { ok: false, in_use: used };

@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { requireAuth } from '@/lib/auth';
+import { markerOnlyKinds } from '@/lib/inventory-floorplan/db';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import {
@@ -53,7 +54,29 @@ export async function GET(request: Request) {
   const fallback = cookieCompany && canAccessCompany(user, cookieCompany) ? cookieCompany : null;
   const companyId = resolveScopedCompany(user, requested ?? fallback);
   if (!companyId) return NextResponse.json({ locations: [] });
-  return NextResponse.json({ locations: listCountLocations(companyId) });
+
+  const all = listCountLocations(companyId);
+  // ?storage_only=1 — for the "where does this product live?" picker. Types the
+  // manager marked as MARKERS (a shut-off valve, a fuse box) are not places
+  // anything is stored, so they are dropped here rather than filtered in every
+  // screen. Their children go too: nothing should be nested under a marker, and
+  // a stray child would otherwise be offered without its parent.
+  if (searchParams.get('storage_only') === '1') {
+    const markers = new Set(markerOnlyKinds(companyId).map(k => k.toLowerCase()));
+    const byId = new Map(all.map(l => [l.id, l]));
+    const isUnderMarker = (loc: { id: number; parent_id: number | null; kind: string }): boolean => {
+      const seen = new Set<number>();
+      let cur: typeof loc | undefined = loc;
+      while (cur && !seen.has(cur.id)) {
+        if (markers.has((cur.kind || '').toLowerCase())) return true;
+        seen.add(cur.id);
+        cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
+      }
+      return false;
+    };
+    return NextResponse.json({ locations: all.filter(l => !isUnderMarker(l)), marker_kinds: Array.from(markers) });
+  }
+  return NextResponse.json({ locations: all, marker_kinds: markerOnlyKinds(companyId) });
 }
 
 export async function POST(request: Request) {

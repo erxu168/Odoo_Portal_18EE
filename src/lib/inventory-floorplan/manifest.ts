@@ -11,7 +11,7 @@ import { getDb } from '@/lib/db';
 import { listCountLocations, listProductImageIds } from '@/lib/inventory-db';
 import { locationPath } from '@/lib/location-tree';
 import { LOCATION_TYPES } from '@/lib/location-types';
-import { initFloorplanTables, listFloors, getRevision, listAnchors } from './db';
+import { initFloorplanTables, listFloors, getRevision, listAnchors, BUILTIN_MARKER_ONLY_KEYS } from './db';
 import { MARKER_SHAPES, type MarkerShape, type LocationLayer } from './marker-presets';
 import type { Pt } from './types';
 
@@ -34,6 +34,12 @@ export interface FloorplanTypeInfo {
   custom: boolean;
   /** Removed from THIS restaurant's library (built-ins can't be deleted). */
   hidden?: boolean;
+  /**
+   * The marker IS the thing — a shut-off valve, a fuse box. Nothing is stored
+   * in it, nothing nests inside it, and it stays out of the product location
+   * picker. Ethan's rule, 2026-07-31.
+   */
+  markerOnly?: boolean;
   /** location_kinds row id — custom types only (rename/recolor/delete). */
   id?: number;
 }
@@ -87,6 +93,8 @@ const CUSTOM_FALLBACK = '#64748B';
 
 /** Built-ins that describe an AREA or a fixed installation read as labels. */
 const LABEL_SHAPED = new Set(['floor', 'area', 'room', 'utility']);
+/** Built-ins that mark a thing rather than hold products. */
+const BUILTIN_MARKER_ONLY = new Set(BUILTIN_MARKER_ONLY_KEYS);
 
 /** Built-in hierarchy ranks (see LocationLayer). */
 const BUILTIN_LAYER: Record<string, LocationLayer> = {
@@ -105,11 +113,12 @@ export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
     color: BUILTIN_COLORS[t.key] ?? CUSTOM_FALLBACK,
     shape: LABEL_SHAPED.has(t.key) ? 'label' : 'dot',
     layer: BUILTIN_LAYER[t.key] ?? 3,
+    markerOnly: BUILTIN_MARKER_ONLY.has(t.key),
     custom: false,
   }));
   const rows = getDb().prepare(
-    'SELECT id, kind, label, icon, color, shape, layer, hidden FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
-  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null; shape: string | null; layer: number | null; hidden: number | null }>;
+    'SELECT id, kind, label, icon, color, shape, layer, hidden, marker_only FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
+  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null; shape: string | null; layer: number | null; hidden: number | null; marker_only: number | null }>;
 
   const byKey = new Map(builtIns.map(b => [b.key, { ...b }]));
   const customs: FloorplanTypeInfo[] = [];
@@ -132,6 +141,8 @@ export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
         shape: shapeOf(k.shape, base.shape),
         layer: layerOf(k.layer, base.layer),
         hidden: k.hidden === 1,
+        // NULL = this restaurant never said; keep the built-in's own answer.
+        markerOnly: k.marker_only == null ? base.markerOnly : k.marker_only === 1,
       });
     } else {
       customs.push({
@@ -140,6 +151,7 @@ export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
         shape: shapeOf(k.shape, 'dot'),
         layer: layerOf(k.layer, 3),
         custom: true, id: k.id, hidden: k.hidden === 1,
+        markerOnly: k.marker_only === 1,
       });
     }
   }

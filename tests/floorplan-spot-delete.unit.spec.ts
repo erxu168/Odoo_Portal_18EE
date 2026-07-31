@@ -102,42 +102,69 @@ test('a spot with counting history refuses to be deleted', () => {
   expect(getDb().prepare('SELECT 1 FROM count_locations WHERE id = ?').get(id)).toBeTruthy();
 });
 
-test('a spot that appeared on an OLDER published plan is history, not deletable', () => {
-  const id = spot('SLF 40');
-  const db = getDb();
-  // Same floor, a second revision that has since taken over as current.
+/**
+ * Both plan-history tests build their OWN floor. They mutate revision status
+ * and the floor's live pointer, and sharing one floor across tests made the
+ * outcome depend on the order they happened to run in.
+ */
+function ownFloor(tag: string): { floorId: number; revId: number } {
   const docId = createFloorDocument({
-    company_id: CO, original_filename: 'v2.pdf', pdf_relpath: 'floorplans/v2.pdf',
-    sha256: 'del2', byte_size: 10, page_count: 1, uploaded_by: 1,
+    company_id: CO, original_filename: `${tag}.pdf`, pdf_relpath: `floorplans/${tag}.pdf`,
+    sha256: tag, byte_size: 10, page_count: 1, uploaded_by: 1,
   });
-  const newerRev = createRevision({
-    floor_id: floorId, document_id: docId, source_page_number: 1,
+  const fid = createFloor({ company_id: CO, name: `Floor ${tag}`, code: tag, created_by: 1 });
+  const rid = createRevision({
+    floor_id: fid, document_id: docId, source_page_number: 1,
     page_width: 841, page_height: 595, page_rotation: 0,
-    raster_relpath: 'floorplans/v2.webp', raster_mime: 'image/webp',
+    raster_relpath: `floorplans/${tag}.webp`, raster_mime: 'image/webp',
     raster_width: 2807, raster_height: 1985, raster_bytes: 1, uploaded_by: 1,
   });
-  // The REAL lifecycle: publishing marks the previous revision 'superseded'.
+  const db = getDb();
+  db.prepare("UPDATE inventory_floor_revisions SET status = 'published' WHERE id = ?").run(rid);
+  db.prepare('UPDATE inventory_floors SET current_revision_id = ? WHERE id = ?').run(rid, fid);
+  return { floorId: fid, revId: rid };
+}
+
+const markerOn = (revisionId: number, locationId: number) => createAnchor({
+  revision_id: revisionId, count_location_id: locationId,
+  polygon: [{ x: 0.1, y: 0.1 }, { x: 0.2, y: 0.1 }, { x: 0.2, y: 0.2 }, { x: 0.1, y: 0.2 }],
+  cx: 0.15, cy: 0.15, label: 'SLF', display: 'pin', is_primary: true, created_by: 1,
+});
+
+test('a spot that appeared on an OLDER published plan is history, not deletable', () => {
+  const db = getDb();
+  const own = ownFloor('older');
+  const id = spot('SLF 40');
+  markerOn(own.revId, id);            // the marker sits on what is about to be v1
+
+  // The REAL lifecycle: publishing v2 marks v1 'superseded'.
+  const docId = createFloorDocument({
+    company_id: CO, original_filename: 'older-v2.pdf', pdf_relpath: 'floorplans/older-v2.pdf',
+    sha256: 'older2', byte_size: 10, page_count: 1, uploaded_by: 1,
+  });
+  const newerRev = createRevision({
+    floor_id: own.floorId, document_id: docId, source_page_number: 1,
+    page_width: 841, page_height: 595, page_rotation: 0,
+    raster_relpath: 'floorplans/older-v2.webp', raster_mime: 'image/webp',
+    raster_width: 2807, raster_height: 1985, raster_bytes: 1, uploaded_by: 1,
+  });
   db.prepare("UPDATE inventory_floor_revisions SET status = 'published' WHERE id = ?").run(newerRev);
-  db.prepare("UPDATE inventory_floor_revisions SET status = 'superseded' WHERE id = ?").run(revId);
-  db.prepare('UPDATE inventory_floors SET current_revision_id = ? WHERE id = ?').run(newerRev, floorId);
-  marker(id); // marker sits on the OLD, superseded revision
+  db.prepare("UPDATE inventory_floor_revisions SET status = 'superseded' WHERE id = ?").run(own.revId);
+  db.prepare('UPDATE inventory_floors SET current_revision_id = ? WHERE id = ?').run(newerRev, own.floorId);
 
   expect(getSpotUsage(id)).toMatchObject({ pastPlans: 1, empty: false });
   expect(deleteSpotWithAnchors(id, CO)).toBe(false);
-  expect(getDb().prepare('SELECT 1 FROM count_locations WHERE id = ?').get(id)).toBeTruthy();
-
-  db.prepare("UPDATE inventory_floor_revisions SET status = 'published' WHERE id = ?").run(revId);
-  db.prepare('UPDATE inventory_floors SET current_revision_id = ? WHERE id = ?').run(revId, floorId);
+  expect(db.prepare('SELECT 1 FROM count_locations WHERE id = ?').get(id)).toBeTruthy();
 });
 
 test('a spot on an ARCHIVED floor is history too', () => {
-  const id = spot('SLF 42');
   const db = getDb();
-  marker(id);
-  db.prepare('UPDATE inventory_floors SET active = 0 WHERE id = ?').run(floorId);
+  const own = ownFloor('archived');
+  const id = spot('SLF 42');
+  markerOn(own.revId, id);
+  db.prepare('UPDATE inventory_floors SET active = 0 WHERE id = ?').run(own.floorId);
   expect(getSpotUsage(id)).toMatchObject({ pastPlans: 1, empty: false });
   expect(deleteSpotWithAnchors(id, CO)).toBe(false);
-  db.prepare('UPDATE inventory_floors SET active = 1 WHERE id = ?').run(floorId);
 });
 
 test('a review candidate still linked to the spot blocks the delete', () => {

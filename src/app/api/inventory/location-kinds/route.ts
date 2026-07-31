@@ -18,10 +18,26 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind, renameLocationKind } from '@/lib/inventory-db';
-import { setLocationKindColor, setLocationKindShape, setLocationKindLayer, upsertLocationKind } from '@/lib/inventory-floorplan/db';
+import { setLocationKindColor, setLocationKindShape, setLocationKindLayer, setLocationKindMarkerOnly, upsertLocationKind, markerConversionBlockers, getLocationKindRow } from '@/lib/inventory-floorplan/db';
 import { isMarkerShape as isShape } from '@/lib/inventory-floorplan/marker-presets';
 import { authorizeFloorplan, FLOORPLAN_CAP } from '@/lib/inventory-floorplan/access';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
+
+
+/**
+ * Turning a type into a MARKER hides every location of that type from the
+ * product picker. If any of them already holds products or contains other
+ * places, that would hide real records — and the next save from a product
+ * sheet would write the reduced set. So the switch refuses, and says why.
+ */
+function markerConversionRefusal(companyId: number, kind: string): string | null {
+  const b = markerConversionBlockers(companyId, kind);
+  if (b.products === 0 && b.children === 0) return null;
+  const parts: string[] = [];
+  if (b.products) parts.push(`${b.products} product${b.products === 1 ? '' : 's'} stored there`);
+  if (b.children) parts.push(`${b.children} place${b.children === 1 ? '' : 's'} inside`);
+  return `Not yet — ${b.locations} location${b.locations === 1 ? '' : 's'} of this type still ${b.products + b.children === 1 ? 'has' : 'have'} ${parts.join(' and ')}. Move those first, then make it a marker.`;
+}
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -69,13 +85,17 @@ export async function POST(request: Request) {
 
   const shape = isShape(body.shape) ? body.shape : null;
   const layer = [1, 2, 3, 4].includes(Number(body.layer)) ? Number(body.layer) : null;
+  // Marker-only: the type marks a thing (valve, fuse box) rather than holding
+  // products. Nothing nests inside it and it stays out of the product picker.
+  const markerOnly = body.markerOnly === true;
 
   const row = addLocationKind(companyId, label, icon, authz.actor.userId);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (color) setLocationKindColor(row.id, companyId, color);
   if (shape) setLocationKindShape(row.id, companyId, shape);
   if (layer) setLocationKindLayer(row.id, companyId, layer);
-  return NextResponse.json({ kind: { ...row, color: color || null, shape: shape ?? 'dot', layer: layer ?? 3 } }, { status: 201 });
+  if (markerOnly) setLocationKindMarkerOnly(row.id, companyId, true);
+  return NextResponse.json({ kind: { ...row, color: color || null, shape: shape ?? 'dot', layer: layer ?? 3, marker_only: markerOnly ? 1 : 0 } }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -107,15 +127,32 @@ export async function PATCH(request: Request) {
   // Editing a BUILT-IN type: it has no row yet, so upsert an override keyed by
   // its kind. Everything on screen must be editable (Ethan's rule).
   if (!id && typeof body.kind === 'string' && body.kind.trim()) {
+    if (body.markerOnly === true) {
+      const refusal = markerConversionRefusal(companyId, String(body.kind).trim());
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
+    }
     upsertLocationKind(companyId, String(body.kind).trim(), {
       label, icon: icon || undefined,
       color: color === undefined ? undefined : (color || null),
       shape: isShape(body.shape) ? body.shape : undefined,
       layer: [1, 2, 3, 4].includes(Number(body.layer)) ? Number(body.layer) : undefined,
       hidden: body.hidden === true ? 1 : body.hidden === false ? 0 : undefined,
+      markerOnly: body.markerOnly === true ? 1 : body.markerOnly === false ? 0 : undefined,
       createdBy: authz.actor.userId,
     });
     return NextResponse.json({ message: 'Type updated' });
+  }
+
+  // PREFLIGHT before anything is written: the row itself says which kind this
+  // is (never the client — a stale or wrong `kind` would check the blockers of
+  // some other type), and a refusal must not land after a half-applied edit.
+  const row = getLocationKindRow(id, companyId);
+  if (!row) return NextResponse.json({ error: 'Type not found' }, { status: 404 });
+  const wantsMarker = body.markerOnly === true || body.markerOnly === false ? body.markerOnly : null;
+  const becomingMarker = wantsMarker === true && row.marker_only !== 1;
+  if (becomingMarker) {
+    const refusal = markerConversionRefusal(companyId, row.kind);
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
   }
 
   const result = renameLocationKind(id, companyId, label, icon);
@@ -124,8 +161,9 @@ export async function PATCH(request: Request) {
   if (color !== undefined) setLocationKindColor(id, companyId, color || null);
   if (isShape(body.shape)) setLocationKindShape(id, companyId, body.shape);
   if ([1, 2, 3, 4].includes(Number(body.layer))) setLocationKindLayer(id, companyId, Number(body.layer));
+  if (wantsMarker !== null) setLocationKindMarkerOnly(id, companyId, wantsMarker);
   if (body.hidden === true || body.hidden === false) {
-    upsertLocationKind(companyId, String(body.kind ?? '').trim() || label.toLowerCase(), { hidden: body.hidden ? 1 : 0 });
+    upsertLocationKind(companyId, row.kind, { hidden: body.hidden ? 1 : 0 });
   }
   return NextResponse.json({ message: 'Type renamed' });
 }

@@ -189,6 +189,15 @@ export function initFloorplanTables(): void {
   // built-ins live in code (existing spots reference their keys), so "delete"
   // means hidden = 1 — reversible, and never orphans a location.
   addLkCol('hidden', 'ALTER TABLE location_kinds ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+  // MARKER-ONLY types (Ethan, 2026-07-31): "the central gas shut off valve is
+  // not a location but just a location marker … for these items, we do not need
+  // any nesting nor should it be displayed inside the location picker for
+  // product location." Such a type marks the thing itself — a valve, a fuse
+  // box, a first aid kit — so nothing is stored in it and nothing nests inside.
+  // NULLABLE on purpose: NULL means "not decided here", so a built-in keeps its
+  // own default (a Utility point is a marker) even for a company whose row for
+  // it was written before this existed. Only an explicit 1/0 overrules.
+  addLkCol('marker_only', 'ALTER TABLE location_kinds ADD COLUMN marker_only INTEGER');
 
   _inited = true;
 }
@@ -464,7 +473,7 @@ export function setLocationKindShape(id: number, companyId: number, shape: strin
  */
 export function upsertLocationKind(companyId: number, kind: string, fields: {
   label?: string; icon?: string; color?: string | null;
-  shape?: string; layer?: number; hidden?: 0 | 1; createdBy?: number | null;
+  shape?: string; layer?: number; hidden?: 0 | 1; markerOnly?: 0 | 1; createdBy?: number | null;
 }): number {
   initFloorplanTables();
   const db = getDb();
@@ -474,12 +483,14 @@ export function upsertLocationKind(companyId: number, kind: string, fields: {
     const maxSort = (db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM location_kinds WHERE company_id = ?')
       .get(companyId) as { m: number }).m;
     const res = db.prepare(
-      `INSERT INTO location_kinds (company_id, kind, label, icon, color, shape, layer, hidden, sort_order, created_by, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO location_kinds (company_id, kind, label, icon, color, shape, layer, hidden, marker_only, sort_order, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).run(
       companyId, kind, fields.label ?? kind, fields.icon ?? '📍', fields.color ?? null,
-      fields.shape ?? 'dot', fields.layer ?? 3, fields.hidden ?? 0, maxSort + 10,
-      fields.createdBy ?? null, nowISO(),
+      // markerOnly stays NULL when not stated: hiding a built-in writes a row
+      // too, and a 0 there would quietly cancel Utility's own marker default.
+      fields.shape ?? 'dot', fields.layer ?? 3, fields.hidden ?? 0, fields.markerOnly ?? null,
+      maxSort + 10, fields.createdBy ?? null, nowISO(),
     );
     return res.lastInsertRowid as number;
   }
@@ -488,6 +499,7 @@ export function upsertLocationKind(companyId: number, kind: string, fields: {
   for (const [col, val] of [
     ['label', fields.label], ['icon', fields.icon], ['color', fields.color],
     ['shape', fields.shape], ['layer', fields.layer], ['hidden', fields.hidden],
+    ['marker_only', fields.markerOnly],
   ] as Array<[string, unknown]>) {
     if (val !== undefined) { sets.push(`${col} = ?`); vals.push(val); }
   }
@@ -502,6 +514,75 @@ export function upsertLocationKind(companyId: number, kind: string, fields: {
 export function setLocationKindLayer(id: number, companyId: number, layer: number): void {
   initFloorplanTables();
   getDb().prepare('UPDATE location_kinds SET layer = ? WHERE id = ? AND company_id = ?').run(layer, id, companyId);
+}
+
+/**
+ * Built-in types that MARK a thing rather than hold products. Kept here as well
+ * as in the manifest's registry because this module must answer without pulling
+ * the whole registry in — and the two are asserted equal by the unit tests.
+ */
+export const BUILTIN_MARKER_ONLY_KEYS = ['utility'];
+
+/**
+ * What stands in the way of turning a type into a MARKER: locations of that
+ * type that hold products or contain other places. Converting them anyway
+ * would hide those records from the picker — and the next save from a product
+ * sheet would then write the reduced set, silently dropping real placements.
+ */
+export function markerConversionBlockers(companyId: number, kind: string): {
+  locations: number; products: number; children: number;
+} {
+  initFloorplanTables();
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT id FROM count_locations WHERE company_id = ? AND active = 1 AND lower(kind) = lower(?)',
+  ).all(companyId, kind) as Array<{ id: number }>;
+  let products = 0, children = 0;
+  for (const r of rows) {
+    products += ((db.prepare('SELECT COUNT(*) n FROM product_locations WHERE count_location_id = ?')
+      .get(r.id) as { n: number }).n);
+    children += ((db.prepare('SELECT COUNT(*) n FROM count_locations WHERE parent_id = ? AND active = 1')
+      .get(r.id) as { n: number }).n);
+  }
+  return { locations: rows.length, products, children };
+}
+
+/** One type row, by id, scoped to its company — the canonical `kind` lives here. */
+export function getLocationKindRow(id: number, companyId: number): {
+  id: number; kind: string; label: string; marker_only: number | null;
+} | null {
+  initFloorplanTables();
+  const row = getDb().prepare(
+    'SELECT id, kind, label, marker_only FROM location_kinds WHERE id = ? AND company_id = ?',
+  ).get(id, companyId) as { id: number; kind: string; label: string; marker_only: number | null } | undefined;
+  return row ?? null;
+}
+
+/** Marker-only: the type marks a thing, it is not a place products live in. */
+export function setLocationKindMarkerOnly(id: number, companyId: number, markerOnly: boolean): void {
+  initFloorplanTables();
+  getDb().prepare('UPDATE location_kinds SET marker_only = ? WHERE id = ? AND company_id = ?')
+    .run(markerOnly ? 1 : 0, id, companyId);
+}
+
+/**
+ * The kinds THIS restaurant treats as markers rather than storage. Returned as
+ * plain strings because count_locations.kind is free text: consumers filter by
+ * kind, not by a join.
+ */
+export function markerOnlyKinds(companyId: number): string[] {
+  initFloorplanTables();
+  const rows = getDb().prepare(
+    'SELECT kind, marker_only FROM location_kinds WHERE company_id = ?',
+  ).all(companyId) as Array<{ kind: string; marker_only: number | null }>;
+  const keys = new Set(rows.filter(r => r.marker_only === 1).map(r => r.kind));
+  // Built-ins of this shape (a Utility point is a fuse box or a shut-off valve)
+  // count too, unless this restaurant explicitly said otherwise.
+  const said = new Map(rows.map(r => [r.kind, r.marker_only]));
+  for (const key of BUILTIN_MARKER_ONLY_KEYS) {
+    if (said.get(key) !== 0) keys.add(key);
+  }
+  return Array.from(keys);
 }
 
 /**

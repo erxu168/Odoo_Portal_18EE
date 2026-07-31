@@ -67,6 +67,11 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
     const token = ++tokenRef.current;
     setData(null);
     setError(null);
+    // Drilling from one spot into another keeps this component mounted, so any
+    // panel left open would carry over — including onto a marker, where those
+    // actions do not exist.
+    setLevelsOpen(false);
+    setAssignOpen(false);
     fetch(`/api/inventory/floorplan/spots/${locationId}`)
       .then(r => r.json().then(d => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
@@ -106,6 +111,14 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   }, [assignOpen, query]);
 
   const alreadyHere = new Set((data?.products ?? []).map(p => p.id));
+
+  /**
+   * A MARKER, not a place: a shut-off valve, a fuse box. It marks the thing
+   * itself, so there is nothing to store in it and nothing to nest inside it —
+   * both offers are withdrawn rather than left to fail later.
+   */
+  const markerOnly = !!typesByKey[data?.location.kind ?? '']?.markerOnly;
+  const canHoldThings = !!canAssignProducts && !markerOnly;
 
   const addLevels = async () => {
     if (!data) return;
@@ -269,7 +282,7 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
             )}
           </div>
 
-          {canAssignProducts && !levelsOpen && (
+          {canHoldThings && !levelsOpen && (
             <button
               onClick={() => setLevelsOpen(true)}
               className="h-11 w-full rounded-full border-[1.5px] border-gray-200 text-[13px] font-bold text-gray-700 active:scale-[0.98]"
@@ -277,7 +290,7 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
               ＋ Add levels / drawers inside
             </button>
           )}
-          {levelsOpen && (
+          {canHoldThings && levelsOpen && (
             <div className="rounded-2xl border border-gray-200 p-3">
               <p className="mb-2 text-[12px] font-semibold text-gray-600">
                 Numbered places inside {data.location.name} — no extra markers needed.
@@ -387,7 +400,7 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
             )}
           </div>
 
-          {canAssignProducts && !assignOpen && (
+          {canHoldThings && !assignOpen && (
             <button
               onClick={() => {
                 setPicked(new Set((data.products ?? []).map(p => p.id)));
@@ -400,7 +413,7 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
             </button>
           )}
 
-          {canAssignProducts && assignOpen && (
+          {canHoldThings && assignOpen && (
             <div className="rounded-2xl border border-gray-200 p-3">
               <p className="mb-2 text-[12px] font-semibold text-gray-600">
                 Tick everything stored at {data.location.name}. A product can live in several places.

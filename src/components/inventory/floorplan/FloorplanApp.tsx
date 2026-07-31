@@ -626,10 +626,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     if (layer <= 2) return null;                    // areas/rooms stand alone
     const wantLayer = layer - 1;                    // sit inside the layer above
     const W = activeFloor?.revision?.width ?? 1, H = activeFloor?.revision?.height ?? 1;
-    const candidates = activeAnchors.filter(a => (typesByKey[a.typeKey]?.layer ?? 3) === wantLayer);
+    const canParent = (a: { typeKey: string }) => !typesByKey[a.typeKey]?.markerOnly;
+    const candidates = activeAnchors.filter(a => canParent(a) && (typesByKey[a.typeKey]?.layer ?? 3) === wantLayer);
     const pool = candidates.length > 0
       ? candidates
-      : activeAnchors.filter(a => (typesByKey[a.typeKey]?.layer ?? 3) < layer);
+      : activeAnchors.filter(a => canParent(a) && (typesByKey[a.typeKey]?.layer ?? 3) < layer);
     if (pool.length === 0) return null;
     const inside = pool.find(a => pointInPolygon(pt, a.polygon));
     if (inside) return inside.locationId;
@@ -670,10 +671,13 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       while (cur && !seen.has(cur.id)) { parts.unshift(cur.name); seen.add(cur.id); cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined; }
       return parts.join(' › ');
     };
+    // A marker type (shut-off valve, fuse box) marks a thing, so nothing sits
+    // inside it — it is never offered as a parent.
     return treeLocations
+      .filter(l => !typesByKey[l.kind]?.markerOnly)
       .map(l => ({ id: l.id, label: pathOf(l) }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [treeLocations]);
+  }, [treeLocations, typesByKey]);
 
   const header = (
     <AppHeader

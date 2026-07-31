@@ -62,6 +62,8 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // new-location form: null = closed, else the initial for the new node
   // (parent_id + a default kind when adding INSIDE another level).
   const [creating, setCreating] = useState<{ parent_id?: number | null; kind?: string } | null>(null);
+  /** Existing placements the list does not show — preserved on save, never dropped. */
+  const [unshown, setUnshown] = useState<number[]>([]);
   const [editMode, setEditMode] = useState(false);   // "Edit levels" — reveal add/rename/type/delete controls
   // Drill-down picker: null = closed; else the ids drilled into so far
   // ([] = choosing the area, [12] = choosing what's inside location 12, …).
@@ -87,17 +89,30 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         // Spots AND the product's CURRENT home spots — fetched fresh on open so
         // a stale caller map (failed load / edited elsewhere) can never cause
         // this sheet to overwrite newer placements on save.
-        const [locRes, curRes] = await Promise.all([
+        const [locRes, allRes, curRes] = await Promise.all([
+          fetch(`/api/inventory/count-locations?company_id=${companyId}&storage_only=1`),
           fetch(`/api/inventory/count-locations?company_id=${companyId}`),
           fetch(`/api/inventory/product-locations?product_id=${product.id}`),
         ]);
-        if (!locRes.ok || !curRes.ok) throw new Error('load');
+        if (!locRes.ok || !allRes.ok || !curRes.ok) throw new Error('load');
         const d = await locRes.json();
         const locs: SpotRow[] = d.locations || [];
+        const allIds = new Set<number>(((await allRes.json()).locations || []).map((l: SpotRow) => l.id));
         setSpots(locs);
         const cur = await curRes.json();
         const companySpots = new Set(locs.map((l) => l.id));
-        setChosen(new Set<number>((cur.location_ids || []).filter((id: number) => companySpots.has(id))));
+        const current: number[] = cur.location_ids || [];
+        setChosen(new Set<number>(current.filter((id: number) => companySpots.has(id))));
+        // A placement this sheet cannot SHOW must not be a placement this sheet
+        // DELETES. Marker types (and anything under them) are filtered out of
+        // the list on purpose; rows pointing there ride through the save
+        // untouched instead of quietly disappearing.
+        //
+        // Scoped to THIS restaurant: the placements endpoint answers for every
+        // company the user can see, and this save writes one company's list —
+        // a foreign id sent along would be rejected outright.
+        const hidden = current.filter((id: number) => !companySpots.has(id) && allIds.has(id));
+        setUnshown(hidden);
         setReady(true);
       } catch {
         setError('Could not load this product’s spots — close and try again.');
@@ -224,7 +239,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         body: JSON.stringify({
           odoo_product_id: product.id,
           company_id: companyId,
-          count_location_ids: Array.from(chosen),
+          count_location_ids: Array.from(new Set([...Array.from(chosen), ...unshown])),
           apply_today: applyToday,
         }),
       });
@@ -243,22 +258,39 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   }
 
   async function refreshSpots() {
-    const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
+    const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}&storage_only=1`);
     if (r.ok) setSpots((await r.json()).locations || []);
   }
 
   // Returning from the full Locations manager: reload the spots so any new
-  // area/sub-spot is tickable, and PRUNE the current selection to spots that
-  // still exist (the manager may have deleted one) — so save can't write a dead
-  // id. The user's other (surviving) ticks are preserved.
+  // area/sub-spot is tickable, and re-sort the current selection.
+  //
+  // Two different reasons a picked id can vanish from the list, and they must
+  // not share a fate. DELETED in the manager → drop it, so save cannot write a
+  // dead id. Merely HIDDEN — its type just became a marker, or it moved under
+  // one — → keep it, unshown, so save preserves a placement this screen is no
+  // longer able to display. Telling them apart needs the unfiltered list.
   async function reloadFromManager() {
     try {
-      const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
-      if (!r.ok) return;
-      const locs: SpotRow[] = (await r.json()).locations || [];
+      const [visRes, allRes] = await Promise.all([
+        fetch(`/api/inventory/count-locations?company_id=${companyId}&storage_only=1`),
+        fetch(`/api/inventory/count-locations?company_id=${companyId}`),
+      ]);
+      if (!visRes.ok || !allRes.ok) return;
+      const locs: SpotRow[] = (await visRes.json()).locations || [];
+      const alive = new Set<number>(((await allRes.json()).locations || []).map((l: SpotRow) => l.id));
       setSpots(locs);
-      const live = new Set(locs.map((l) => l.id));
-      setChosen((prev) => new Set(Array.from(prev).filter((id) => live.has(id))));
+      const visible = new Set(locs.map((l) => l.id));
+      const movedToHidden: number[] = [];
+      setChosen((prev) => {
+        const kept = new Set<number>();
+        for (const id of Array.from(prev)) {
+          if (visible.has(id)) kept.add(id);
+          else if (alive.has(id)) movedToHidden.push(id);   // hidden, not gone
+        }
+        return kept;
+      });
+      setUnshown((prev) => Array.from(new Set([...prev.filter((id) => alive.has(id)), ...movedToHidden])));
     } catch { /* keep what we have — a failed refresh must not drop selections */ }
   }
 

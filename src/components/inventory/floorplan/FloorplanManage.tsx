@@ -72,6 +72,36 @@ const IconField = ({ value, onChange }: { value: string; onChange: (v: string) =
   </div>
 );
 
+/**
+ * "It's just a marker."
+ *
+ * Ethan, 2026-07-31: "the central gas shut off valve is not a location but just
+ * a location marker … for these items, we do not need any nesting nor should it
+ * be displayed inside the location picker for product location." A type with
+ * this on marks the thing itself — valve, fuse box, first aid kit — so nothing
+ * is stored in it, nothing nests inside it, and it never appears when someone
+ * says where a product lives.
+ */
+const MarkerOnlyToggle = ({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) => (
+  <button
+    type="button"
+    onClick={() => onChange(!value)}
+    aria-pressed={value}
+    className={`mt-2.5 flex w-full items-start gap-2.5 rounded-xl border-[1.5px] p-3 text-left ${value ? 'border-blue-600 bg-blue-50/60' : 'border-gray-200 bg-white'}`}
+  >
+    <span className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 ${value ? 'border-blue-600 bg-blue-600' : 'border-gray-300 bg-white'}`}>
+      {value && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>}
+    </span>
+    <span className="min-w-0">
+      <span className="block text-[13px] font-bold text-gray-900">It&rsquo;s just a marker</span>
+      <span className="block text-[11.5px] leading-relaxed text-gray-500">
+        Marks the thing itself — a shut-off valve, a fuse box. No products stored in it, nothing
+        inside it, and it stays out of the &ldquo;where does it live?&rdquo; picker.
+      </span>
+    </span>
+  </button>
+);
+
 const LayerPicker = ({ value, onChange }: { value: LocationLayer; onChange: (v: LocationLayer) => void }) => (
   <div className="flex flex-wrap gap-1.5">
     {([1, 2, 3, 4] as LocationLayer[]).map(l => (
@@ -134,13 +164,13 @@ export default function FloorplanManage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // human-readable progress
   const [newFloor, setNewFloor] = useState('');
-  const [newType, setNewType] = useState<{ label: string; icon: string; color: string; shape: MarkerShape; layer: LocationLayer }>(
-    { label: '', icon: '📦', color: '#16A34A', shape: 'dot', layer: 3 },
+  const [newType, setNewType] = useState<{ label: string; icon: string; color: string; shape: MarkerShape; layer: LocationLayer; markerOnly: boolean }>(
+    { label: '', icon: '📦', color: '#16A34A', shape: 'dot', layer: 3, markerOnly: false },
   );
   const [renameFloor, setRenameFloor] = useState<{ id: number; name: string } | null>(null);
   const [dragOverFloor, setDragOverFloor] = useState<number | null>(null);
   const [archiveFloor, setArchiveFloor] = useState<{ id: number; name: string } | null>(null);
-  const [editType, setEditType] = useState<{ id?: number; key: string; label: string; icon: string; color: string; shape: MarkerShape; layer: LocationLayer; custom: boolean } | null>(null);
+  const [editType, setEditType] = useState<{ id?: number; key: string; label: string; icon: string; color: string; shape: MarkerShape; layer: LocationLayer; custom: boolean; markerOnly: boolean } | null>(null);
   const [deleteType, setDeleteType] = useState<{ id?: number; key: string; label: string; custom: boolean } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadFloorRef = useRef<number | null>(null);
@@ -252,7 +282,8 @@ export default function FloorplanManage() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: editType.id, kind: editType.key, label: editType.label.trim(), icon: editType.icon.trim(),
-        color: editType.color, shape: editType.shape, layer: editType.layer, company_id: companyId,
+        color: editType.color, shape: editType.shape, layer: editType.layer,
+        markerOnly: editType.markerOnly, company_id: companyId,
       }),
     });
     if (!res.ok) { setError((await res.json()).error ?? 'Could not save the type'); }
@@ -288,12 +319,12 @@ export default function FloorplanManage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         label: newType.label.trim(), icon: newType.icon.trim(), color: newType.color,
-        shape: newType.shape, layer: newType.layer, company_id: companyId,
+        shape: newType.shape, layer: newType.layer, markerOnly: newType.markerOnly, company_id: companyId,
       }),
     });
     const d = await res.json();
     if (!res.ok) { setError(d.error ?? 'Could not add the type'); return; }
-    setNewType({ label: '', icon: '📦', color: '#16A34A', shape: 'dot', layer: 3 });
+    setNewType({ label: '', icon: '📦', color: '#16A34A', shape: 'dot', layer: 3, markerOnly: false });
     load();
   };
 
@@ -406,14 +437,18 @@ export default function FloorplanManage() {
             {types.filter(t => !t.hidden).map(t => (
               <button
                 key={t.key}
-                onClick={() => setEditType({ id: t.id, key: t.key, label: t.label, icon: t.icon, color: t.color, shape: t.shape, layer: t.layer, custom: t.custom })}
+                onClick={() => setEditType({ id: t.id, key: t.key, label: t.label, icon: t.icon, color: t.color, shape: t.shape, layer: t.layer, custom: t.custom, markerOnly: !!t.markerOnly })}
                 className="flex h-10 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[12px] font-semibold text-gray-900 active:scale-95"
                 aria-label={`Edit ${t.label}`}
               >
                 <span>{t.icon}</span>
                 <span className={t.shape === 'label' ? 'h-2.5 w-4 rounded-[3px]' : 'h-3 w-3 rounded-full'} style={{ background: t.color }} />
                 {t.label}
-                <span className="text-[9.5px] font-bold text-gray-300">L{t.layer}</span>
+                {/* A marker holds nothing, so its layer says nothing — the badge
+                    says what it IS instead, and the library reads at a glance. */}
+                {t.markerOnly
+                  ? <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-blue-700">MARKER</span>
+                  : <span className="text-[9.5px] font-bold text-gray-300">L{t.layer}</span>}
                 <span className="text-[10px] text-gray-300">✏️</span>
               </button>
             ))}
@@ -448,6 +483,7 @@ export default function FloorplanManage() {
             <IconField value={newType.icon} onChange={v => setNewType(s2 => ({ ...s2, icon: v }))} />
             <p className="mb-1 mt-2.5 text-[11px] font-semibold text-gray-500">Where does it sit?</p>
             <LayerPicker value={newType.layer} onChange={v => setNewType(s2 => ({ ...s2, layer: v }))} />
+            <MarkerOnlyToggle value={newType.markerOnly} onChange={v => setNewType(s2 => ({ ...s2, markerOnly: v }))} />
             <div className="mt-2.5 flex items-center gap-2">
               <input
                 value={newType.label}
@@ -524,6 +560,7 @@ export default function FloorplanManage() {
               <ColorPicker value={editType.color} onChange={v => setEditType(t => (t ? { ...t, color: v } : t))} />
               <IconField value={editType.icon} onChange={v => setEditType(t => (t ? { ...t, icon: v } : t))} />
               <LayerPicker value={editType.layer} onChange={v => setEditType(t => (t ? { ...t, layer: v } : t))} />
+              <MarkerOnlyToggle value={editType.markerOnly} onChange={v => setEditType(t => (t ? { ...t, markerOnly: v } : t))} />
               <button
                 onClick={() => { setDeleteType({ id: editType.id, key: editType.key, label: editType.label, custom: editType.custom }); setEditType(null); }}
                 className="h-10 w-full rounded-xl border-[1.5px] border-red-200 text-[13px] font-bold text-red-600"
