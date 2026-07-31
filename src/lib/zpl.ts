@@ -160,7 +160,14 @@ export function generateZPL(data: LabelData, opts: {
     y += gap;
     const barcodeH = Math.min(remainingDots - Math.round(4 * scale), Math.round(12 * scale));
     if (barcodeH > 16) {
-      lines.push(`^FO${margin},${y}^BY2^BCN,${barcodeH},Y,N,N^FD${escapeZPL(data.barcodeValue)}^FS`);
+      // Module width must fit the print head. Code 128 subset-B worst case is
+      // 11 modules per character + start/check/stop. At ^BY2 a 20-char lot
+      // needs ~510 dots ≈ 64mm — wider than a ZQ310's 384-dot (48mm) head,
+      // which chopped the barcode's right edge. Drop to ^BY1 when 2 dots per
+      // module cannot fit; ^BY1 keeps a 20-char lot to ~32mm.
+      const modules = 11 * (data.barcodeValue.length + 2) + 13;
+      const by = modules * 2 <= printW ? 2 : 1;
+      lines.push(`^FO${margin},${y}^BY${by}^BCN,${barcodeH},Y,N,N^FD${escapeZPL(data.barcodeValue)}^FS`);
     }
   }
 
