@@ -22,6 +22,8 @@ export interface FlyTarget { cx: number; cy: number; seq: number }
 interface Props {
   /** Bump seq to glide the view so (cx,cy) lands ~38% from the top, clear of the sheet. */
   flyTo?: FlyTarget | null;
+  /** Desktop drag & drop: a type chip dropped onto the plan. */
+  onDropType?: (typeKey: string, pt: Pt) => void;
   revision: { rasterUrl: string; width: number; height: number };
   anchors: ManifestAnchor[];
   typesByKey: Record<string, FloorplanTypeInfo>;
@@ -50,14 +52,15 @@ interface World {
 
 export default function FloorplanMap({
   revision, anchors, typesByKey, selectedId, filterType, editable,
-  onTapAnchor, onTapEmpty, onMoveAnchor, flyTo,
+  onTapAnchor, onTapEmpty, onMoveAnchor, flyTo, onDropType,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<World | null>(null);
   const resizeObsRef = useRef<ResizeObserver | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   // Callbacks kept current without re-initializing the map.
-  const cbRef = useRef({ onTapAnchor, onTapEmpty, onMoveAnchor, editable });
-  cbRef.current = { onTapAnchor, onTapEmpty, onMoveAnchor, editable };
+  const cbRef = useRef({ onTapAnchor, onTapEmpty, onMoveAnchor, onDropType, editable });
+  cbRef.current = { onTapAnchor, onTapEmpty, onMoveAnchor, onDropType, editable };
 
   const fracToLatLng = (w: World, p: Pt): Leaflet.LatLngExpression => [w.height * (1 - p.y), w.width * p.x];
   const latLngToFrac = (w: World, ll: Leaflet.LatLng): Pt => ({ x: ll.lng / w.width, y: 1 - ll.lat / w.height });
@@ -109,6 +112,27 @@ export default function FloorplanMap({
       // cold load) must still run — the seq-effect fired into the void.
       if (flyRef.current) applyFly(world, flyRef.current);
 
+      // Desktop drag & drop from the ADD tray: chips carry a custom MIME so
+      // random file drags never trigger placement here.
+      const onDragOver = (e: DragEvent) => {
+        if (e.dataTransfer?.types.includes('application/x-kw-loctype')) e.preventDefault();
+      };
+      const onDrop = (e: DragEvent) => {
+        const typeKey = e.dataTransfer?.getData('application/x-kw-loctype');
+        if (!typeKey) return;
+        e.preventDefault();
+        const wNow = worldRef.current;
+        if (!wNow || !cbRef.current.onDropType) return;
+        const ll = map.mouseEventToLatLng(e as unknown as MouseEvent);
+        cbRef.current.onDropType(typeKey, latLngToFrac(wNow, ll));
+      };
+      containerRef.current?.addEventListener('dragover', onDragOver);
+      containerRef.current?.addEventListener('drop', onDrop);
+      dragCleanupRef.current = () => {
+        containerRef.current?.removeEventListener('dragover', onDragOver);
+        containerRef.current?.removeEventListener('drop', onDrop);
+      };
+
       // The container often gets its FINAL size after init (desktop shell
       // lays out late) — a stale size locks minZoom too high and the whole
       // plan becomes unreachable. Track resizes: refresh Leaflet's cached
@@ -129,6 +153,8 @@ export default function FloorplanMap({
     })();
     return () => {
       cancelled = true;
+      dragCleanupRef.current?.();
+      dragCleanupRef.current = null;
       resizeObsRef.current?.disconnect();
       resizeObsRef.current = null;
       if (world) { world.map.remove(); }

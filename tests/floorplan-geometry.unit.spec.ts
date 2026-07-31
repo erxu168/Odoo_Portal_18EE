@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import {
+  pointInPolygon,
   textItemPolygon,
   rotationDegrees,
   polygonCentroid,
@@ -135,4 +136,13 @@ test('REAL PLAN: extraction finds the storage labels and rooms of SSK96 -1F', as
       expect(p.y).toBeLessThanOrEqual(1);
     }
   }
+});
+
+test('pointInPolygon: inside, outside, and non-rectangular', () => {
+  const box = [{ x: 0.2, y: 0.2 }, { x: 0.6, y: 0.2 }, { x: 0.6, y: 0.5 }, { x: 0.2, y: 0.5 }];
+  expect(pointInPolygon({ x: 0.4, y: 0.35 }, box)).toBe(true);
+  expect(pointInPolygon({ x: 0.1, y: 0.35 }, box)).toBe(false);
+  const tri = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 1 }];
+  expect(pointInPolygon({ x: 0.5, y: 0.4 }, tri)).toBe(true);
+  expect(pointInPolygon({ x: 0.05, y: 0.9 }, tri)).toBe(false);
 });

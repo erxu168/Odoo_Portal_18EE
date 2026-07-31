@@ -27,16 +27,20 @@ interface Props {
   locationId: number;
   typesByKey: Record<string, FloorplanTypeInfo>;
   canEditProductPhotos: boolean;
+  /** inventory.location.manage — enables the spot-photo capture right here. */
+  canEditSpotPhoto?: boolean;
   onClose: () => void;
 }
 
-export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProductPhotos, onClose }: Props) {
+export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProductPhotos, canEditSpotPhoto, onClose }: Props) {
   const router = useRouter();
   const [data, setData] = useState<SheetData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState<number | null>(null);
   const [imageBust, setImageBust] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const spotPhotoRef = useRef<HTMLInputElement>(null);
+  const [spotPhotoBusy, setSpotPhotoBusy] = useState(false);
   const pendingProductRef = useRef<number | null>(null);
   const tokenRef = useRef(0);
 
@@ -55,6 +59,37 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   }, [locationId, imageBust]);
 
   const type = data ? typesByKey[data.location.kind] : undefined;
+
+  const saveSpotPhoto = async (file: File | null | undefined) => {
+    if (!file || !data) return;
+    setSpotPhotoBusy(true);
+    try {
+      const dataUrl = await downscale(file);
+      const res = await fetch('/api/inventory/count-locations', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: data.location.id, photo: dataUrl }),
+      });
+      if (!res.ok) setError((await res.json().catch(() => ({}))).error ?? 'Could not save the photo');
+      else setImageBust(b => b + 1); // reload — the new photo appears in place
+    } catch {
+      setError('Could not read that photo');
+    } finally {
+      setSpotPhotoBusy(false);
+      if (spotPhotoRef.current) spotPhotoRef.current.value = '';
+    }
+  };
+
+  // Paste support (house rule: camera + roll + file + drag + paste).
+  useEffect(() => {
+    if (!canEditSpotPhoto) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.files ?? []).find(f => f.type.startsWith('image/'));
+      if (file) void saveSpotPhoto(file);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEditSpotPhoto, data?.location.id]);
 
   const startPhoto = (productId: number) => {
     pendingProductRef.current = productId;
@@ -115,14 +150,33 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
             )}
           </div>
 
-          {data.location.photo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.location.photo} alt={`Photo of ${data.location.name}`} className="max-h-40 w-full rounded-2xl object-cover" />
-          ) : (
-            <div className="flex h-16 items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 text-[12px] font-medium text-gray-400">
-              📷 No spot photo yet — add one on the spot’s page
-            </div>
-          )}
+          <div
+            onDragOver={canEditSpotPhoto ? e => e.preventDefault() : undefined}
+            onDrop={canEditSpotPhoto ? e => { e.preventDefault(); void saveSpotPhoto(e.dataTransfer.files?.[0]); } : undefined}
+            onClick={canEditSpotPhoto ? () => spotPhotoRef.current?.click() : undefined}
+            role={canEditSpotPhoto ? 'button' : undefined}
+            aria-label={canEditSpotPhoto ? `Add a photo of ${data.location.name}` : undefined}
+            className={canEditSpotPhoto ? 'cursor-pointer' : undefined}
+          >
+            <input ref={spotPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => void saveSpotPhoto(e.target.files?.[0])} />
+            {data.location.photo ? (
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={data.location.photo} alt={`Photo of ${data.location.name}`} className="max-h-40 w-full rounded-2xl object-cover" />
+                {canEditSpotPhoto && (
+                  <span className="absolute bottom-2 right-2 rounded-full bg-gray-900/75 px-2.5 py-1 text-[10.5px] font-bold text-white">
+                    {spotPhotoBusy ? 'Saving…' : '📷 Replace'}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex h-16 items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 text-[12px] font-medium text-gray-400">
+                {canEditSpotPhoto
+                  ? (spotPhotoBusy ? 'Saving…' : '📷 Add a photo — tap, drop or paste')
+                  : '📷 No spot photo yet'}
+              </div>
+            )}
+          </div>
 
           <div>
             <p className="mb-1.5 text-[10.5px] font-bold tracking-[0.08em] text-gray-400">STORED HERE</p>

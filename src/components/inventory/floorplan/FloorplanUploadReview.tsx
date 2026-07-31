@@ -29,6 +29,7 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [existingRooms, setExistingRooms] = useState<string[]>([]);
   const tokenRef = useRef(0);
 
   const load = useCallback(() => {
@@ -47,14 +48,29 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
       );
       setCands(loaded);
       setTypes(man.manifest?.types ?? []);
+      // Existing room-like locations join the room dropdowns, so tagging can
+      // attach to the tree you already curated (publish links them by name).
+      const companyId = (rev.d as ReviewPayload).floor.company_id;
+      fetch(`/api/inventory/count-locations?company_id=${companyId}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (tokenRef.current !== token || !d?.locations) return;
+          const ROOMISH = new Set(['room', 'area', 'floor']);
+          setExistingRooms((d.locations as Array<{ name: string; kind: string }>)
+            .filter(l => ROOMISH.has(l.kind)).map(l => l.name));
+        })
+        .catch(() => { /* dropdown just shows plan rooms */ });
     }).catch(() => { if (tokenRef.current === token) setError('Could not load — check your connection'); });
   }, [revisionId]);
   useEffect(() => { load(); }, [load]);
 
   const spotTypes = useMemo(() => types.filter(t => !['floor', 'area', 'room'].includes(t.key)), [types]);
   const roomNames = useMemo(
-    () => Array.from(new Set(cands.filter(c => c.proposed_kind === 'room' && c.disposition !== 'ignored').map(c => c.raw_text.trim()))),
-    [cands],
+    () => Array.from(new Set([
+      ...cands.filter(c => c.proposed_kind === 'room' && c.disposition !== 'ignored').map(c => c.raw_text.trim()),
+      ...existingRooms,
+    ])).sort((a, b) => a.localeCompare(b)),
+    [cands, existingRooms],
   );
 
   const patch = (id: number, updates: Partial<CandidateRow>) =>

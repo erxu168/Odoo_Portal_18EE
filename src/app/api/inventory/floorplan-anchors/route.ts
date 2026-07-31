@@ -43,6 +43,38 @@ export async function POST(request: Request) {
   if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) {
     return NextResponse.json({ error: 'Invalid position' }, { status: 400 });
   }
+
+  // Variant A — place an EXISTING location on the plan (single source of
+  // truth: the tree persists, the plan just gains its marker).
+  if (body.existingLocationId != null) {
+    const loc = getCountLocation(Number(body.existingLocationId));
+    if (!loc || loc.company_id !== floor.company_id || !loc.active) {
+      return NextResponse.json({ error: 'That location was not found in this restaurant' }, { status: 400 });
+    }
+    const clampA = (v: number) => Math.min(1, Math.max(0, v));
+    try {
+      const anchorId = createAnchor({
+        revision_id: revision.id,
+        count_location_id: loc.id,
+        polygon: [
+          { x: clampA(x - PIN_HALF_W), y: clampA(y - PIN_HALF_H) },
+          { x: clampA(x + PIN_HALF_W), y: clampA(y - PIN_HALF_H) },
+          { x: clampA(x + PIN_HALF_W), y: clampA(y + PIN_HALF_H) },
+          { x: clampA(x - PIN_HALF_W), y: clampA(y + PIN_HALF_H) },
+        ],
+        cx: x, cy: y, label: loc.name, display: 'pin', is_primary: true,
+        created_by: authz.actor.userId,
+      });
+      return NextResponse.json({ locationId: loc.id, anchorId }, { status: 201 });
+    } catch (e: unknown) {
+      if (e instanceof Error && /UNIQUE/i.test(e.message)) {
+        return NextResponse.json({ error: `“${loc.name}” is already on this plan` }, { status: 409 });
+      }
+      throw e;
+    }
+  }
+
+  // Variant B — create a brand-new location AND place it.
   const code = normalizeCode(String(body.code ?? ''));
   if (!code || code.length > 60) return NextResponse.json({ error: 'A spot code is required' }, { status: 400 });
   const typeKey = String(body.typeKey ?? '').slice(0, 40);

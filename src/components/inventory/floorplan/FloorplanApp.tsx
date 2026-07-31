@@ -14,6 +14,8 @@ import { CompanyPill } from '@/components/ui/CompanyPill';
 import { allowedActionKeysForRole } from '@/lib/permissions';
 import type { FloorplanManifest, FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
 import { cacheFloorplan, getCachedFloorplan } from '@/lib/inventory-floorplan/offline';
+import { pointInPolygon } from '@/lib/inventory-floorplan/geometry';
+import type { Pt } from '@/lib/inventory-floorplan/types';
 import FloorplanMap, { type FlyTarget } from './FloorplanMap';
 import FloorplanSearch from './FloorplanSearch';
 import FloorplanSpotSheet from './FloorplanSpotSheet';
@@ -44,7 +46,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [capabilities, setCapabilities] = useState<string[]>(() => allowedActionKeysForRole('staff', {}));
   const [edit, setEdit] = useState(false);
   const [armed, setArmed] = useState<string | null>(null);
-  const [addForm, setAddForm] = useState<{ x: number; y: number; code: string; roomId: number | null } | null>(null);
+  const [addForm, setAddForm] = useState<{ x: number; y: number; code: string; roomId: number | null; existingId: number | null } | null>(null);
+  const [treeLocations, setTreeLocations] = useState<Array<{ id: number; name: string; parent_id: number | null; kind: string }>>([]);
   const [editSel, setEditSel] = useState<{ anchorId: number; locationId: number; label: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
@@ -218,19 +221,20 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   };
 
   const placeSpot = async () => {
-    if (!addForm || !armed || activeFloorId == null) return;
+    if (!addForm || activeFloorId == null) return;
+    const body = addForm.existingId != null
+      ? { floorId: activeFloorId, x: addForm.x, y: addForm.y, existingLocationId: addForm.existingId }
+      : { floorId: activeFloorId, x: addForm.x, y: addForm.y, typeKey: armed, code: addForm.code, roomLocationId: addForm.roomId };
+    if (addForm.existingId == null && !armed) return;
     const res = await fetch('/api/inventory/floorplan-anchors', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        floorId: activeFloorId, x: addForm.x, y: addForm.y,
-        typeKey: armed, code: addForm.code, roomLocationId: addForm.roomId,
-      }),
+      body: JSON.stringify(body),
     });
     const d = await res.json();
     if (!res.ok) { toast(d.error ?? 'Could not add the spot'); return; }
     setAddForm(null);
     setArmed(null);
-    toast(`${addForm.code} placed — drag its handle to fine-tune`);
+    toast(addForm.existingId != null ? 'Placed on the plan — same location, now with a marker' : `${addForm.code} placed — drag its handle to fine-tune`);
     load();
   };
 
@@ -251,6 +255,52 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     setEditSel(null);
     load();
   };
+
+  useEffect(() => {
+    if (!edit || !manifest) return;
+    fetch(`/api/inventory/count-locations?company_id=${manifest.companyId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.locations) setTreeLocations(d.locations); })
+      .catch(() => { /* link-existing just stays empty */ });
+  }, [edit, manifest]);
+
+  const placedEverywhere = useMemo(() => {
+    const ids = new Set<number>();
+    for (const list of Object.values(manifest?.anchors ?? {})) for (const a of list) ids.add(a.locationId);
+    return ids;
+  }, [manifest?.anchors]);
+
+  /** Existing tree locations not yet on any plan — candidates for linking. */
+  const unplacedLocations = useMemo(() => {
+    const byId = new Map(treeLocations.map(l => [l.id, l]));
+    return treeLocations
+      .filter(l => !placedEverywhere.has(l.id))
+      .map(l => ({ id: l.id, label: l.parent_id && byId.get(l.parent_id) ? `${byId.get(l.parent_id)!.name} › ${l.name}` : l.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [treeLocations, placedEverywhere]);
+
+  /** Which room is at this point? Containment on the room label's box, else nearest room anchor. */
+  const inferRoom = useCallback((pt: Pt): number | null => {
+    const ROOMISH = new Set(['room', 'area', 'floor']);
+    const rooms = activeAnchors.filter(a => ROOMISH.has(a.typeKey));
+    if (rooms.length === 0) return null;
+    const hit = rooms.find(a => pointInPolygon(pt, a.polygon));
+    if (hit) return hit.locationId;
+    const W = activeFloor?.revision?.width ?? 1, H = activeFloor?.revision?.height ?? 1;
+    let best: number | null = null, bd = Infinity;
+    for (const a of rooms) {
+      const d = Math.hypot((pt.x - a.cx) * W, (pt.y - a.cy) * H);
+      if (d < bd) { bd = d; best = a.locationId; }
+    }
+    return best;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAnchors, activeFloor?.revision]);
+
+  const openAddForm = useCallback((typeKey: string, pt: Pt) => {
+    setArmed(typeKey);
+    setAddForm({ x: pt.x, y: pt.y, code: suggestCode(typeKey), roomId: inferRoom(pt), existingId: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inferRoom, activeAnchors]);
 
   const roomOptions = useMemo(
     () => (manifest ? manifest.places.filter(p => p.bucket === 'room' && p.floorId === activeFloorId) : []),
@@ -373,8 +423,10 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           {(manifest?.types ?? []).filter(t => !['floor', 'area'].includes(t.key)).map(t => (
             <button
               key={t.key}
+              draggable
+              onDragStart={e => { e.dataTransfer.setData('application/x-kw-loctype', t.key); e.dataTransfer.effectAllowed = 'copy'; setArmed(t.key); }}
               onClick={() => setArmed(armed === t.key ? null : t.key)}
-              className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold ${armed === t.key ? 'border-white bg-white text-gray-900' : 'border-gray-600 bg-transparent text-gray-100'}`}
+              className={`flex h-9 flex-shrink-0 cursor-grab items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold ${armed === t.key ? 'border-white bg-white text-gray-900' : 'border-gray-600 bg-transparent text-gray-100'}`}
             >
               <span>{t.icon}</span>{t.label}
             </button>
@@ -414,11 +466,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             setSelectedId(id); setSheetId(id);
           }}
           onTapEmpty={pt => {
-            if (edit && armed) { setAddForm({ x: pt.x, y: pt.y, code: suggestCode(armed), roomId: roomOptions[0]?.locationId ?? null }); return; }
+            if (edit && armed) { openAddForm(armed, pt); return; }
             if (!edit) closeSheet();
             setEditSel(null);
           }}
           onMoveAnchor={(a, polygon, cx, cy) => moveAnchor(a, polygon, cx, cy)}
+          onDropType={(typeKey, pt) => { if (edit) openAddForm(typeKey, pt); }}
           flyTo={flyTo}
         />
         {notice && (
@@ -454,6 +507,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           locationId={sheetId}
           typesByKey={typesByKey}
           canEditProductPhotos={capabilities.includes('inventory.productsettings.manage')}
+          canEditSpotPhoto={canManage}
           onClose={closeSheet}
         />
       )}
@@ -463,21 +517,41 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             <h4 className="mb-3 text-[15px] font-bold text-gray-900">
               {typesByKey[armed]?.icon} Add {typesByKey[armed]?.label.toLowerCase()} here
             </h4>
-            <input
-              value={addForm.code}
-              onChange={e => setAddForm(f => (f ? { ...f, code: e.target.value } : f))}
-              aria-label="Spot code"
-              className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
-            />
-            <select
-              value={addForm.roomId ?? ''}
-              onChange={e => setAddForm(f => (f ? { ...f, roomId: e.target.value ? Number(e.target.value) : null } : f))}
-              aria-label="Room"
-              className="mb-3 h-11 w-full rounded-xl border-[1.5px] border-gray-200 bg-white px-3 text-[13px] font-semibold text-gray-700 outline-none"
-            >
-              <option value="">· no room ·</option>
-              {roomOptions.map(r => <option key={r.locationId} value={r.locationId}>{r.label}</option>)}
-            </select>
+            {addForm.existingId == null && (
+              <>
+                <input
+                  value={addForm.code}
+                  onChange={e => setAddForm(f => (f ? { ...f, code: e.target.value } : f))}
+                  aria-label="Name"
+                  className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
+                />
+                <select
+                  value={addForm.roomId ?? ''}
+                  onChange={e => setAddForm(f => (f ? { ...f, roomId: e.target.value ? Number(e.target.value) : null } : f))}
+                  aria-label="Room"
+                  className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 bg-white px-3 text-[13px] font-semibold text-gray-700 outline-none"
+                >
+                  <option value="">· no room ·</option>
+                  {roomOptions.map(r => <option key={r.locationId} value={r.locationId}>{r.label}</option>)}
+                </select>
+              </>
+            )}
+            {unplacedLocations.length > 0 && (
+              <select
+                value={addForm.existingId ?? ''}
+                onChange={e => setAddForm(f => (f ? { ...f, existingId: e.target.value ? Number(e.target.value) : null } : f))}
+                aria-label="Link an existing location"
+                className="mb-3 h-11 w-full rounded-xl border-[1.5px] border-dashed border-gray-300 bg-white px-3 text-[13px] font-semibold text-gray-700 outline-none"
+              >
+                <option value="">· create as NEW — or pick an existing location ·</option>
+                {unplacedLocations.map(l => <option key={l.id} value={l.id}>📍 {l.label}</option>)}
+              </select>
+            )}
+            {addForm.existingId != null && (
+              <p className="mb-3 text-[12px] leading-relaxed text-gray-500">
+                Places the existing location here — its name, type and product links stay exactly as they are.
+              </p>
+            )}
             <div className="flex gap-2">
               <button onClick={() => setAddForm(null)} className="h-11 flex-1 rounded-full border-[1.5px] border-gray-200 text-[13.5px] font-bold text-gray-700">Cancel</button>
               <button onClick={placeSpot} className="h-11 flex-1 rounded-full bg-green-600 text-[13.5px] font-bold text-white">Add spot</button>

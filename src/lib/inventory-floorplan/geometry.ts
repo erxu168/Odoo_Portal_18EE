@@ -73,6 +73,19 @@ export function normalizeCode(s: string): string {
   return s.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+/** Ray-cast point-in-polygon in page-fraction space (room inference on drop). */
+export function pointInPolygon(pt: Pt, poly: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > pt.y) !== (b.y > pt.y) &&
+        pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 /** The storage invariant every persisted polygon must satisfy: ≥3 finite points in [0,1]². */
 export function validStoredPolygon(poly: unknown): poly is Pt[] {
   return Array.isArray(poly) && poly.length >= 3 && poly.length <= 12 && poly.every(p =>

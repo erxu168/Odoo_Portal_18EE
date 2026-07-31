@@ -22,7 +22,7 @@ import type { CountLocation } from '@/types/inventory';
  * then a "+ Add inside" button. Depth 0 is a card; deeper levels are lighter,
  * indented rows. Drag-reorder stays within each sibling group at every level.
  */
-function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope }: {
+function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope, placedIds }: {
   node: LocationTreeNode<CountLocation>;
   depth: number;
   /** Expansion scope — per screen, so a picker sheet opens independently. */
@@ -32,6 +32,8 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
   onEdit: (loc: Partial<CountLocation>) => void;
   /** Resolves a type's emoji incl. custom types; defaults to the built-in icon. */
   iconOf?: (kind: string | null | undefined) => string;
+  /** Locations placed on a published floor plan — shows the 🗺 badge. */
+  placedIds?: Set<number>;
 }) {
   const isRoot = depth === 0;
   const hasChildren = node.children.length > 0;
@@ -104,6 +106,11 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
             <div className="flex-1 min-w-0">
               <div className={isRoot ? 'font-bold text-gray-900 truncate' : 'font-semibold text-gray-800 text-sm truncate'}>
                 {node.name}
+                {/* Same record as the floor plan — the badge makes the single
+                    source of truth VISIBLE (Ethan, 2026-07-31). */}
+                {placedIds?.has(node.id) && (
+                  <span className="ml-1.5 text-[11px]" title="Placed on the floor plan" aria-label="Placed on the floor plan">🗺</span>
+                )}
                 {/* Collapsing SUMMARISES; a silent closed row makes people open
                     every one again to find out what is in it. */}
                 {hasChildren && !isOpen && (
@@ -134,7 +141,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={node.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {node.children.map((child) => (
-                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} />
+                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} placedIds={placedIds} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -183,6 +190,23 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
   const companyId = companyIdProp ?? activeCompanyId;
   // Type icons incl. this company's CUSTOM types (built-ins + custom).
   const { iconOf } = useLocationTypes(companyId);
+  const [placedIds, setPlacedIds] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    let stale = false;
+    const q = companyId ? `?company_id=${companyId}` : '';
+    fetch(`/api/inventory/floorplan${q}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (stale || !d?.manifest) return;
+        const ids = new Set<number>();
+        for (const list of Object.values(d.manifest.anchors ?? {}) as Array<Array<{ locationId: number }>>) {
+          for (const a of list) ids.add(a.locationId);
+        }
+        setPlacedIds(ids);
+      })
+      .catch(() => { /* badge only — never block the tree */ });
+    return () => { stale = true; };
+  }, [companyId]);
   const [locations, setLocations] = useState<CountLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -381,6 +405,7 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
             {tree.map((area) => (
               <LocationNode
                 key={area.id}
+                placedIds={placedIds}
                 node={area}
                 depth={0}
                 sensors={sensors}
