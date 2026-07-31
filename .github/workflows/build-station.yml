@@ -16,6 +16,9 @@ on:
     paths:
       - 'apps/department-device/**'
       - '.github/workflows/build-station.yml'
+      # This build compiles the Portal app's printer plugin into this app, so a
+      # change to that file has to rebuild this APK too.
+      - 'apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java'
       - 'package.json'
       - 'package-lock.json'
   push:
@@ -23,6 +26,9 @@ on:
     paths:
       - 'apps/department-device/**'
       - '.github/workflows/build-station.yml'
+      # This build compiles the Portal app's printer plugin into this app, so a
+      # change to that file has to rebuild this APK too.
+      - 'apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java'
       - 'package.json'
       - 'package-lock.json'
 
@@ -95,14 +101,25 @@ jobs:
           SRC="apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
           test -f "$SRC" || { echo "::error::The Portal app's ZebraPrintPlugin.java is missing ($SRC). The station app builds its printer support FROM that file — if it moved, update this step."; exit 1; }
 
-          DEST_DIR="apps/department-device/android/app/src/main/java/de/krawings/station"
+          # Everything hangs off the appId. Hard-coding the package meant a
+          # rename in capacitor.config.json would build green and print nothing:
+          # the generated MainActivity would win and the plugin never register.
+          APP_ID=$(node -p "require('./apps/department-device/capacitor.config.json').appId")
+          NS=$(grep -o 'namespace = "[^"]*"' apps/department-device/android/app/build.gradle | cut -d'"' -f2)
+          test "$NS" = "$APP_ID" || { echo "::error::The generated project's namespace ($NS) is not the appId ($APP_ID) — the injected classes would land in the wrong package."; exit 1; }
+          grep -q "^package ${APP_ID};" apps/department-device/native/java/MainActivity.java \
+            || { echo "::error::native/java/MainActivity.java declares a different package than ${APP_ID} — update it alongside capacitor.config.json."; exit 1; }
+
+          DEST_DIR="apps/department-device/android/app/src/main/java/${APP_ID//.//}"
           mkdir -p "$DEST_DIR/plugins"
 
           # Same code, this app's package.
-          sed 's/^package de\.krawings\.portal\.plugins;/package de.krawings.station.plugins;/' \
+          sed "s/^package de\.krawings\.portal\.plugins;/package ${APP_ID}.plugins;/" \
             "$SRC" > "$DEST_DIR/plugins/ZebraPrintPlugin.java"
-          grep -q '^package de\.krawings\.station\.plugins;' "$DEST_DIR/plugins/ZebraPrintPlugin.java" \
+          grep -q "^package ${APP_ID}\.plugins;" "$DEST_DIR/plugins/ZebraPrintPlugin.java" \
             || { echo "::error::Package rewrite did not take — the plugin would not compile into this app."; exit 1; }
+          ! grep -q 'de\.krawings\.portal' "$DEST_DIR/plugins/ZebraPrintPlugin.java" \
+            || { echo "::error::A de.krawings.portal reference survived the rewrite — it cannot compile here."; exit 1; }
 
           # Replace the generated MainActivity with ours (it registers the plugin).
           cp apps/department-device/native/java/MainActivity.java "$DEST_DIR/MainActivity.java"
@@ -115,42 +132,57 @@ jobs:
       # them is not optional: the runtime request the plugin makes fails
       # silently against an undeclared permission, which looks exactly like a
       # printer that will not connect.
+      # Capacitor's generated manifest declares only INTERNET. Declaring the
+      # rest is not cosmetic: a runtime permission request against an
+      # undeclared permission is denied instantly with no dialog, which on a
+      # tablet looks exactly like a printer that will not connect.
       - name: Declare the Bluetooth permissions in the manifest
         working-directory: .
         run: |
           set -euo pipefail
           MANIFEST="apps/department-device/android/app/src/main/AndroidManifest.xml"
           test -f "$MANIFEST" || { echo "::error::No generated manifest at $MANIFEST"; exit 1; }
-          grep -q '<application' "$MANIFEST" || { echo "::error::Manifest has no <application> element to anchor on"; exit 1; }
 
           python3 - "$MANIFEST" <<'PY'
           import sys, re
           path = sys.argv[1]
           xml = open(path, encoding='utf-8').read()
+
+          # Scoped deliberately. The plugin only ever reads the list of ALREADY
+          # PAIRED devices and cancels discovery — it never scans for new ones
+          # and never wants a location. So SCAN is flagged neverForLocation, and
+          # the three legacy permissions stop at Android 11, which is the last
+          # version that used them. Without that, staff would be asked for
+          # location just to print a label.
           perms = [
-              # Android 11 and older
-              'android.permission.BLUETOOTH',
-              'android.permission.BLUETOOTH_ADMIN',
-              'android.permission.ACCESS_FINE_LOCATION',
-              # Android 12+ (runtime-requested by the plugin)
-              'android.permission.BLUETOOTH_CONNECT',
-              'android.permission.BLUETOOTH_SCAN',
+              ('android.permission.BLUETOOTH', ' android:maxSdkVersion="30"'),
+              ('android.permission.BLUETOOTH_ADMIN', ' android:maxSdkVersion="30"'),
+              ('android.permission.ACCESS_FINE_LOCATION', ' android:maxSdkVersion="30"'),
+              ('android.permission.BLUETOOTH_CONNECT', ''),
+              ('android.permission.BLUETOOTH_SCAN', ' android:usesPermissionFlags="neverForLocation"'),
           ]
-          missing = [p for p in perms if f'android:name="{p}"' not in xml]
+          declared = lambda doc, name: re.search(
+              r'<uses-permission[^>]*android:name="%s"' % re.escape(name), doc) is not None
+
+          missing = [(n, a) for n, a in perms if not declared(xml, n)]
           if missing:
-              block = '\n'.join(f'    <uses-permission android:name="{p}" />' for p in missing)
+              block = '\n'.join(
+                  '    <uses-permission android:name="%s"%s />' % (n, a) for n, a in missing)
               xml, n = re.subn(r'(\n\s*<application\b)', '\n' + block + r'\1', xml, count=1)
               if n != 1:
-                  sys.exit('Could not find <application> to insert before — manifest patch aborted')
+                  sys.exit('::error::No <application> element to insert before — manifest patch aborted')
               open(path, 'w', encoding='utf-8').write(xml)
-          print('permissions now declared:',
-                [p for p in perms if f'android:name="{p}"' in open(path, encoding='utf-8').read()])
-          PY
 
-          for P in BLUETOOTH BLUETOOTH_ADMIN BLUETOOTH_CONNECT BLUETOOTH_SCAN ACCESS_FINE_LOCATION; do
-            grep -q "android.permission.$P" "$MANIFEST" || { echo "::error::$P missing from the manifest after patching"; exit 1; }
-          done
-          echo "OK: Bluetooth permissions declared"
+          # Verified in the same process that wrote the file, matched exactly.
+          # A shell `grep android.permission.BLUETOOTH` would have been happy
+          # with the BLUETOOTH_CONNECT line and passed while BLUETOOTH itself
+          # was missing.
+          final = open(path, encoding='utf-8').read()
+          absent = [n for n, _ in perms if not declared(final, n)]
+          if absent:
+              sys.exit('::error::Still missing after patching: ' + ', '.join(absent))
+          print('OK: declared', ', '.join(n.rsplit('.', 1)[1] for n, _ in perms))
+          PY
 
       - name: Generate the app icon (legacy + adaptive)
         run: |
@@ -174,20 +206,23 @@ jobs:
         working-directory: .
         run: |
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          set -euo pipefail
           APK=apps/department-device/android/app/build/outputs/apk/debug/app-debug.apk
-          "$AAPT" dump badging "$APK" | grep -q "package: name='de.krawings.station'"
+          APP_ID=$(node -p "require('./apps/department-device/capacitor.config.json').appId")
+          "$AAPT" dump badging "$APK" | grep -q "package: name='${APP_ID}'"
           # The printer is why staff can use this app for labels — prove the
-          # finished APK really carries it, not just the source tree.
+          # FINISHED apk carries it, not just the source tree.
           "$AAPT" dump badging "$APK" | grep -q "uses-permission: name='android.permission.BLUETOOTH_CONNECT'"
           "$AAPT" dump badging "$APK" | grep -q "uses-permission: name='android.permission.BLUETOOTH_SCAN'"
           # Look through EVERY dex (this app spills over several, and ours is
           # the last one). `strings -a` because the default skips sections.
+          CLASS="${APP_ID//.//}/plugins/ZebraPrintPlugin"
           FOUND=0
           for D in $(unzip -Z1 "$APK" 'classes*.dex'); do
-            if unzip -p "$APK" "$D" | LC_ALL=C strings -a | grep -q 'de/krawings/station/plugins/ZebraPrintPlugin'; then FOUND=1; break; fi
+            if unzip -p "$APK" "$D" | LC_ALL=C strings -a | grep -q "$CLASS"; then FOUND=1; break; fi
           done
-          test "$FOUND" = 1 || { echo "::error::The built APK does not contain ZebraPrintPlugin — printing would be dead in this app."; exit 1; }
-          echo "OK: APK is de.krawings.station, with the Bluetooth printer plugin and its permissions"
+          test "$FOUND" = 1 || { echo "::error::The built APK does not contain $CLASS — printing would be dead in this app."; exit 1; }
+          echo "OK: ${APP_ID} with the Bluetooth printer plugin and its permissions"
 
       - name: Upload the APK as a build artifact
         uses: actions/upload-artifact@v4
