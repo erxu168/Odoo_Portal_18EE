@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import CollapsibleNode from '@/components/ui/CollapsibleNode';
-import { collapseAll, expandAll, expandedCount } from '@/lib/tree-expansion';
+import { collapseAll, expandAll, expandedCount, setExpanded } from '@/lib/tree-expansion';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
 import { useLocationTypes } from '@/lib/use-location-types';
@@ -283,6 +283,10 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
       if (newId) {
         const newRow: SpotRow = { id: newId, parent_id: parentId, name: (loc.name || '').trim(), kind: loc.kind || 'area', photo: loc.photo ?? null, description: loc.description ?? null, sort_order: 9999 };
         setSpots((prev) => prev.some((s) => s.id === newId) ? prev : [...prev, newRow]);
+        // Branches are collapsed by default now, so a level added into a closed
+        // parent would land out of sight. Open the parent instead of leaving the
+        // manager wondering whether the tap worked.
+        if (parentId != null) setExpanded(spotScope, parentId, true);
       }
       setCreating(null);
       refreshSpots().catch(() => {});   // best-effort reconcile (real sort_order/parent)
@@ -357,13 +361,25 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             {s.description && <span className="block truncate text-[var(--fs-xs)] font-normal text-gray-500">{s.description}</span>}
           </span>
         </button>
-        {/* Drill-down: rename / change type / delete this level in place — only
-            in Edit mode, and only for users who can manage locations (else 403). */}
+        {/* Edit mode actions live ON the row: add a level inside, or rename /
+            retype / delete this one. They used to be a full-width
+            "+ Add inside <NAME>" pill under every single node, which doubled the
+            row count and repeated the name twice per level — Ethan, seeing the
+            result: "this is quite messy and confusing". */}
         {canManageLocations && editMode && (
-          <button onClick={() => { setFormError(null); setEditing(s); }} disabled={saving} aria-label={`Edit ${s.name}`}
-            className="px-3 py-2.5 text-gray-400 active:text-gray-700 flex-shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          </button>
+          <>
+            <button
+              onClick={() => setCreating({ parent_id: s.id, kind: suggestedChildTypes(s.kind)[0]?.key || 'shelf' })}
+              disabled={saving} aria-label={`Add a level inside ${s.name}`} title={`Add inside ${s.name}`}
+              className="px-2.5 py-2.5 text-green-700 active:text-green-900 flex-shrink-0"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <button onClick={() => { setFormError(null); setEditing(s); }} disabled={saving} aria-label={`Edit ${s.name}`}
+              className="pl-1 pr-3 py-2.5 text-gray-400 active:text-gray-700 flex-shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+          </>
         )}
       </div>
     );
@@ -399,7 +415,6 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
 
   function renderNode(node: any, isTop: boolean) {
     const kids = node.children || [];
-    const showAddInside = editMode && canManageLocations;
     return (
       <CollapsibleNode
         key={node.id}
@@ -407,8 +422,11 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         id={node.id}
         label={node.name}
         insideCount={countBelow(node)}
-        // Open while building the map, and open when something inside is picked.
-        forceOpen={editMode || hasChosenInside(node)}
+        // Collapsed unless you open it — building the map used to force every
+        // branch open at once, which is what made this screen a wall. Only a
+        // branch holding a ticked spot still opens itself, because a hidden
+        // selection is worse than a long list.
+        forceOpen={hasChosenInside(node)}
         className={isTop ? 'mb-3' : undefined}
         row={(
           /* The unit itself is ONE tickable row (photo + name + note + edit) —
@@ -416,17 +434,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           <SpotToggle s={node} isArea={isTop} />
         )}
       >
-        {(kids.length > 0 || showAddInside) ? (
-          <>
-            {kids.map((c: any) => renderNode(c, false))}
-            {showAddInside && (
-              <button onClick={() => setCreating({ parent_id: node.id, kind: suggestedChildTypes(node.kind)[0]?.key || 'shelf' })} disabled={saving}
-                className="self-start rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-[var(--fs-xs)] font-semibold text-green-700 active:bg-green-100">
-                + Add inside {node.name}
-              </button>
-            )}
-          </>
-        ) : null}
+        {kids.length > 0 ? kids.map((c: any) => renderNode(c, false)) : null}
       </CollapsibleNode>
     );
   }
@@ -452,17 +460,15 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
               <div className="text-[var(--fs-base)] font-bold text-gray-900 truncate">{product.name}</div>
               <div className="text-[var(--fs-xs)] text-gray-500">
                 {editMode
-                  ? 'Building the map — add levels with “+ Add inside”, tap ✎ to rename, set its type or delete'
+                  ? 'Building the map — tap ＋ on a row to add a level inside it, ✎ to rename, retype or delete'
                   : 'Where it’s stored, shared by every counting list — pick the exact place, area by area'}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Building the map wants everything open; picking a place wants the
-            overview. In Edit mode every branch is force-opened anyway, so the
-            control only appears where it can do anything. */}
-        {!loading && !editMode && tree.length > 0 && (
+        {/* Both modes collapse now, so the control belongs in both. */}
+        {!loading && tree.length > 0 && (
           <div className="px-4 pt-2 flex justify-end">
             <button
               onClick={() => {
