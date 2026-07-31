@@ -19,7 +19,7 @@ add lock-task/kiosk mode if you ever want that here too.)
 The APK is cloud-built by GitHub Actions:
 `.github/workflows/build-station.yml`.
 
-- It runs automatically when you push a change under `docs/android-station/**`, or
+- It runs automatically when you push a change under `apps/department-device/**`, or
 - run it on demand: GitHub → **Actions** → **Build Krawings Department Device APK** → *Run workflow*.
 
 The finished `.apk` is published to the rolling **`station-latest`** GitHub release
@@ -61,6 +61,6 @@ link open until an app asks for one.
 
 ## Icon
 
-`docs/android-station/assets/icon-only.png` (1024×1024) is the Krawings Department Device app icon —
+`apps/department-device/assets/icon-only.png` (1024×1024) is the Krawings Department Device app icon —
 the Krawings swoosh + tablet. To change it, replace that file (square, ≥1024×1024) and push;
 the workflow regenerates every Android density from it.
