@@ -48,9 +48,10 @@ test('par is typed in cans, stored in kg, and shown in cans again', async ({ pag
     ]);
     await page.goto(`/products/${BEANS}`);
 
-    // The pack sentence must be in force — without it par stays in kg and
-    // this whole test is meaningless.
-    await expect(page.getByText(/1 can/i).first()).toBeVisible({ timeout: 20_000 });
+    // The pack setup must be in force — without it par stays in kg and this
+    // whole test is meaningless. (The "1 can ≈ 0.28" sentence is form
+    // controls, not text — assert on the prose the setup produces instead.)
+    await expect(page.getByText('Staff count whole cans; Odoo gets kg.')).toBeVisible({ timeout: 20_000 });
 
     // Type par as CANS: at least 12, at most 24.
     const min = page.getByLabel('Least you want to hold');
@@ -58,16 +59,17 @@ test('par is typed in cans, stored in kg, and shown in cans again', async ({ pag
     await min.fill('12');
     await max.fill('24');
     await max.blur();
-    await expect(page.getByText('Par level saved')).toBeVisible({ timeout: 10_000 });
 
     // The grey line translates: cans -> kg (and boxes when the chain knows one).
     await expect(page.getByText(/12 cans ≈ 3\.36 kg/)).toBeVisible();
     await expect(page.getByText(/24 cans ≈ 6\.72 kg/)).toBeVisible();
 
-    // Stored row is BASE units — the ordering maths' contract.
-    const stored = await api(rq, `/api/inventory/product-par?company_id=${WAJ}&ids=${BEANS}`);
-    const row = (stored.body?.par || [])[0];
-    expect(row?.par_min).toBeCloseTo(12 * CAN, 6);   // 3.36 kg
+    // Stored row is BASE units — the ordering maths' contract. Polled, not the
+    // saved-toast: that auto-hides in 1.8s and makes the assertion a race.
+    await expect.poll(async () =>
+      ((await api(rq, `/api/inventory/product-par?company_id=${WAJ}&ids=${BEANS}`)).body?.par || [])[0]?.par_min,
+    { timeout: 10_000 }).toBeCloseTo(12 * CAN, 6);   // 3.36 kg (12*0.28 is float dust in JS — never toBe)
+    const row = ((await api(rq, `/api/inventory/product-par?company_id=${WAJ}&ids=${BEANS}`)).body?.par || [])[0];
     expect(row?.par_max).toBeCloseTo(24 * CAN, 6);   // 6.72 kg
 
     // Reload: the fields read back as the cans that were typed.
