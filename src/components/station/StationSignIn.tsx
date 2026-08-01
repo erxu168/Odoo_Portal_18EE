@@ -126,14 +126,14 @@ export default function StationSignIn({ companyName, loadStaff, verify, onSucces
             No one has set up a PIN yet.<br />Set yours on the Time Clock, or ask a manager.
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 max-w-[520px] mx-auto">
+          <div className="grid grid-cols-2 gap-3 max-w-[520px] mx-auto auto-rows-fr">
             {staff.map(s => (
               <button key={s.id} onClick={() => { setSelected(s); setError(''); }}
-                className="min-h-[64px] rounded-2xl px-4 py-3 text-left border border-white/15 flex items-center gap-3 active:brightness-110 transition"
+                className="h-full min-h-[64px] rounded-2xl px-4 py-3 text-left border border-white/15 flex items-center gap-3 active:brightness-110 transition"
                 style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
                 <span className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-extrabold shrink-0"
                   style={{ backgroundColor: WAJ_YELLOW, color: WAJ_INK }}>{initials(s.name)}</span>
-                <span className="min-w-0 truncate text-[16px] font-semibold">{s.name}</span>
+                <span className="min-w-0 text-[15px] font-semibold leading-tight break-words">{s.name}</span>
               </button>
             ))}
           </div>
