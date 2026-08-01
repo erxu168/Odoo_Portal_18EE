@@ -2,6 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import PinPad from '@/components/tablet/PinPad';
+import { WAJ_RED, WAJ_YELLOW } from '@/components/kiosk/KioskWelcome';
+
+/** Label colour for the yellow badges/buttons — matches the kiosk (6.9:1 on yellow). */
+const WAJ_INK = '#5A0E16';
 
 export interface StationPerson { id: number; name: string; employee_id: number | null }
 export interface VerifyResult { ok: boolean; user?: StationPerson; error?: string }
@@ -27,6 +31,9 @@ function initials(name: string): string {
  * share a PIN (no reverse-by-PIN lookup, no "ambiguous" dead-end). Presentational +
  * flow only: the parent supplies loadStaff (which restaurant), verify (checks the
  * chosen person's PIN) and onSuccess (create the session/actor, then navigate).
+ *
+ * Branded in the What a Jerk look (matches the Time Clock kiosk): deep red ground,
+ * the WAJ logo, warm yellow name badges.
  */
 export default function StationSignIn({ companyName, loadStaff, verify, onSuccess, footer }: Props) {
   const [staff, setStaff] = useState<{ id: number; name: string }[] | null>(null);
@@ -34,6 +41,9 @@ export default function StationSignIn({ companyName, loadStaff, verify, onSucces
   const [selected, setSelected] = useState<{ id: number; name: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // A broken logo file must never leave a broken-image icon on the sign-in screen —
+  // fall back to the wordmark set in type (same as the kiosk).
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const refresh = useCallback(() => {
     let alive = true;
@@ -62,7 +72,7 @@ export default function StationSignIn({ companyName, loadStaff, verify, onSucces
     }
   }, [selected, busy, verify, onSuccess]);
 
-  // Step 2 — the chosen person's PIN pad.
+  // Step 2 — the chosen person's PIN pad (branded to match).
   if (selected) {
     return (
       <PinPad
@@ -73,7 +83,7 @@ export default function StationSignIn({ companyName, loadStaff, verify, onSucces
         onSubmit={submitPin}
         footer={
           <button onClick={() => { setSelected(null); setError(''); }}
-            className="text-white/50 text-[13px] font-semibold active:text-white/80">
+            className="text-white/60 text-[13px] font-semibold active:text-white">
             &larr; Not you? Pick a name
           </button>
         }
@@ -83,31 +93,46 @@ export default function StationSignIn({ companyName, loadStaff, verify, onSucces
 
   // Step 1 — pick your name.
   return (
-    <div className="fixed inset-0 z-[200] bg-[#1A1F2E] flex flex-col text-white">
-      <div className="px-6 pt-8 pb-4 text-center shrink-0">
-        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-white/50">Kitchen Station</div>
-        <div className="text-[var(--fs-xl)] font-bold mt-1">{companyName || 'Staff sign-in'}</div>
-        <div className="text-[var(--fs-sm)] text-white/60 mt-1">Tap your name to sign in</div>
+    <div className="fixed inset-0 z-[200] flex flex-col text-white" style={{ backgroundColor: WAJ_RED }}>
+      <div className="px-6 pt-6 pb-3 text-center shrink-0">
+        {logoFailed ? (
+          <div className="font-extrabold leading-none" style={{ color: WAJ_YELLOW }}>
+            <div className="text-[clamp(28px,7vw,44px)]">What a Jerk</div>
+            <div className="text-[10px] tracking-[0.28em] mt-1.5">TRUE JAMAICAN FLAVOURS</div>
+          </div>
+        ) : (
+          <img
+            src="/waj-logo.svg"
+            alt="What a Jerk"
+            onError={() => setLogoFailed(true)}
+            className="mx-auto w-[min(52vw,220px)] max-h-[20vh] object-contain"
+          />
+        )}
+        <div className="text-[var(--fs-lg)] font-bold text-white mt-3">{companyName || 'Staff sign-in'}</div>
+        <div className="text-[var(--fs-sm)] text-white/75 mt-0.5">Tap your name to sign in</div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         {staff === null ? (
-          <div className="text-center text-white/50 mt-10 text-[14px]">Loading&hellip;</div>
+          <div className="text-center text-white/60 mt-10 text-[14px]">Loading&hellip;</div>
         ) : loadFailed ? (
           <div className="text-center mt-10">
-            <div className="text-white/60 text-[14px] mb-3">Couldn&rsquo;t load the staff list.</div>
-            <button onClick={refresh} className="px-4 py-2 rounded-xl bg-white/10 text-[14px] font-semibold active:bg-white/20">Try again</button>
+            <div className="text-white/75 text-[14px] mb-3">Couldn&rsquo;t load the staff list.</div>
+            <button onClick={refresh} className="px-5 py-2.5 min-h-[44px] rounded-xl text-[14px] font-bold active:brightness-110"
+              style={{ backgroundColor: WAJ_YELLOW, color: WAJ_INK }}>Try again</button>
           </div>
         ) : staff.length === 0 ? (
-          <div className="text-center text-white/60 mt-10 text-[14px] px-6 leading-relaxed">
+          <div className="text-center text-white/75 mt-10 text-[14px] px-6 leading-relaxed">
             No one has set up a PIN yet.<br />Set yours on the Time Clock, or ask a manager.
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 max-w-[520px] mx-auto">
             {staff.map(s => (
               <button key={s.id} onClick={() => { setSelected(s); setError(''); }}
-                className="min-h-[64px] rounded-2xl bg-white/10 px-4 py-3 text-left active:bg-white/20 flex items-center gap-3">
-                <span className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-[13px] font-bold shrink-0">{initials(s.name)}</span>
+                className="min-h-[64px] rounded-2xl px-4 py-3 text-left border border-white/15 flex items-center gap-3 active:brightness-110 transition"
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)' }}>
+                <span className="w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-extrabold shrink-0"
+                  style={{ backgroundColor: WAJ_YELLOW, color: WAJ_INK }}>{initials(s.name)}</span>
                 <span className="min-w-0 truncate text-[16px] font-semibold">{s.name}</span>
               </button>
             ))}
@@ -115,7 +140,7 @@ export default function StationSignIn({ companyName, loadStaff, verify, onSucces
         )}
       </div>
 
-      {footer && <div className="shrink-0 px-6 py-4 text-center border-t border-white/10">{footer}</div>}
+      {footer && <div className="shrink-0 px-6 py-4 text-center border-t border-white/15">{footer}</div>}
     </div>
   );
 }
