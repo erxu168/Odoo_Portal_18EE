@@ -92,6 +92,33 @@ export default function GuidedCountingFlow({
   // presses any more — the same rule the server now uses to allow submitting.
   const allDone = steps.every(stepDone);
 
+  const toggleReopen = (bucketId: number) => setReopened((p) => {
+    const n = new Set(p);
+    if (n.has(bucketId)) n.delete(bucketId); else n.add(bucketId);
+    return n;
+  });
+
+  // The skip / un-skip action for a drawer — it lives INSIDE that drawer's card,
+  // so there's never a question of which spot a floating "Nothing here" belongs to.
+  const drawerFooter = (s: Stop, full: boolean, skipped: boolean) => (
+    skipped ? (
+      <div className="flex items-center gap-2 text-[var(--fs-xs)] text-orange-700 bg-orange-50 px-3 py-2 border-t border-orange-100">
+        <span className="min-w-0">
+          Skipped{statuses[s.bucket_id]?.skip_reason ? ` — ${statuses[s.bucket_id]?.skip_reason}` : ''}
+        </span>
+        <button onClick={() => onUnskipStop(s.bucket_id)}
+          className="ml-auto flex-shrink-0 font-bold underline active:opacity-60">
+          Count it after all
+        </button>
+      </div>
+    ) : !full ? (
+      <button onClick={() => setSkipFor(s.bucket_id)}
+        className="w-full text-right text-[var(--fs-xs)] font-bold text-gray-400 px-3 py-2 border-t border-gray-100 bg-white active:text-gray-600">
+        Nothing in this drawer {'→'}
+      </button>
+    ) : null
+  );
+
   // Auto-collapse relies on the browser's native scroll anchoring (overflow-anchor,
   // on by default): when a finished shelf folds away above you, the viewport keeps
   // its place on its own. A hand-rolled scrollBy here FOUGHT that and threw the
@@ -123,144 +150,139 @@ export default function GuidedCountingFlow({
       {steps.map((st, i) => {
         const done = stepDone(st);
         const isNow = i === currentIdx;
-        const last = i === steps.length - 1;
-        // A step that IS a single shelf prints its name once, in the heading —
-        // so the heading has to be the thing you tap to fold it back open.
-        // ("Not in a place yet" is one of these; it must stay reachable.)
+        // A step that IS a single roomless shelf ("Everything else", a shelf with
+        // no room above it) names itself in the AREA header, so its products sit
+        // directly under it — no second heading. Fold it from that header.
         const solo = st.stops.length === 1 && !st.room;
-        const soloOpen = solo && reopened.has(st.stops[0].bucket_id);
-        const toggleSolo = () => setReopened((p) => {
-          const n = new Set(p); const b = st.stops[0].bucket_id;
-          if (n.has(b)) n.delete(b); else n.add(b);
-          return n;
-        });
+        const soloBucket = st.stops[0].bucket_id;
+        const soloOpen = solo && reopened.has(soloBucket);
+        // Area totals for the section header count.
+        const areaTotal = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).total, 0);
+        const areaCounted = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).counted, 0);
+        const areaName = st.room || (st.stops[0].location
+          ? `${typeLabel(st.stops[0].location.kind)} ${st.stops[0].location.name}`
+          : 'Not in a place yet');
+        const soloS = st.stops[0];
+        const soloProg = stopProgress(soloS.bucket_id, soloS.product_ids);
+        const soloSkipped = effStatus(soloS) === 'skipped';
+        const soloFull = soloProg.total > 0 && soloProg.counted >= soloProg.total;
         return (
-          <div key={`${st.key}#${i}`} id={`walk-step-${i}`} className="relative scroll-mt-24">
-            {/* The rail runs behind the step's headings only — the count rows keep
-                the full screen width (indenting them squeezed the numbers). */}
-            {!last && <span className="absolute left-[10px] top-2 bottom-0 w-0.5 bg-gray-200" aria-hidden="true" />}
-            <span
-              className={`absolute left-0 top-0 w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center text-[11px] font-bold z-10 ${
-                done ? 'bg-green-600 border-green-600 text-white'
-                  : isNow ? 'bg-blue-600 border-blue-600 text-white ring-4 ring-blue-100'
-                  : 'bg-white border-blue-600 text-blue-700'
-              }`}
-              aria-hidden="true"
-            >
-              {done ? '✓' : i + 1}
-            </span>
-
-            {/* A real button, so folding a finished step back open works from the
-                keyboard too. It only does something once the step is done. */}
+          <div key={`${st.key}#${i}`} id={`walk-step-${i}`} className="scroll-mt-24 mt-5 first:mt-2">
+            {/* AREA header — a real section break: number, name, running count, then
+                a rule. No rail threads through the cards any more; the walk is just
+                top-to-bottom and the jump strip above handles getting around. */}
             <button
               type="button"
               disabled={!(solo && done)}
-              onClick={toggleSolo}
+              onClick={() => toggleReopen(soloBucket)}
               aria-expanded={solo && done ? soloOpen : undefined}
-              className="w-full text-left pl-8 text-[var(--fs-base)] font-extrabold leading-tight disabled:opacity-100 enabled:active:opacity-70"
+              className="w-full flex items-center gap-2.5 px-1 text-left disabled:opacity-100 enabled:active:opacity-70"
             >
-              {st.room || (st.stops[0].location
-                ? `${typeLabel(st.stops[0].location.kind)} ${st.stops[0].location.name}`
-                : 'Not in a place yet')}
-              {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
-              <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 mt-0.5">
-                {(() => {
-                  const n = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).total, 0);
-                  const c = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).counted, 0);
-                  return done ? `${n} thing${n !== 1 ? 's' : ''} · all counted` : `${c} of ${n} counted here`;
-                })()}
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                done ? 'bg-green-600 text-white'
+                  : isNow ? 'bg-blue-600 text-white'
+                  : 'bg-white border-2 border-blue-600 text-blue-700'
+              }`} aria-hidden="true">
+                {done ? '✓' : i + 1}
+              </span>
+              <span className="min-w-0 flex-1 text-[var(--fs-lg)] font-extrabold leading-tight truncate">
+                {areaName}
+                {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
+              </span>
+              <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums">
+                {done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
               </span>
             </button>
+            <div className="h-px bg-gray-200 mx-1 mt-2 mb-3" aria-hidden="true" />
 
-            <div className="pb-4 pt-1">
-              {st.stops.map((s) => {
+            {solo ? (
+              (!done || soloOpen) && (
+                <div className="rounded-2xl overflow-hidden border border-gray-200 mb-2">
+                  <div className="bg-white px-3">
+                    {soloS.product_ids.map((id) => productsById[id] && (
+                      <div key={id}>{renderRow(productsById[id], soloBucket)}</div>
+                    ))}
+                  </div>
+                  {drawerFooter(soloS, soloFull, soloSkipped)}
+                </div>
+              )
+            ) : (
+              st.stops.map((s) => {
                 const { shelf, rest } = addressOf(s);
                 const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
                 const skipped = effStatus(s) === 'skipped';
                 const full = total > 0 && counted >= total;
-                // A finished shelf folds away on its own; tapping the heading brings it back.
+                // A finished (or skipped) drawer folds into a quiet strip on its
+                // own; tapping it reopens the full card.
                 const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
                 const label = s.location ? typeLabel(s.location.kind) : '';
-                return (
-                  <div key={s.bucket_id} className="mt-2 first:mt-1">
-                    {!solo && <div className="flex items-start sm:items-center gap-1 mb-1.5">
-                    <button
-                      onClick={() => setReopened((p) => {
-                        const n = new Set(p);
-                        if (n.has(s.bucket_id)) n.delete(s.bucket_id); else n.add(s.bucket_id);
-                        return n;
-                      })}
-                      className="min-w-0 flex-1 flex items-start sm:items-center gap-1.5 text-left pl-8 active:opacity-70"
-                    >
-                      <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5 sm:mt-0" aria-hidden="true">
-                        {s.location ? typeIcon(s.location.kind) : '📦'}
+
+                // DONE / SKIPPED → a quiet folded strip that visibly recedes, so
+                // the drawer you're ON stands out from the ones you've finished.
+                if (collapsed) {
+                  return (
+                    <button key={s.bucket_id} onClick={() => toggleReopen(s.bucket_id)}
+                      className={`w-full flex items-center gap-2 px-3 py-2.5 mb-2 rounded-xl text-left active:opacity-70 ${
+                        skipped ? 'bg-orange-50' : 'bg-green-50'
+                      }`}>
+                      <span className={`flex-shrink-0 text-[13px] font-bold ${skipped ? 'text-orange-600' : 'text-green-600'}`} aria-hidden="true">
+                        {skipped ? '⊘' : '✓'}
                       </span>
-                      {/* PHONE: full path, never cut — the ancestor trail sits small on
-                          top, the exact spot staff must open is bold underneath (a
-                          truncated "Drawer…" told them nothing). DESKTOP keeps the
-                          original compact single line it always had. */}
-                      <span className="sm:hidden min-w-0 flex-1 text-[var(--fs-sm)] leading-tight">
-                        {rest.length > 0 && (
-                          <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">
-                            {rest.join(' › ')}
-                          </span>
-                        )}
-                        <span className="block font-extrabold text-gray-900 [overflow-wrap:anywhere]">
-                          {label && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
-                        </span>
-                      </span>
-                      <span className="hidden sm:block text-[var(--fs-sm)] font-semibold text-gray-600 truncate">
+                      <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
                         {rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
                         {label && <span className="text-gray-500">{label} </span>}
-                        <span className="font-extrabold text-gray-900">{shelf}</span>
+                        <span className="font-bold text-gray-900">{shelf}</span>
+                        {' — '}{skipped ? 'skipped' : `${counted} counted`}
                       </span>
-                      <span className={`ml-auto flex-shrink-0 mt-0.5 sm:mt-0 text-[var(--fs-xs)] font-bold ${
-                        skipped ? 'text-orange-600' : full ? 'text-green-700' : 'text-gray-400'
-                      }`}>
-                        {skipped ? 'skipped' : `${counted}/${total}`}{(full || skipped) ? (collapsed ? ' ▸' : ' ▾') : ''}
+                      <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${skipped ? 'text-orange-600' : 'text-green-700'}`}>
+                        Tap to view ▸
                       </span>
                     </button>
-                    {s.bucket_id > 0 && (
-                      <button
-                        onClick={() => setMapSpotId(s.bucket_id)}
-                        aria-label={`Show ${shelf} on the floorplan`}
-                        className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95"
-                      >
-                        🗺️
-                      </button>
-                    )}
-                    </div>}
+                  );
+                }
 
-                    {!collapsed && (
-                      <>
-                        <div className="bg-white border border-gray-200 rounded-2xl px-3">
-                          {s.product_ids.map((id) => productsById[id] && (
-                            <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
-                          ))}
-                        </div>
-                        {!skipped && !full && (
-                          <button onClick={() => setSkipFor(s.bucket_id)}
-                            className="w-full text-right text-[var(--fs-xs)] font-bold text-gray-400 pt-1.5 pr-1 active:text-gray-600">
-                            Nothing here {'→'}
-                          </button>
-                        )}
-                        {skipped && (
-                          <div className="flex items-center gap-2 text-[var(--fs-xs)] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5 mt-1.5">
-                            <span className="min-w-0">
-                              Skipped{statuses[s.bucket_id]?.skip_reason ? ` — ${statuses[s.bucket_id]?.skip_reason}` : ''}
-                            </span>
-                            <button onClick={() => onUnskipStop(s.bucket_id)}
-                              className="ml-auto flex-shrink-0 font-bold underline active:opacity-60">
-                              Count it after all
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    )}
+                // OPEN drawer → ONE bounded card: the heading is the lid, its
+                // products live inside, and its skip action sits at the bottom —
+                // so every item unmistakably belongs to this drawer.
+                const active = !full && !skipped;
+                return (
+                  <div key={s.bucket_id} className={`mb-2 rounded-2xl overflow-hidden border ${active ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'}`}>
+                    <div className={`flex items-start gap-2 px-3 py-2.5 ${active ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                      <button onClick={() => toggleReopen(s.bucket_id)}
+                        className="min-w-0 flex-1 flex items-start gap-2 text-left active:opacity-70">
+                        <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
+                          {s.location ? typeIcon(s.location.kind) : '📦'}
+                        </span>
+                        {/* Full path, never cut: ancestor trail small on top, the
+                            exact spot bold underneath. */}
+                        <span className="min-w-0 flex-1 leading-tight">
+                          {rest.length > 0 && (
+                            <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">{rest.join(' › ')}</span>
+                          )}
+                          <span className="block text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                            {label && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
+                          </span>
+                        </span>
+                        <span className="flex-shrink-0 mt-0.5 text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{counted}/{total}</span>
+                      </button>
+                      {s.bucket_id > 0 && (
+                        <button onClick={() => setMapSpotId(s.bucket_id)}
+                          aria-label={`Show ${shelf} on the floorplan`}
+                          className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
+                          🗺️
+                        </button>
+                      )}
+                    </div>
+                    <div className="bg-white px-3">
+                      {s.product_ids.map((id) => productsById[id] && (
+                        <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
+                      ))}
+                    </div>
+                    {drawerFooter(s, full, skipped)}
                   </div>
                 );
-              })}
-            </div>
+              })
+            )}
           </div>
         );
       })}
