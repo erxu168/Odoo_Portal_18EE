@@ -56,6 +56,21 @@ function addressOf(s: Stop): { room: string; roomId: number | null; roomKind: st
   return { room, roomId, roomKind, shelf, rest };
 }
 
+/** True when a spot's own name already contains its type word(s), so prefixing
+ *  the type would just repeat it ("Walk-in cooler Walk in Cooler 1"). The icon
+ *  shows the kind anyway; cryptic names like "D1" still get the "Drawer" prefix.
+ *  Matches on WHOLE words (so "Broom Cupboard" doesn't swallow "Room"), and a
+ *  slash label like "Bin / crate" counts if EITHER word appears. */
+function nameIncludesType(shelf: string, label: string): boolean {
+  if (!label) return false;
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const hay = ` ${words(shelf)} `;
+  return label.split('/').some((alt) => {
+    const needle = words(alt);
+    return needle.length > 0 && hay.includes(` ${needle} `);
+  });
+}
+
 export default function GuidedCountingFlow({
   stops, productsById, statuses, renderRow, stopProgress, onSkipStop, onUnskipStop, onReview,
 }: Props) {
@@ -159,130 +174,135 @@ export default function GuidedCountingFlow({
         // Area totals for the section header count.
         const areaTotal = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).total, 0);
         const areaCounted = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).counted, 0);
-        const areaName = st.room || (st.stops[0].location
-          ? `${typeLabel(st.stops[0].location.kind)} ${st.stops[0].location.name}`
+        const soloLoc = st.stops[0].location;
+        const areaName = st.room || (soloLoc
+          ? (nameIncludesType(soloLoc.name, typeLabel(soloLoc.kind)) ? soloLoc.name : `${typeLabel(soloLoc.kind)} ${soloLoc.name}`)
           : 'Not in a place yet');
         const soloS = st.stops[0];
         const soloProg = stopProgress(soloS.bucket_id, soloS.product_ids);
         const soloSkipped = effStatus(soloS) === 'skipped';
         const soloFull = soloProg.total > 0 && soloProg.counted >= soloProg.total;
         return (
-          <div key={`${st.key}#${i}`} id={`walk-step-${i}`} className="scroll-mt-24 mt-5 first:mt-2">
-            {/* AREA header — a real section break: number, name, running count, then
-                a rule. No rail threads through the cards any more; the walk is just
-                top-to-bottom and the jump strip above handles getting around. */}
-            <button
-              type="button"
-              disabled={!(solo && done)}
-              onClick={() => toggleReopen(soloBucket)}
-              aria-expanded={solo && done ? soloOpen : undefined}
-              className="w-full flex items-center gap-2.5 px-1 text-left disabled:opacity-100 enabled:active:opacity-70"
-            >
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
-                done ? 'bg-green-600 text-white'
-                  : isNow ? 'bg-blue-600 text-white'
-                  : 'bg-white border-2 border-blue-600 text-blue-700'
-              }`} aria-hidden="true">
-                {done ? '✓' : i + 1}
-              </span>
-              <span className="min-w-0 flex-1 text-[var(--fs-lg)] font-extrabold leading-tight truncate">
-                {areaName}
-                {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
-              </span>
-              <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums">
-                {done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
-              </span>
-            </button>
-            <div className="h-px bg-gray-200 mx-1 mt-2 mb-3" aria-hidden="true" />
+          <div key={`${st.key}#${i}`} id={`walk-step-${i}`} className="scroll-mt-24 mt-3.5 first:mt-1">
+            {/* ONE container per area — its spots live INSIDE it, so a spot reads as
+                belonging to its area instead of floating apart. Areas are separated
+                by the gap between containers; no rail threads through the content. */}
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+              {/* Area header = the container's title bar. Solo done areas fold here. */}
+              <button
+                type="button"
+                disabled={!(solo && done)}
+                onClick={() => toggleReopen(soloBucket)}
+                aria-expanded={solo && done ? soloOpen : undefined}
+                className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left border-b border-gray-100 disabled:opacity-100 enabled:active:bg-gray-50"
+              >
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                  done ? 'bg-green-600 text-white'
+                    : isNow ? 'bg-blue-600 text-white'
+                    : 'bg-white border-2 border-blue-600 text-blue-700'
+                }`} aria-hidden="true">
+                  {done ? '✓' : i + 1}
+                </span>
+                <span className="min-w-0 flex-1 text-[var(--fs-lg)] font-extrabold leading-tight truncate">
+                  {areaName}
+                  {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
+                </span>
+                <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums">
+                  {done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
+                </span>
+              </button>
 
-            {solo ? (
-              (!done || soloOpen) && (
-                <div className="rounded-2xl overflow-hidden border border-gray-200 mb-2">
-                  <div className="bg-white px-3">
+              {solo ? (
+                (!done || soloOpen) && (
+                  <div className="px-3">
                     {soloS.product_ids.map((id) => productsById[id] && (
                       <div key={id}>{renderRow(productsById[id], soloBucket)}</div>
                     ))}
+                    {drawerFooter(soloS, soloFull, soloSkipped)}
                   </div>
-                  {drawerFooter(soloS, soloFull, soloSkipped)}
-                </div>
-              )
-            ) : (
-              st.stops.map((s) => {
-                const { shelf, rest } = addressOf(s);
-                const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
-                const skipped = effStatus(s) === 'skipped';
-                const full = total > 0 && counted >= total;
-                // A finished (or skipped) drawer folds into a quiet strip on its
-                // own; tapping it reopens the full card.
-                const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
-                const label = s.location ? typeLabel(s.location.kind) : '';
+                )
+              ) : (
+                st.stops.map((s, si) => {
+                  const { shelf, rest } = addressOf(s);
+                  const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
+                  const skipped = effStatus(s) === 'skipped';
+                  const full = total > 0 && counted >= total;
+                  // A finished (or skipped) spot folds into a quiet strip; tapping
+                  // it reopens the full card.
+                  const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
+                  const label = s.location ? typeLabel(s.location.kind) : '';
+                  // Drop the type word when the name already carries it (the icon
+                  // shows the kind); keep it for cryptic names like "D1".
+                  const showLabel = nameIncludesType(shelf, label) ? false : !!label;
+                  const active = !full && !skipped;
+                  const divider = si > 0 ? 'border-t border-gray-100' : '';
 
-                // DONE / SKIPPED → a quiet folded strip that visibly recedes, so
-                // the drawer you're ON stands out from the ones you've finished.
-                if (collapsed) {
-                  return (
-                    <button key={s.bucket_id} onClick={() => toggleReopen(s.bucket_id)}
-                      className={`w-full flex items-center gap-2 px-3 py-2.5 mb-2 rounded-xl text-left active:opacity-70 ${
-                        skipped ? 'bg-orange-50' : 'bg-green-50'
-                      }`}>
-                      <span className={`flex-shrink-0 text-[13px] font-bold ${skipped ? 'text-orange-600' : 'text-green-600'}`} aria-hidden="true">
-                        {skipped ? '⊘' : '✓'}
-                      </span>
-                      <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
-                        {rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
-                        {label && <span className="text-gray-500">{label} </span>}
-                        <span className="font-bold text-gray-900">{shelf}</span>
-                        {' — '}{skipped ? 'skipped' : `${counted} counted`}
-                      </span>
-                      <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${skipped ? 'text-orange-600' : 'text-green-700'}`}>
-                        Tap to view ▸
-                      </span>
-                    </button>
-                  );
-                }
-
-                // OPEN drawer → ONE bounded card: the heading is the lid, its
-                // products live inside, and its skip action sits at the bottom —
-                // so every item unmistakably belongs to this drawer.
-                const active = !full && !skipped;
-                return (
-                  <div key={s.bucket_id} className={`mb-2 rounded-2xl overflow-hidden border ${active ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'}`}>
-                    <div className={`flex items-start gap-2 px-3 py-2.5 ${active ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                      <button onClick={() => toggleReopen(s.bucket_id)}
-                        className="min-w-0 flex-1 flex items-start gap-2 text-left active:opacity-70">
-                        <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
-                          {s.location ? typeIcon(s.location.kind) : '📦'}
+                  // DONE / SKIPPED → a quiet folded strip inside the area.
+                  if (collapsed) {
+                    return (
+                      <button key={s.bucket_id} onClick={() => toggleReopen(s.bucket_id)}
+                        className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left active:opacity-70 ${divider} ${skipped ? 'bg-orange-50' : 'bg-green-50'}`}>
+                        <span className={`flex-shrink-0 text-[13px] font-bold ${skipped ? 'text-orange-600' : 'text-green-600'}`} aria-hidden="true">
+                          {skipped ? '⊘' : '✓'}
                         </span>
-                        {/* Full path, never cut: ancestor trail small on top, the
-                            exact spot bold underneath. */}
-                        <span className="min-w-0 flex-1 leading-tight">
-                          {rest.length > 0 && (
-                            <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">{rest.join(' › ')}</span>
-                          )}
-                          <span className="block text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
-                            {label && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
-                          </span>
+                        <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
+                          {rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
+                          {showLabel && <span className="text-gray-500">{label} </span>}
+                          <span className="font-bold text-gray-900">{shelf}</span>
+                          {' — '}{skipped ? 'skipped' : `${counted} counted`}
                         </span>
-                        <span className="flex-shrink-0 mt-0.5 text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{counted}/{total}</span>
+                        <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${skipped ? 'text-orange-600' : 'text-green-700'}`}>
+                          Tap to view ▸
+                        </span>
                       </button>
-                      {s.bucket_id > 0 && (
-                        <button onClick={() => setMapSpotId(s.bucket_id)}
-                          aria-label={`Show ${shelf} on the floorplan`}
-                          className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
-                          🗺️
+                    );
+                  }
+
+                  // OPEN spot → tinted heading (the lid) + its products + skip, all
+                  // inside the area container.
+                  return (
+                    <div key={s.bucket_id} className={divider}>
+                      <div className={`flex items-start gap-2 px-3.5 py-2.5 ${active ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                        <button onClick={() => toggleReopen(s.bucket_id)}
+                          className="min-w-0 flex-1 flex items-start gap-2 text-left active:opacity-70">
+                          <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
+                            {s.location ? typeIcon(s.location.kind) : '📦'}
+                          </span>
+                          {/* Full path, never cut: ancestor trail small on top, the
+                              exact spot bold underneath. */}
+                          <span className="min-w-0 flex-1 leading-tight">
+                            {rest.length > 0 && (
+                              <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">{rest.join(' › ')}</span>
+                            )}
+                            <span className="block text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                              {showLabel && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
+                            </span>
+                          </span>
+                          <span className="flex-shrink-0 mt-0.5 flex items-center gap-1.5">
+                            <span className="text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{counted}/{total}</span>
+                            {/* Opened by "Tap to view" — show the way to fold it back. */}
+                            {!active && <span className="text-[var(--fs-xs)] font-bold text-green-700">Hide ▾</span>}
+                          </span>
                         </button>
-                      )}
+                        {s.bucket_id > 0 && (
+                          <button onClick={() => setMapSpotId(s.bucket_id)}
+                            aria-label={`Show ${shelf} on the floorplan`}
+                            className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
+                            🗺️
+                          </button>
+                        )}
+                      </div>
+                      <div className="px-3">
+                        {s.product_ids.map((id) => productsById[id] && (
+                          <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
+                        ))}
+                      </div>
+                      {drawerFooter(s, full, skipped)}
                     </div>
-                    <div className="bg-white px-3">
-                      {s.product_ids.map((id) => productsById[id] && (
-                        <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
-                      ))}
-                    </div>
-                    {drawerFooter(s, full, skipped)}
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
         );
       })}

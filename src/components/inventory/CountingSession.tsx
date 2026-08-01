@@ -1016,11 +1016,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             >
               {val != null && split ? (
                 <>
+                  {/* The TOTAL is the headline (staff want "21 Units", not the
+                      split); the crate + loose breakdown rides underneath. */}
                   <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
-                    {split.crates}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{pluralizePack(label, split.crates)}</span>
+                    {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{words.looseFor(val)}</span>
                   </div>
                   <div className="text-[10px] text-gray-500 mt-1 font-mono">
-                    + {split.loose} {words.looseFor(split.loose)}
+                    {split.crates} {pluralizePack(label, split.crates)} + {split.loose} {words.looseFor(split.loose)}
                   </div>
                 </>
               ) : (

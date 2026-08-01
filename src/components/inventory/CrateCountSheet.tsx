@@ -212,13 +212,17 @@ export default function CrateCountSheet({
         </div>
       )}
 
-      {/* Save */}
-      <div className="mt-auto px-[18px] pt-4 pb-6">
-        <button onClick={() => onSave(crates, looseVal)}
-          className="w-full h-14 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.98] transition-all">
-          {saveLabel || 'Save count'}
-        </button>
-      </div>
+      {/* Save — only where a deliberate commit is the point (Quick Count, and the
+          Waste Tracker's "Bin it"). In the counting session (commitOnDismiss) the
+          count is kept the moment you leave via Back, so no button is needed. */}
+      {!commitOnDismiss && (
+        <div className="mt-auto px-[18px] pt-4 pb-6">
+          <button onClick={() => onSave(crates, looseVal)}
+            className="w-full h-14 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.98] transition-all">
+            {saveLabel || 'Save count'}
+          </button>
+        </div>
+      )}
 
       {/* Direct-entry numpad for whichever field was tapped */}
       <NumpadModal

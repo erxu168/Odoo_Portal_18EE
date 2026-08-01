@@ -130,7 +130,9 @@ export default function PackCountSheet({
                 {catLeaf ? `${catLeaf} · ` : ''}{locationName}
               </div>
             </div>
-            <button onClick={onClose} className="text-[var(--fs-sm)] font-semibold text-gray-500 active:opacity-70">Cancel</button>
+            {/* "Done" keeps what you entered (like tapping outside) — the count
+                sticks without a Save button, consistent with every +/- item. */}
+            <button onClick={dismiss} className="text-[var(--fs-sm)] font-bold text-green-700 active:opacity-70">Done</button>
           </div>
 
           {/* The chain itself, so what a box IS is never a guess. */}
@@ -198,20 +200,19 @@ export default function PackCountSheet({
           </div>
         )}
 
-        <div className="px-[18px] pt-4 pb-5">
-          <button onClick={() => onSave(byLevel, loose)}
-            className="w-full h-12 rounded-xl bg-green-600 text-white font-bold active:bg-green-700">
-            Save {total} {words.looseFor(total)}
-          </button>
-          {onNothingHere && (
+        {/* No Save button: the count is kept the moment you leave (Done / tap
+            outside), like every +/- item. "Nothing here" stays — it's the
+            deliberate "none at this spot", not a counted number. */}
+        {onNothingHere && (
+          <div className="px-[18px] pt-4 pb-5">
             <button onClick={() => onNothingHere(!outOfStock)}
-              className={`w-full h-11 mt-2 rounded-xl border font-bold ${
+              className={`w-full h-12 rounded-xl border font-bold ${
                 outOfStock ? 'border-red-200 bg-red-50 text-red-600' : 'border-gray-200 text-gray-500'
               }`}>
               {outOfStock ? '✓ ' : ''}{nothingHereLabel || 'Nothing here'}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {pad !== null && (
