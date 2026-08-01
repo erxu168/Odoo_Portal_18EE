@@ -36,6 +36,10 @@ export interface FloorplanAppProps {
 
 export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppProps) {
   const router = useRouter();
+  // Counting overlay mode: the map is here only to FIND a spot, so it stays a
+  // stripped-down, read-only view (no app header, search, filters, or the
+  // editor spot-sheet that used to cover the map).
+  const inOverlay = onClose != null;
   const stateClass = onClose ? 'flex h-full flex-col bg-gray-50' : 'flex min-h-screen flex-col bg-gray-50';
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
   const [resp, setResp] = useState<ManifestResponse | null>(null);
@@ -173,9 +177,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         setActiveFloorId(floorId);
         if (data.focus) {
           setSelectedId(data.focus.locationId);
-          setSheetId(data.focus.locationId);
+          // In the counting overlay we only fly to + highlight the spot; opening
+          // the editor sheet here is what buried the map.
+          if (!inOverlay) setSheetId(data.focus.locationId);
           setFlyTo({ cx: data.focus.cx, cy: data.focus.cy, seq: ++seqRef.current });
-        } else if (data.focusMissing && spotParam) {
+        } else if (data.focusMissing && spotParam && !inOverlay) {
           // Not on the plan (a drawer inside a fridge never gets its own
           // marker, and a QR can point at one) — still SHOW the place: its
           // contents, its products, its photo. The banner explains the rest.
@@ -204,7 +210,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         }
         if (tokenRef.current === token) setState('error');
       });
-  }, [focusLocationId]);
+  }, [focusLocationId, inOverlay]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -679,7 +685,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [treeLocations, typesByKey]);
 
-  const header = (
+  // In the counting overlay the parent already shows a "← Back to count" bar, so
+  // a second app header (with its own home/back) only muddied the way out.
+  const header = onClose ? null : (
     <AppHeader
       supertitle="INVENTORY"
       title="Floorplan"
@@ -753,10 +761,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       )}
       {resp?.focusMissing && (
         <div className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[12.5px] font-medium text-amber-800">
-          Not marked on the plan itself — it usually sits inside something that is. Details below.
+          Not marked on the plan itself — it usually sits inside something that is{inOverlay ? '.' : '. Details below.'}
         </div>
       )}
-      {!immersive && <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />}
+      {!immersive && !inOverlay && <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />}
+      {!inOverlay && (
       <div className={`flex gap-1.5 overflow-x-auto px-3 [scrollbar-width:none] ${immersive ? 'py-1.5' : 'py-2'}`}>
         <button
           onClick={() => setFilterTypes([])}
@@ -802,6 +811,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           </>
         )}
       </div>
+      )}
       {edit && (
         <div className="flex items-center gap-1.5 overflow-x-auto border-y border-gray-200 bg-gray-900 px-3 py-2 [scrollbar-width:none]">
           <span className="flex-shrink-0 text-[10px] font-extrabold tracking-[0.08em] text-gray-400">ADD:</span>
@@ -926,17 +936,10 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             ))}
           </div>
         )}
-        {onClose && (
-          <button
-            onClick={onClose}
-            aria-label="Close the floorplan"
-            className="absolute right-3 top-3 z-[20] h-10 w-10 rounded-full bg-gray-900/80 text-[15px] text-white"
-          >
-            ✕
-          </button>
-        )}
+        {/* No in-map close button here: the counting overlay's own
+            "← Back to count" bar is the single, unmistakable way out. */}
       </div>
-      {sheetId != null && !edit && (
+      {sheetId != null && !edit && !inOverlay && (
         <FloorplanSpotSheet
           locationId={sheetId}
           typesByKey={typesByKey}
