@@ -18,7 +18,7 @@ on:
       - '.github/workflows/build-station.yml'
       # This build compiles the Portal app's printer plugin into this app, so a
       # change to that file has to rebuild this APK too.
-      - 'apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java'
+      - 'apps/portal/android/app/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java'
       - 'package.json'
       - 'package-lock.json'
   push:
@@ -28,7 +28,7 @@ on:
       - '.github/workflows/build-station.yml'
       # This build compiles the Portal app's printer plugin into this app, so a
       # change to that file has to rebuild this APK too.
-      - 'apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java'
+      - 'apps/portal/android/app/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java'
       - 'package.json'
       - 'package-lock.json'
 
@@ -98,7 +98,7 @@ jobs:
         working-directory: .
         run: |
           set -euo pipefail
-          SRC="apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
+          SRC="apps/portal/android/app/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
           test -f "$SRC" || { echo "::error::The Portal app's ZebraPrintPlugin.java is missing ($SRC). The station app builds its printer support FROM that file — if it moved, update this step."; exit 1; }
 
           # Everything hangs off the appId. Hard-coding the package meant a

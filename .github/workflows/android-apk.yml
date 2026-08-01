@@ -7,7 +7,7 @@ name: Build Portal APK
 # UNLIKE the station/timeclock/cooktimer apps, this one does NOT run `npx cap add
 # android` to generate the project. It has CUSTOM native code — the Zebra Bluetooth
 # printing plugin + barcode scanner bridge at
-# apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/ — so the native
+# apps/portal/android/app/src/main/java/de/krawings/portal/ — so the native
 # project is COMMITTED (in apps/portal/android/) and built as it stands. Regenerating it
 # would throw those away.
 #
@@ -93,13 +93,13 @@ jobs:
         run: |
           set -e
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          # The module folder has a space in its name ("Krawings Portal"), so glob for the APK.
-          APK=$(find apps/portal/android -path '*outputs/apk/debug/*.apk' | head -1)
-          test -n "$APK" || { echo "No APK produced"; exit 1; }
+          # The native module is now the standard Capacitor 'app' module.
+          APK=apps/portal/android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK" || { echo "No APK produced"; exit 1; }
           "$AAPT" dump badging "$APK" | grep -q "package: name='de.krawings.portal'"
-          test -f "apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
-          test -f "apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/BarcodeScannerBridge.java"
-          grep -q 'registerPlugin(ZebraPrintPlugin.class)' "apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/MainActivity.java"
+          test -f "apps/portal/android/app/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
+          test -f "apps/portal/android/app/src/main/java/de/krawings/portal/BarcodeScannerBridge.java"
+          grep -q 'registerPlugin(ZebraPrintPlugin.class)' "apps/portal/android/app/src/main/java/de/krawings/portal/MainActivity.java"
           echo "OK: de.krawings.portal with Zebra + barcode native code"
           cp "$APK" krawings-portal.apk
           ls -lh krawings-portal.apk
