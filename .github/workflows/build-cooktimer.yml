@@ -1,29 +1,39 @@
 name: Build Cooking Timer APK
 
 # Cloud-builds the "Cooking Timer" Android app (a Capacitor wrapper of
-# https://portal.krawings.de/cooktimer — the KDS Cooking Timer station board). This
-# is the OPEN variant: a normal app staff can leave (no kiosk lock-task). The finished
-# .apk is published to a rolling GitHub release so any tablet can install it directly.
-# No local Android Studio needed. See docs/android-cooktimer/README.md.
+# https://portal.krawings.de/cooktimer — the KDS Cooking Timer station board). OPEN
+# variant (no kiosk lock-task). The finished .apk is published to a rolling GitHub
+# release so any tablet can install it directly. No local Android Studio needed.
+#
+# One-app-per-folder: everything lives under apps/cooktimer/ and the build runs there
+# (Capacitor's CWD), so it generates its own throwaway android/ and never collides with
+# the committed Portal app at apps/portal/. See apps/cooktimer/README.md.
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [ main ]
     paths:
-      - 'docs/android-cooktimer/**'
+      - 'apps/cooktimer/**'
       - '.github/workflows/build-cooktimer.yml'
+      - 'package.json'
+      - 'package-lock.json'
   push:
     branches: [ main ]
     paths:
-      - 'docs/android-cooktimer/**'
+      - 'apps/cooktimer/**'
       - '.github/workflows/build-cooktimer.yml'
+      - 'package.json'
+      - 'package-lock.json'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    defaults:
+      run:
+        working-directory: apps/cooktimer
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -48,16 +58,9 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Install JS dependencies
+      - name: Install JS dependencies (root node_modules)
+        working-directory: .
         run: npm ci
-
-      - name: Use the Cooking Timer Capacitor config
-        # The repo root has capacitor.config.ts (the Portal app: appId de.krawings.portal).
-        # Capacitor loads config .ts > .js > .json, so unless we remove the .ts our copied
-        # .json is IGNORED. Remove it so the cooktimer .json is the config Capacitor uses.
-        run: |
-          rm -f capacitor.config.ts capacitor.config.js
-          cp docs/android-cooktimer/capacitor.config.json ./capacitor.config.json
 
       - name: Provide a webDir (the app loads the live site via server.url)
         run: |
@@ -65,10 +68,11 @@ jobs:
           printf '' > www/index.html
 
       - name: Generate the native Android project
-        run: npx cap add android
+        run: |
+          rm -rf android          # defensive: android/ is generated + gitignored, never committed
+          npx cap add android
 
-      # NOTE: no kiosk lock-task step here — this is the OPEN variant. (The Time Clock
-      # app wires in native lock-task code; the Cooking Timer intentionally does not.)
+      # NOTE: no kiosk lock-task step — this is the OPEN variant.
 
       - name: Sync Capacitor into the native project
         run: npx cap sync android
@@ -77,37 +81,40 @@ jobs:
         run: |
           set -e
           if ! command -v convert >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; fi
-          mkdir -p assets
-          cp docs/android-cooktimer/assets/icon-only.png assets/icon-only.png
-          # Modern Android launchers use the ADAPTIVE icon, which needs a foreground + a
-          # background. With only icon-only.png, @capacitor/assets keeps Capacitor's DEFAULT
-          # adaptive foreground (a generic blue mark) — so the launcher shows a default icon
-          # even though the legacy icon is correct. Derive both adaptive layers from the same
-          # art: the icon shrunk into the adaptive safe zone as the foreground, solid white
-          # as the background (the icon already sits on white).
-          convert docs/android-cooktimer/assets/icon-only.png -resize 66% -background none -gravity center -extent 1024x1024 assets/icon-foreground.png
+          # Adaptive icons need a foreground + background; derive both from the same art
+          # (icon shrunk into the safe zone; solid white background) so launchers don't
+          # fall back to Capacitor's default blue mark.
+          convert assets/icon-only.png -resize 66% -background none -gravity center -extent 1024x1024 assets/icon-foreground.png
           convert -size 1024x1024 xc:white assets/icon-background.png
           npx --yes @capacitor/assets generate --android
 
       - name: Build the debug APK
+        working-directory: apps/cooktimer/android
         run: |
-          cd android
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Assert the APK is the cooktimer app (de.krawings.cooktimer)
+        working-directory: .
+        run: |
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging apps/cooktimer/android/app/build/outputs/apk/debug/app-debug.apk | grep -q "package: name='de.krawings.cooktimer'"
+          echo "OK: APK is de.krawings.cooktimer"
 
       - name: Upload the APK as a build artifact
         uses: actions/upload-artifact@v4
         with:
           name: krawings-cooktimer-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: apps/cooktimer/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Publish APK to the 'cooktimer-latest' release
         if: github.ref == 'refs/heads/main'
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk krawings-cooktimer.apk
+          cp apps/cooktimer/android/app/build/outputs/apk/debug/app-debug.apk krawings-cooktimer.apk
           gh release delete cooktimer-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create cooktimer-latest krawings-cooktimer.apk \
             --repo "${{ github.repository }}" \

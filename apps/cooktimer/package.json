@@ -1,0 +1,13 @@
+{
+  "name": "krawings-cooktimer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper (appId de.krawings.cooktimer) around https://portal.krawings.de/cooktimer — the KDS Cooking Timer station board. Built by .github/workflows/build-cooktimer.yml, which runs Capacitor with this folder as its CWD and resolves @capacitor/* from the repo-root node_modules. The android/ project is generated per build and gitignored.",
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/core": "^8.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.0"
+  }
+}

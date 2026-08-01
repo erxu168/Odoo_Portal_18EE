@@ -77,3 +77,10 @@ android-timeclock/
 /apps/department-device/www/
 /apps/department-device/assets/icon-foreground.png
 /apps/department-device/assets/icon-background.png
+
+# Cooking Timer app (apps/cooktimer) — android/, web stub and adaptive icon layers
+# are all generated per build, never committed.
+/apps/cooktimer/android/
+/apps/cooktimer/www/
+/apps/cooktimer/assets/icon-foreground.png
+/apps/cooktimer/assets/icon-background.png
