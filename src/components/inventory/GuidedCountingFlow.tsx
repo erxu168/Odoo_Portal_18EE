@@ -317,7 +317,7 @@ export default function GuidedCountingFlow({
           Review {'&'} submit
         </button>
         <p className="text-center text-[var(--fs-xs)] text-gray-500 mt-2">
-          You can submit with things uncounted {'—'} the manager sees what was missed.
+          Every item needs an answer {'—'} a count, {'“'}out of stock{'”'} or {'“'}couldn{'’'}t find it{'”'} {'—'} before you can submit.
         </p>
       </div>
 

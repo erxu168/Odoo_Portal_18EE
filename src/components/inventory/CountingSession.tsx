@@ -68,6 +68,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [view, setView] = useState<View>('counting');
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitOk, setSubmitOk] = useState(false);   // show a clear "submitted!" confirmation
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture (thumbnail)
   const [rowPhotos, setRowPhotos] = useState<Record<string, string[]>>({});
@@ -452,6 +453,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const totalCount = lines.length;
   const uncountedLines = lines.filter((l) => entries[K(l.pid, l.loc)] === undefined);
   const countedLines = lines.filter((l) => entries[K(l.pid, l.loc)] !== undefined);
+  // A line still needing an ANSWER before submit: not counted (counting, "out of
+  // stock", and "couldn't find it" all record an entry) AND its whole spot wasn't
+  // skipped. A skip only exempts a spot in a snapshotted guided session — the
+  // server uses the FLAT gate for legacy sessions (every line pinned to loc 0),
+  // where a bucket-0 skip must NOT wave the whole count through. Mirrors the
+  // server submit gate, so the button never promises a submit it will reject.
+  const guidedSnapshot = !!route?.guided && items.length > 0;
+  const unresolvedLines = uncountedLines.filter(
+    (l) => !(guidedSnapshot && guidedStatuses[l.loc]?.status === 'skipped'),
+  );
 
   // Group filtered LINES by their product's leaf category
   const grouped = React.useMemo(() => {
@@ -796,24 +807,29 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     // Submit requires server validation (count completion + photo requirements),
     // and the manager review flow needs a known-good submit state. Block while
     // offline or while there are unsynced counts to avoid a silent failure.
+    // Keep the confirm sheet OPEN on any failure and show the reason inside it —
+    // the old code closed the sheet and set an error banner at the top of the
+    // (long) review, so staff at the bottom button saw no feedback at all.
+    // Re-check completeness at submit time: an optimistic count could have rolled
+    // back after this sheet opened, so don't trust the button state alone.
+    if (unresolvedLines.length > 0) {
+      setSubmitError(`${unresolvedLines.length} item${unresolvedLines.length !== 1 ? 's' : ''} still need an answer — count each, or mark it “out of stock” or “couldn’t find it”.`);
+      return;
+    }
     if (!sync.online) {
       setSubmitError('You are offline. Connect to WiFi and try again.');
-      setShowConfirm(false);
       return;
     }
     if (sync.pending > 0) {
       setSubmitError(`${sync.pending} count change${sync.pending !== 1 ? 's are' : ' is'} still syncing — wait a moment and try again.`);
-      setShowConfirm(false);
       return;
     }
     if (statusPending > 0) {
       setSubmitError('Still saving your last location — try again in a moment.');
-      setShowConfirm(false);
       return;
     }
     if (savesPending > 0) {
       setSubmitError('Still saving your last count — try again in a moment.');
-      setShowConfirm(false);
       return;
     }
     setSubmitting(true);
@@ -827,16 +843,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const data = await res.json();
       if (!res.ok) {
         setSubmitError(data.error || 'Submit failed.');
-        setShowConfirm(false);
         return;
       }
-      onSubmit();
+      // Success → a clear confirmation (the count is now with the manager); the
+      // "Done" button on it navigates away.
+      setShowConfirm(false);
+      setSubmitOk(true);
     } catch (err) {
       console.error('Submit failed:', err);
       setSubmitError('Connection failed. Please try again.');
     } finally {
       setSubmitting(false);
-      setShowConfirm(false);
     }
   }
 
@@ -1177,7 +1194,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </div>
           </div>
 
-          {uncountedLines.length > 0 && (
+          {unresolvedLines.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-3">
               <div className="flex items-start gap-2.5">
                 <span className="text-amber-600 mt-0.5">
@@ -1185,10 +1202,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 </span>
                 <div>
                   <p className="text-[var(--fs-base)] font-semibold text-amber-800">
-                    {uncountedLines.length} item{uncountedLines.length > 1 ? 's' : ''} not counted
+                    {unresolvedLines.length} item{unresolvedLines.length > 1 ? 's' : ''} still need an answer
                   </p>
                   <p className="text-[var(--fs-xs)] text-amber-700 mt-0.5">
-                    Uncounted items will be submitted as not counted. You can go back and count them.
+                    Count each one, or mark it &ldquo;out of stock&rdquo; or &ldquo;couldn&rsquo;t find it&rdquo;. You can&rsquo;t submit until every item has an answer.
                   </p>
                 </div>
               </div>
@@ -1286,10 +1303,24 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
         {canSubmit && (
           <div className="px-4 py-3">
-            <button onClick={() => setShowConfirm(true)} disabled={submitting || (countedCount === 0 && !guidedMode)}
-              className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
-              Submit for approval
-            </button>
+            {unresolvedLines.length > 0 ? (
+              // Blocked until every item has an answer — with a one-tap way back
+              // to the ones that don't.
+              <>
+                <div className="w-full py-4 rounded-xl bg-gray-100 text-gray-500 text-[var(--fs-base)] font-bold text-center">
+                  {unresolvedLines.length} item{unresolvedLines.length > 1 ? 's' : ''} still need an answer
+                </div>
+                <button onClick={() => { setSearch(''); setCatFilter('all'); setStatusFilter('uncounted'); setView('counting'); }}
+                  className="w-full mt-2 py-3 rounded-xl border border-green-600 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
+                  Go count the rest {'→'}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setShowConfirm(true)} disabled={submitting}
+                className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
+                Submit for approval
+              </button>
+            )}
           </div>
         )}
 
@@ -1297,15 +1328,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
             <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
               <h3 className="text-[var(--fs-xl)] font-bold text-gray-900 mb-2">Submit this count?</h3>
-              <p className="text-[var(--fs-base)] text-gray-500 mb-1">
-                {countedCount} of {totalCount} items counted.
-                {uncountedLines.length > 0 && ` ${uncountedLines.length} item${uncountedLines.length > 1 ? 's' : ''} will be marked as not counted.`}
-              </p>
               <p className="text-[var(--fs-base)] text-gray-500 mb-5">
-                You will not be able to edit after submitting. A manager will review your count.
+                Every item has an answer. A manager will review your count — you won&rsquo;t be able to edit it after submitting.
               </p>
+              {submitError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+                  <p className="text-[var(--fs-sm)] font-semibold text-red-700">{submitError}</p>
+                </div>
+              )}
               <div className="flex gap-3">
-                <button onClick={() => setShowConfirm(false)}
+                <button onClick={() => { setShowConfirm(false); setSubmitError(null); }}
                   className="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[var(--fs-sm)] font-bold active:bg-gray-200">
                   Cancel
                 </button>
@@ -1314,6 +1346,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   {submitting ? 'Submitting...' : 'Yes, submit'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {submitOk && (
+          <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-6">
+            <div className="bg-white w-full max-w-sm rounded-2xl p-6 text-center">
+              <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3" aria-hidden="true">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <h3 className="text-[var(--fs-xl)] font-bold text-gray-900 mb-1">Submitted for approval</h3>
+              <p className="text-[var(--fs-base)] text-gray-500 mb-5">Your count is with the manager to review. You can&rsquo;t edit it now.</p>
+              <button onClick={onSubmit}
+                className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold active:bg-green-700">
+                Done
+              </button>
             </div>
           </div>
         )}
