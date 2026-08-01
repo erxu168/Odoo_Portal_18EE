@@ -379,8 +379,12 @@ export default function FloorplanManage() {
               }}
               className={`flex min-h-[52px] items-center gap-3 border-b border-gray-50 py-2 last:border-b-0 rounded-xl transition-colors ${dragOverFloor === f.id ? 'bg-blue-50 outline outline-2 outline-dashed outline-blue-400' : ''}`}
             >
+              {/* The badge shows a code only when one was actually set. It used
+                  to fall back to the first three letters of the name, which
+                  made "Ssam Basement" and "Ssam Ground Floor" both read "Ssa"
+                  — an abbreviation nobody chose and nobody could read. */}
               <span className="flex h-11 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[13px] font-extrabold text-blue-700">
-                {f.code || f.name.slice(0, 3)}
+                {f.code || '🏢'}
               </span>
               <button className="min-w-0 flex-1 text-left" onClick={() => setRenameFloor({ id: f.id, name: f.name })} aria-label={`Rename ${f.name}`}>
                 <span className="block truncate text-[13.5px] font-bold text-gray-900">

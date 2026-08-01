@@ -905,15 +905,23 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             {notice}
           </div>
         )}
+        {/* Floors, by NAME. This used to squeeze each one into a 48px square as
+            `code || name.slice(0, 3)`, which for "Ssam Ground Floor" and "Ssam
+            Basement" printed "Ssa" twice — two identical buttons that told you
+            nothing (Ethan, 2026-08-01). Names are what people call floors, so
+            names are what the buttons say; they only truncate when a name is
+            wider than half the screen. */}
         {floorsWithPlans.length > 1 && (
-          <div className="absolute bottom-4 right-3 z-[20] flex flex-col gap-1.5">
+          <div className="absolute bottom-4 right-3 z-[20] flex flex-col items-end gap-1.5">
             {floorsWithPlans.map(f => (
               <button
                 key={f.id}
                 onClick={() => switchFloor(f.id)}
-                className={`h-11 w-12 rounded-xl border text-[13px] font-bold shadow-sm ${f.id === activeFloorId ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}
+                title={f.name}
+                aria-current={f.id === activeFloorId ? 'true' : undefined}
+                className={`h-11 max-w-[55vw] truncate rounded-xl border px-3.5 text-[13px] font-bold shadow-sm ${f.id === activeFloorId ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-200 bg-white text-gray-700'}`}
               >
-                {f.code || f.name.slice(0, 3)}
+                {f.name}
               </button>
             ))}
           </div>
