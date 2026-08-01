@@ -33,6 +33,9 @@ export default function StationHome() {
   const [listReady, setListReady] = useState(false);
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
   const [now, setNow] = useState(new Date());
+  // Which tools this DEVICE is allowed — the shared-device account's module
+  // access (managed in Admin → Staff, same system as people). null = not loaded.
+  const [modules, setModules] = useState<string[] | null>(null);
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
@@ -44,6 +47,13 @@ export default function StationHome() {
 
   // Refetch when the PIN'd person changes: the hero mounts UNDER the sign-in
   // gate, so a fetch on mount alone always ran before anyone was signed in.
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => setModules(Array.isArray(d.user?.modules) ? d.user.modules : []))
+      .catch(() => setModules([]));
+  }, []);
+
   useEffect(() => {
     fetch('/api/tasks/today')
       .then(r => r.json())
@@ -77,6 +87,17 @@ export default function StationHome() {
   const upcoming: any[] = Array.isArray(list?.lines) ? list.lines.filter((l: any) => l.state !== 'done') : [];
   const allDone = total > 0 && done >= total;
   const TASK_PREVIEW = 6;
+
+  // The station's candidate tools, each gated by a governed module id. Shown only
+  // when this device's account has that module enabled (Admin → Staff → account).
+  // `modules === null` = still loading → show nothing yet (no flash).
+  const stationTools = [
+    { label: 'Cooking Guide', module: 'recipes', emoji: '👨‍🍳', onClick: goGuide },
+    { label: 'Inventory', module: 'inventory', emoji: '📦', onClick: () => router.push('/inventory') },
+    { label: 'Purchase', module: 'purchase', emoji: '🛒', onClick: () => router.push('/purchase') },
+    { label: 'Label Printer', module: 'labels', emoji: '🏷️', onClick: () => router.push('/labels') },
+    { label: 'Waste Tracker', module: 'waste', emoji: '🗑️', onClick: () => router.push('/waste') },
+  ].filter(t => modules != null && modules.includes(t.module));
 
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -149,17 +170,18 @@ export default function StationHome() {
         </div>
       </div>
 
-      {/* Tools — compact secondary launcher (the task list above is the focus). */}
-      <div className="px-4 pt-5">
-        <div className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-2 px-1">Tools</div>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-          <StationTile label="Cooking Guide" onClick={goGuide} emoji="👨‍🍳" />
-          <StationTile label="Inventory" onClick={() => router.push('/inventory')} emoji="📦" />
-          <StationTile label="Purchase" onClick={() => router.push('/purchase')} emoji="🛒" />
-          <StationTile label="Label Printer" onClick={() => router.push('/labels')} emoji="🏷️" />
-          <StationTile label="Waste Tracker" onClick={() => router.push('/waste')} emoji="🗑️" />
+      {/* Tools — compact secondary launcher, filtered to the modules enabled for
+          this device's account (Admin → Staff). The task list above is the focus. */}
+      {stationTools.length > 0 && (
+        <div className="px-4 pt-5">
+          <div className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-2 px-1">Tools</div>
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {stationTools.map(t => (
+              <StationTile key={t.label} label={t.label} onClick={t.onClick} emoji={t.emoji} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Today's roster */}
       <div className="px-4 pt-5">
