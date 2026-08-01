@@ -87,7 +87,13 @@ export async function fetchOrders(
   endDate: string,
 ) {
   const odoo = getOdoo();
-  return odoo.searchRead(
+  // searchReadAll, NOT searchRead with limit 0 — that silently meant 200, so
+  // every report window with more than 200 orders (a single YTD easily) was
+  // quietly under-counted. Rows come back id-ordered; the oldest-first
+  // contract is restored by the sort below. maxRows is raised because a busy
+  // year genuinely exceeds the 50k default; the real long-term fix for ranges
+  // that big is aggregating in Odoo (read_group), not fetching rows.
+  const rows = await odoo.searchReadAll(
     'pos.order',
     [
       ['company_id', '=', companyId],
@@ -100,8 +106,10 @@ export async function fetchOrders(
       'customer_count', 'table_id', 'employee_id', 'company_id',
       'config_id', 'state', 'has_deleted_line', 'partner_id',
     ],
-    { limit: 0, order: 'date_order asc' },
+    { maxRows: 200_000 },
   );
+  rows.sort((a: any, b: any) => (a.date_order < b.date_order ? -1 : a.date_order > b.date_order ? 1 : 0));
+  return rows;
 }
 
 export async function fetchRefunds(
@@ -110,7 +118,7 @@ export async function fetchRefunds(
   endDate: string,
 ) {
   const odoo = getOdoo();
-  return odoo.searchRead(
+  return odoo.searchReadAll(
     'pos.order',
     [
       ['company_id', '=', companyId],
@@ -119,7 +127,7 @@ export async function fetchRefunds(
       ['date_order', '<', berlinToUtc(endDate, true)],
     ],
     ['name', 'date_order', 'amount_total', 'employee_id', 'state'],
-    { limit: 0 },
+    { maxRows: 200_000 },
   );
 }
 
@@ -129,7 +137,7 @@ export async function fetchOrderLines(
   endDate: string,
 ) {
   const odoo = getOdoo();
-  return odoo.searchRead(
+  return odoo.searchReadAll(
     'pos.order.line',
     [
       ['order_id.company_id', '=', companyId],
@@ -138,7 +146,7 @@ export async function fetchOrderLines(
       ['order_id.state', 'in', ['paid', 'done', 'invoiced']],
     ],
     ['order_id', 'product_id', 'qty', 'price_subtotal', 'price_subtotal_incl', 'discount'],
-    { limit: 0 },
+    { maxRows: 500_000 },
   );
 }
 
@@ -148,7 +156,7 @@ export async function fetchPayments(
   endDate: string,
 ) {
   const odoo = getOdoo();
-  return odoo.searchRead(
+  return odoo.searchReadAll(
     'pos.payment',
     [
       ['company_id', '=', companyId],
@@ -156,7 +164,7 @@ export async function fetchPayments(
       ['payment_date', '<', berlinToUtc(endDate, true)],
     ],
     ['pos_order_id', 'payment_method_id', 'amount', 'payment_date'],
-    { limit: 0 },
+    { maxRows: 200_000 },
   );
 }
 
@@ -186,7 +194,7 @@ export async function fetchAccountMoveLines(
   accountTypes: string[],
 ) {
   const odoo = getOdoo();
-  return odoo.searchRead(
+  return odoo.searchReadAll(
     'account.move.line',
     [
       ['company_id', '=', companyId],
@@ -196,7 +204,7 @@ export async function fetchAccountMoveLines(
       ['account_id.account_type', 'in', accountTypes],
     ],
     ['account_id', 'debit', 'credit', 'name'],
-    { limit: 0 },
+    { maxRows: 500_000 },
   );
 }
 

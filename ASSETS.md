@@ -146,7 +146,7 @@ importers.
 
 | Asset | Path | What |
 |---|---|---|
-| `odoo.ts` | `lib/odoo.ts` | The ONLY Odoo client. Never call Odoo from the browser. **TRAP: `searchRead({limit: 0})` silently means 200** — for "every matching row" use `searchReadAll` (real pagination; starved the prep forecast for months). 5 known `limit: 0` callsites remain in `report-queries.ts` |
+| `odoo.ts` | `lib/odoo.ts` | The ONLY Odoo client. Never call Odoo from the browser. **TRAP: `searchRead({limit: 0})` silently means 200** — for "every matching row" use `searchReadAll` (id-cursor pagination, throws rather than truncates; starved the prep forecast for months and under-counted the Reports module until 2026-08-01). Zero `limit: 0` callsites remain — keep it that way |
 | `product-create.ts` | `lib/product-create.ts` | The one shape for creating a product (sets `is_storable`, keeps cost ≠ selling price) |
 | `product-tax.ts` | `lib/product-tax.ts` | Per-restaurant tax on a shared product. Unlink/link, never a full SET |
 | `product-scope.ts` | `lib/product-scope.ts` | What "the catalog" means; shared field lists |
