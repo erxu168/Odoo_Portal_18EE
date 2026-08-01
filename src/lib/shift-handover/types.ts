@@ -46,17 +46,38 @@ export interface LogEntry {
   updated_at: string;
 }
 
+/** A manager-editable lookup value: a prepped-item name or a unit. */
+export interface LookupItem {
+  id: number;
+  company_id: number;
+  kind: 'prepped_item' | 'unit' | string;
+  name: string;
+  sort_order: number;
+  active: number;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A persistent "In storage now" item — lives until someone marks it used. */
 export interface StorageItem {
   id: number;
   company_id: number;
   name: string;
+  /** How much + which unit (required on new prepped items; null on old rows). */
+  amount: number | null;
+  unit: string | null;
+  /** When it was prepared (YYYY-MM-DD); metadata only, does not change the log day. */
+  prepared_on: string | null;
+  /** The picked catalogue item, or null when the name was typed as "Other". */
+  item_id: number | null;
   /** The place it is in, from the restaurant's location tree. */
   location_id: number | null;
   /** The full path as it read when the item was put away (or free text on old rows). */
   location_text: string | null;
   use_first: number;
-  status: 'here' | 'used' | string;
+  status: 'here' | 'used' | 'deleted' | string;
+  /** Why it was cleared: 'moved_out' | 'used_up' | 'discarded' (null while here). */
+  cleared_reason: string | null;
   entry_id: number | null;
   added_by_user_id: number | null;
   added_by_name: string | null;

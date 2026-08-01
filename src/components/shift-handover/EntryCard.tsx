@@ -19,10 +19,11 @@ export interface FeedEntry {
   acknowledged_at: string | null;
   storage_item_id: number | null;
   can_edit: boolean;
+  can_acknowledge: boolean;
 }
 
-export function EntryCard({ entry, canPost, ackBusy, onAck, onEdit, onDelete, onViewPhoto }: {
-  entry: FeedEntry; canPost: boolean; ackBusy: boolean;
+export function EntryCard({ entry, ackBusy, onAck, onEdit, onDelete, onViewPhoto }: {
+  entry: FeedEntry; ackBusy: boolean;
   onAck: () => void; onEdit: () => void; onDelete: () => void; onViewPhoto: (photo: string) => void;
 }) {
   const [menu, setMenu] = useState(false);
@@ -78,12 +79,14 @@ export function EntryCard({ entry, canPost, ackBusy, onAck, onEdit, onDelete, on
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               Seen by {e.acknowledged_by_name || 'the next shift'}{e.acknowledged_at ? ` · ${fmtTime(e.acknowledged_at)}` : ''}
             </div>
-          ) : canPost ? (
+          ) : e.can_acknowledge ? (
             <button onClick={onAck} disabled={ackBusy} className="mt-2.5 w-full h-9 rounded-xl border-[1.5px] border-red-500 text-red-600 text-[var(--fs-xs)] font-bold flex items-center justify-center gap-1.5 active:bg-red-50 disabled:opacity-50">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               {ackBusy ? 'Saving…' : 'I’ve read this'}
             </button>
-          ) : null
+          ) : (
+            <div className="mt-2 text-[var(--fs-xs)] text-gray-400">Waiting for the next shift to confirm</div>
+          )
         )}
       </div>
     </div>

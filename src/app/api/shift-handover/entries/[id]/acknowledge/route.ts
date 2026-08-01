@@ -22,6 +22,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const cur = getLogEntry(id);
     if (!cur || cur.company_id !== companyId || !cur.active) throw new Error('NOT_FOUND');
     if (!cur.is_alert) throw new Error('NOT_ALERT');
+    // The next shift confirms a heads-up — its own author can't vouch for it.
+    if (cur.author_user_id != null && cur.author_user_id === authz.actor.userId) throw new Error('OWN');
     if (cur.acknowledged_at) return; // already acknowledged — idempotent
     // Required, not optional: without the exact version the caller saw, we can't
     // prove they read the current content, so refuse rather than trust the client.
@@ -35,6 +37,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const msg = e instanceof Error ? e.message : '';
     if (msg === 'NOT_FOUND') return jsonError(404, 'Note not found.');
     if (msg === 'NOT_ALERT') return jsonError(400, 'This note does not need acknowledging.');
+    if (msg === 'OWN') return jsonError(403, 'Someone on the next shift needs to confirm this one.');
     if (msg === 'STALE') return jsonError(409, 'This note was just edited — take another look.');
     console.error('[shift-handover] acknowledge failed:', e);
     return jsonError(500, 'Could not acknowledge.');

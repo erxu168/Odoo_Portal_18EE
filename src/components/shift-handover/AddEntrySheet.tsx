@@ -2,26 +2,42 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import PhotoCaptureStrip from '@/components/inventory/PhotoCaptureStrip';
-import { Sheet, Field, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync } from './common';
+import { Sheet, Field, Select, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync } from './common';
 import { LocationPickerSheet, LocationPathButton, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import type { FeedEntry } from './EntryCard';
 
 export interface LogTypeChip { id: number; name: string; emoji: string; is_alert: boolean; is_storage: boolean }
+export interface NamedLookup { id: number; name: string }
 
-export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
-  types: LogTypeChip[]; editEntry?: FeedEntry | null; onClose: () => void; onSaved: () => void;
+const OTHER = '__other__';
+
+/** Today's date in the Berlin calendar (kitchens run on Berlin time). */
+function berlinTodayLocal(): string {
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
+}
+
+export function AddEntrySheet({ types, preppedItems, units, editEntry, onClose, onSaved }: {
+  types: LogTypeChip[]; preppedItems: NamedLookup[]; units: NamedLookup[];
+  editEntry?: FeedEntry | null; onClose: () => void; onSaved: () => void;
 }) {
   const isEdit = !!editEntry;
-  const [typeId, setTypeId] = useState<number | null>(types[0]?.id ?? null);
+  // Default to a plain (non-storage) type so opening "Add" doesn't immediately
+  // demand item/amount/unit/place for someone who just wants to leave a note.
+  const [typeId, setTypeId] = useState<number | null>((types.find((t) => !t.is_storage) ?? types[0])?.id ?? null);
   const [note, setNote] = useState(editEntry?.note ?? '');
   const [photos, setPhotos] = useState<string[]>(editEntry?.photos ?? []);
-  const [name, setName] = useState('');
-  // WHERE it is, chosen from the restaurant's own places. It used to be a free
-  // text box, so one fridge collected a different spelling every shift.
+
+  // Prepped-item fields.
+  const [itemChoice, setItemChoice] = useState<string>(''); // lookup id as string, or OTHER, or ''
+  const [otherName, setOtherName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [unit, setUnit] = useState<string>(units[0]?.name ?? '');
+  const [preparedOn, setPreparedOn] = useState<string>(berlinTodayLocal());
   const [whereId, setWhereId] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [places, setPlaces] = useState<PickableLocation[]>([]);
   const [useFirst, setUseFirst] = useState(false);
+
   const [key] = useState(() => `entry-${Math.round(Math.random() * 1e9)}`);
   const { busy, error, setError, run } = useAsync();
 
@@ -39,6 +55,11 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
     return () => { alive = false; };
   }, [isStorage, places.length]);
 
+  const resolvedName = itemChoice === OTHER
+    ? otherName.trim()
+    : (preppedItems.find((p) => String(p.id) === itemChoice)?.name ?? '');
+  const resolvedItemId = itemChoice === OTHER || !itemChoice ? null : Number(itemChoice);
+
   async function save() {
     if (isEdit) {
       if (!note.trim() && photos.length === 0) { setError('Add a note or a photo.'); return; }
@@ -47,19 +68,33 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
       return;
     }
     if (!typeId) { setError('Pick a type first.'); return; }
-    if (isStorage && !name.trim()) { setError('What did you store?'); return; }
-    if (isStorage && whereId == null) { setError('Choose where you put it.'); return; }
-    if (!note.trim() && photos.length === 0 && !(isStorage && name.trim())) { setError('Add a note or a photo.'); return; }
+    if (isStorage) {
+      if (!resolvedName) { setError(itemChoice === OTHER ? 'Type what it is.' : 'What is it?'); return; }
+      const amt = Number(amount);
+      if (!Number.isFinite(amt) || amt <= 0) { setError('How much did you prep?'); return; }
+      if (!unit) { setError('Pick a unit.'); return; }
+      if (whereId == null) { setError('Choose where you put it.'); return; }
+    }
+    if (!note.trim() && photos.length === 0 && !(isStorage && resolvedName)) { setError('Add a note or a photo.'); return; }
     const res = await run(() => apiSend('/api/shift-handover/entries', 'POST', {
       type_id: typeId, note, photos,
-      storage: isStorage ? { name, location_id: whereId, use_first: useFirst } : null,
+      storage: isStorage ? {
+        name: resolvedName, item_id: resolvedItemId, amount: Number(amount), unit,
+        prepared_on: preparedOn, location_id: whereId, use_first: useFirst,
+      } : null,
       idempotency_key: key,
     }));
     if (res) onSaved();
   }
 
+  const itemOptions = [
+    ...preppedItems.map((p) => ({ value: String(p.id), label: p.name })),
+    { value: OTHER, label: 'Other…' },
+  ];
+  const unitOptions = units.map((u) => ({ value: u.name, label: u.name }));
+
   return (
-    <Sheet title={isEdit ? 'Edit note' : 'Add to the log'} onClose={onClose}
+    <Sheet title={isEdit ? 'Edit note' : 'Add to the log'} onClose={onClose} dismissOnBackdrop={false}
       footer={<PrimaryButton onClick={save} busy={busy}>{isEdit ? 'Save changes' : 'Post to the log'}</PrimaryButton>}>
       <ErrorNote>{error}</ErrorNote>
 
@@ -84,24 +119,39 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
       {isStorage && (
         <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-4 flex gap-2">
           <span aria-hidden="true">📌</span>
-          <p className="text-[var(--fs-xs)] text-blue-800">This stays pinned in “In storage now” until someone marks it used.</p>
+          <p className="text-[var(--fs-xs)] text-blue-800">This stays pinned in “In storage now” until someone clears it.</p>
         </div>
       )}
 
       {isStorage && (
         <>
           <Field label="What is it?">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Coleslaw"
+            <Select value={itemChoice} onChange={setItemChoice} options={itemOptions} placeholder="Choose an item" />
+          </Field>
+          {itemChoice === OTHER && (
+            <Field label="Type what it is">
+              <input value={otherName} onChange={(e) => setOtherName(e.target.value)} placeholder="e.g. Pumpkin soup" autoFocus
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none focus:border-green-600" />
+            </Field>
+          )}
+
+          <Field label="How much?">
+            <div className="grid grid-cols-2 gap-2">
+              <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none focus:border-green-600" />
+              <Select value={unit} onChange={setUnit} options={unitOptions} placeholder="Unit" />
+            </div>
+          </Field>
+
+          <Field label="Prepared on">
+            <input type="date" value={preparedOn} max={berlinTodayLocal()} onChange={(e) => setPreparedOn(e.target.value)}
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none focus:border-green-600" />
           </Field>
+
           <Field label="Where did you put it?">
-            <LocationPathButton
-              locations={places}
-              value={whereId}
-              placeholder="Choose a place"
-              onOpen={() => setPickerOpen(true)}
-            />
+            <LocationPathButton locations={places} value={whereId} placeholder="Choose a place" onOpen={() => setPickerOpen(true)} />
           </Field>
+
           <Field label="Use this first?">
             <OptionGrid cols={2} value={useFirst ? 1 : 0} options={[{ value: 1, label: 'Yes' }, { value: 0, label: 'No' }]} onChange={(v) => setUseFirst(!!v)} />
           </Field>
@@ -111,7 +161,7 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
       <Field label={isStorage ? 'Extra note (optional)' : 'Note'}>
         <textarea value={note} onChange={(e) => setNote(e.target.value)}
           placeholder={isStorage ? 'Anything else the next shift should know' : 'What did you do? What should the next shift know?'}
-          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 min-h-[72px] text-[var(--fs-base)] outline-none focus:border-green-600" />
+          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 min-h-[160px] text-[var(--fs-base)] outline-none focus:border-green-600" />
       </Field>
 
       <Field label="Photo (optional)">

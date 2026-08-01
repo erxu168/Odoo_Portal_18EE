@@ -2,10 +2,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
-import { getStorageItem, markStorageUsed, CLEAR_REASONS, type ClearReason } from '@/lib/shift-handover/db';
+import { getStorageItem, restoreStorageItem } from '@/lib/shift-handover/db';
 
-// POST — clear an "In storage now" item from the tray, recording WHY it left:
-// moved_out | used_up | discarded. Any staff member on shift may do this.
+// POST — undo a just-cleared item: put it back in "In storage now".
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
@@ -13,14 +12,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const companyId = resolveCompany(request, authz.user);
   if (!companyId) return jsonError(400, 'Choose a restaurant first.');
 
-  const body = await request.json().catch(() => ({}));
-  const reason = body?.reason as ClearReason;
-  if (!CLEAR_REASONS.includes(reason)) return jsonError(400, 'Say what happened to it.');
-
   const item = getStorageItem(parseInt(params.id, 10));
   if (!item || item.company_id !== companyId) return jsonError(404, 'Item not found.');
 
-  const changed = markStorageUsed(item.id, companyId, authz.actor, reason);
-  if (!changed) return jsonError(409, 'That item was already cleared.');
-  return NextResponse.json({ ok: true, reason });
+  const restored = restoreStorageItem(item.id, companyId);
+  if (!restored) return jsonError(409, 'Too late to undo — it is no longer just cleared.');
+  return NextResponse.json({ ok: true });
 }

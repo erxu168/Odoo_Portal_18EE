@@ -4,14 +4,15 @@ import { authorize, initHandoverTables, resolveCompany, operationalDate, jsonErr
 import { CAP } from '@/lib/shift-handover/access';
 import { listCountLocations, initInventoryTables } from '@/lib/inventory-db';
 import { locationPathLabel } from '@/lib/location-tree';
+import { berlinToday, isCanonicalDay } from '@/lib/berlin-date';
 import {
-  getDb, ensureDefaultLogTypes, getLogType, createLogEntry, createStorageItem,
-  setEntryStorageItem, addPhoto, filterValidPhotos, getIdempotentResult, claimIdempotency,
-  setIdempotencyResult, getLogEntry, listPhotos,
+  getDb, ensureDefaultLogTypes, ensureDefaultLookups, listLookups, getLookup, getLogType,
+  createLogEntry, createStorageItem, setEntryStorageItem, addPhoto, filterValidPhotos,
+  getIdempotentResult, claimIdempotency, setIdempotencyResult, getLogEntry, listPhotos,
 } from '@/lib/shift-handover/db';
 
-// POST — add one entry to the log. A "storage" type also pins a persistent
-// "In storage now" item. A note OR at least one photo is required.
+// POST — add one entry to the log. A "storage" (Prepped) type also pins a
+// persistent "In storage now" item. A note OR at least one photo is required.
 export async function POST(request: Request) {
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
   const companyId = resolveCompany(request, authz.user);
   if (!companyId) return jsonError(400, 'Choose a restaurant first.');
   ensureDefaultLogTypes(companyId);
+  ensureDefaultLookups(companyId);
 
   const body = await request.json().catch(() => ({}));
   const type = getLogType(parseInt(String(body?.type_id), 10));
@@ -27,34 +29,65 @@ export async function POST(request: Request) {
   const note = typeof body?.note === 'string' && body.note.trim() ? body.note.trim() : null;
   const photos = filterValidPhotos(body?.photos);
   const isStorage = !!type.is_storage;
-  const storageName = isStorage && typeof body?.storage?.name === 'string' ? body.storage.name.trim() : '';
+  const typedName = isStorage && typeof body?.storage?.name === 'string' ? body.storage.name.trim() : '';
   const useFirst = isStorage && !!body?.storage?.use_first;
 
-  // WHERE it is: a real place from the restaurant's location tree, not typed
-  // words. The id is validated against this company's own locations, and the
-  // full path is stored ALONGSIDE it so the handover still reads correctly
-  // years later, after that shelf has been renamed or taken out.
+  // Prepped-item details: a picked catalogue item (authoritative name) or an
+  // "Other" typed name, a required amount + unit, an optional prepared-on date,
+  // and WHERE it is.
   let storageLocId: number | null = null;
   let storageLoc = '';
+  let storageName = '';
+  let amount: number | null = null;
+  let unit: string | null = null;
+  let itemId: number | null = null;
+  let preparedOn: string | null = null;
   if (isStorage) {
+    // Item: a picked catalogue id (name comes from the catalogue) or Other (typed).
+    const rawItem = body?.storage?.item_id;
+    if (rawItem != null) {
+      const lk = getLookup(Number(rawItem));
+      if (!lk || lk.company_id !== companyId || lk.kind !== 'prepped_item' || !lk.active) return jsonError(400, 'Pick an item from the list.');
+      itemId = lk.id;
+      storageName = lk.name;
+    } else {
+      storageName = typedName;
+    }
+    if (!storageName) return jsonError(400, 'What did you prep?');
+
+    // Amount + unit are required; unit must be one of this restaurant's units.
+    const rawAmt = Number(body?.storage?.amount);
+    if (!Number.isFinite(rawAmt) || rawAmt <= 0) return jsonError(400, 'How much did you prep?');
+    amount = rawAmt;
+    const rawUnit = typeof body?.storage?.unit === 'string' ? body.storage.unit.trim() : '';
+    if (!rawUnit) return jsonError(400, 'Pick a unit.');
+    if (!listLookups(companyId, 'unit').some((u) => u.name === rawUnit)) return jsonError(400, 'That unit is not one of this restaurant’s.');
+    unit = rawUnit;
+
+    // Prepared-on: a real calendar day, today or earlier. Defaults to today ONLY
+    // when truly omitted; a supplied null/empty/malformed value is rejected
+    // (matches the storage PATCH so the two never diverge).
+    const rawDate = body?.storage?.prepared_on;
+    if (rawDate === undefined) {
+      preparedOn = berlinToday();
+    } else if (typeof rawDate === 'string' && isCanonicalDay(rawDate.trim()) && rawDate.trim() <= berlinToday()) {
+      preparedOn = rawDate.trim();
+    } else {
+      return jsonError(400, 'That prepared-on date isn’t valid.');
+    }
+
+    // WHERE it is — validated against this company's own locations; the full path
+    // is stored alongside so history reads after a shelf is renamed/removed.
     const raw = body?.storage?.location_id;
     const id = Number.isInteger(raw) ? Number(raw) : NaN;
-    if (!Number.isInteger(id) || id <= 0) {
-      return jsonError(400, 'Choose where you put it.');
-    }
-    // The locations live in the inventory schema, which this route never set
-    // up — it worked only because the browser happens to GET them first. A
-    // direct caller, or a fresh database, hit "no such table" as a 500.
+    if (!Number.isInteger(id) || id <= 0) return jsonError(400, 'Choose where you put it.');
     initInventoryTables();
     const locs = listCountLocations(companyId);
-    if (!locs.some((l) => l.id === id)) {
-      return jsonError(400, 'That place is not one of this restaurant\u2019s.');
-    }
+    if (!locs.some((l) => l.id === id)) return jsonError(400, 'That place is not one of this restaurant’s.');
     storageLocId = id;
     storageLoc = locationPathLabel(id, locs);
   }
 
-  if (isStorage && !storageName) return jsonError(400, 'What did you store?');
   if (!note && photos.length === 0 && !(isStorage && storageName)) {
     return jsonError(400, 'Add a note or a photo.');
   }
@@ -66,8 +99,9 @@ export async function POST(request: Request) {
     if (existing) return NextResponse.json({ entry_id: existing, deduped: true });
   }
 
-  // For a storage post the feed line falls back to "<name> · <where>" if no note typed.
-  const finalNote = note || (isStorage ? storageName + (storageLoc ? ` · ${storageLoc}` : '') : null);
+  // Storage feed line falls back to "<name> · <amount> <unit> · <where>" when no note.
+  const amountLabel = amount != null && unit ? ` · ${amount} ${unit}` : '';
+  const finalNote = note || (isStorage ? `${storageName}${amountLabel}${storageLoc ? ` · ${storageLoc}` : ''}` : null);
 
   const actor = authz.actor;
   const date = operationalDate(request);
@@ -84,6 +118,7 @@ export async function POST(request: Request) {
       const storageId = createStorageItem({
         company_id: companyId, name: storageName,
         location_id: storageLocId, location_text: storageLoc || null,
+        amount, unit, prepared_on: preparedOn, item_id: itemId,
         use_first: useFirst, entry_id: entryId, added_by_user_id: actor.userId, added_by_name: actor.name,
       });
       setEntryStorageItem(entryId, companyId, storageId);
@@ -99,7 +134,6 @@ export async function POST(request: Request) {
   try {
     entryId = tx();
   } catch (e) {
-    // A colliding idempotency claim means a prior/concurrent identical submit won.
     if (idemKey) {
       const existing = getIdempotentResult(idemKey, companyId, 'entry');
       if (existing) return NextResponse.json({ entry_id: existing, deduped: true });

@@ -6,7 +6,7 @@ import { roleCan, type Role } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import {
   getDb, getLogEntry, updateLogEntryNote, touchEntryEdited, softDeleteLogEntry,
-  deactivatePhotosFor, addPhoto, listPhotos, markStorageUsed, filterValidPhotos, clearEntryAck,
+  deactivatePhotosFor, addPhoto, listPhotos, softDeleteStorageItem, filterValidPhotos, clearEntryAck,
 } from '@/lib/shift-handover/db';
 import type { HandoverActor } from '@/lib/shift-handover/access';
 
@@ -95,7 +95,9 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
   const run = getDb().transaction(() => {
     softDeleteLogEntry(id, companyId);
-    if (entry.storage_item_id) markStorageUsed(entry.storage_item_id, companyId, authz.actor);
+    // Deleting the note removes the item it pinned — it was never consumed, so
+    // don't record it as "used"; just take it out of the tray.
+    if (entry.storage_item_id) softDeleteStorageItem(entry.storage_item_id, companyId);
   });
   run.immediate();
   return NextResponse.json({ ok: true });
