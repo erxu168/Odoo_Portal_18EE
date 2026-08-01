@@ -126,6 +126,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
   }, [productionDate, activeShelfLifeDays]);
 
   const [selectedSize, setSelectedSize] = useState('55x75');
+  const [langFixMsg, setLangFixMsg] = useState<string | null>(null);
   const [customWidth, setCustomWidth] = useState('55');
   const [customHeight, setCustomHeight] = useState('75');
   const [printing, setPrinting] = useState(false);
@@ -431,6 +432,30 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
               </button>
             )}
           </div>
+
+          {/* A factory-fresh ZQ300 is in line-print mode: it prints incoming
+              ZPL as literal text instead of a label. The cure is one SGD
+              command over the open connection; device.languages persists, so
+              this is a one-time tap per printer. */}
+          {ble.isConnected && !langFixMsg && (
+            <button
+              onClick={async () => {
+                setError(null);
+                const ok = await ble.print('! U1 setvar "device.languages" "zpl"\r\n');
+                setLangFixMsg(ok
+                  ? 'Printer switched to label mode. Tap Print again — this was a one-time fix, it stays set.'
+                  : 'Could not reach the printer. Check the connection and tap again.');
+              }}
+              className="mt-1.5 text-[11px] text-gray-400 underline active:text-gray-600">
+              Printer prints code instead of a label? Tap to fix
+            </button>
+          )}
+          {langFixMsg && (
+            <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-green-700 text-[var(--fs-xs)]">
+              {langFixMsg}
+              <button onClick={() => setLangFixMsg(null)} className="ml-2 text-green-400 font-bold">{'✕'}</button>
+            </div>
+          )}
 
           {/* Same picker as the inventory label screen. A Zebra that advertises
               its SERIAL as its Bluetooth name (a ZD420 shows as "D2J203404050")
