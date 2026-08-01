@@ -394,10 +394,14 @@ export async function computeForecasts(
     for (let d = 0; d < horizonDays; d++) {
       const targetDate = addDays(today, d);
       const dow = dowOfBerlinDate(targetDate);
-      const dateObj = new Date(targetDate + 'T12:00:00+01:00');
-      const isHol = isHoliday(dateObj) !== null;
-      // Phase 1: holidays are treated as closed (0 demand).
-      const holidayMult = isHol ? 0 : 1;
+      // Krawings is OPEN on public holidays (Ethan, 2026-08-01: "we are always
+      // open; a few days we are closed which is around christmas and new
+      // year"). Phase 1's holiday=closed assumption forecast ZERO for every
+      // holiday of the year. Neutral until enough tagged holiday history
+      // exists to learn a real ratio; demand history keeps its is_holiday tag
+      // for that. The handful of true closure days around Christmas/New Year
+      // are a future closure-calendar, not a holiday rule.
+      const holidayMult = 1;
 
       // Weather bucket for this target date — Phase 1 stores the tag
       // but applies a neutral multiplier. Phase 2 will compute a real
