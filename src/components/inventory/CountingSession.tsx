@@ -886,10 +886,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const siblings = (spotsOfProduct.get(p.id) || []).filter((l) => l !== loc);
     return (
       <div className="py-3 border-b border-gray-100">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-3">
           <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} />
           <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-1.5 flex-wrap">
+            <div className="flex items-start gap-1.5">
+            <div className="flex-1 min-w-0 flex items-baseline gap-1.5 flex-wrap">
               {/* Wrap rather than truncate: "Beef, goula…" is useless to someone
                   holding the product. Two lines beat a cut-off name. */}
               <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug min-w-0 [overflow-wrap:anywhere]">{p.name}</span>
@@ -933,15 +934,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   Photo required
                 </span>
               )}
-              {/* Everything about one product that is not a number: none left, a
-                  note, a photo. It rides in this wrapping line rather than as a
-                  fourth column, which left the name 20px on a small phone. */}
+              {/* Desktop keeps the compact inline "⋯" it always had; the phone gets
+                  the round button below instead (sm: swaps between the two). */}
               {!isReadOnly && (
                 <button
                   onClick={() => setRowMenu({ product: p, loc })}
                   aria-label={`More for ${p.name}`}
-                  className="flex-shrink-0 h-7 min-w-[36px] px-2 -my-1 rounded-lg border border-gray-200 text-gray-500 text-[15px] font-bold leading-none active:bg-gray-50">
-                  {'\u22EF'}
+                  className="hidden sm:inline-flex items-center justify-center flex-shrink-0 h-7 min-w-[36px] px-2 -my-1 rounded-lg border border-gray-200 text-gray-500 text-[15px] font-bold leading-none active:bg-gray-50">
+                  {'⋯'}
                 </button>
               )}
               {/* In the walk, the shelf heading directly above already says where
@@ -953,6 +953,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 </span>
               )}
             </div>
+            {/* "More" — a real round icon button, pinned top-right of the row, so
+                the extras (photo, note, out of stock) read as tappable. */}
+            {!isReadOnly && (
+              <button
+                onClick={() => setRowMenu({ product: p, loc })}
+                aria-label={`More for ${p.name}`}
+                className="sm:hidden flex-shrink-0 w-10 h-10 -mt-1 -mr-1 rounded-full flex items-center justify-center text-gray-500 bg-gray-50 active:bg-gray-100 transition-colors">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+              </button>
+            )}
+            </div>
           </div>
           {/* Three ways to enter a number, by what the product actually IS.
               A measured product sold in bunches is just a stepper counting
@@ -961,6 +972,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               packs genuinely need two numbers (3 crates AND 5 loose bottles),
               so those still open the sheet — by tapping the number, not a
               separate button. Everything else is a plain stepper. */}
+          {/* On a phone the counter drops to its own full-width line under the
+              name (border-top divider); on desktop it stays inline on the right. */}
+          <div className="basis-full sm:basis-auto sm:flex-none flex justify-end items-center mt-2.5 sm:mt-0 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-gray-100">
           {isReadOnly ? (
             <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
               {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{words.loose}</span>
@@ -1021,6 +1035,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               onPlus={() => stepQty(p, loc, 1)}
               onTap={() => openNumpad(p, loc)} />
           )}
+          </div>
         </div>
         {siblings.length > 0 && (
           <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">

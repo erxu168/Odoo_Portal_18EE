@@ -183,24 +183,38 @@ export default function GuidedCountingFlow({
                 const label = s.location ? typeLabel(s.location.kind) : '';
                 return (
                   <div key={s.bucket_id} className="mt-2 first:mt-1">
-                    {!solo && <div className="flex items-center gap-1 mb-1.5">
+                    {!solo && <div className="flex items-start sm:items-center gap-1 mb-1.5">
                     <button
                       onClick={() => setReopened((p) => {
                         const n = new Set(p);
                         if (n.has(s.bucket_id)) n.delete(s.bucket_id); else n.add(s.bucket_id);
                         return n;
                       })}
-                      className="min-w-0 flex-1 flex items-center gap-1.5 text-left pl-8 active:opacity-70"
+                      className="min-w-0 flex-1 flex items-start sm:items-center gap-1.5 text-left pl-8 active:opacity-70"
                     >
-                      <span className="text-[var(--fs-sm)] flex-shrink-0" aria-hidden="true">
+                      <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5 sm:mt-0" aria-hidden="true">
                         {s.location ? typeIcon(s.location.kind) : '📦'}
                       </span>
-                      <span className="text-[var(--fs-sm)] font-semibold text-gray-600 truncate">
+                      {/* PHONE: full path, never cut — the ancestor trail sits small on
+                          top, the exact spot staff must open is bold underneath (a
+                          truncated "Drawer…" told them nothing). DESKTOP keeps the
+                          original compact single line it always had. */}
+                      <span className="sm:hidden min-w-0 flex-1 text-[var(--fs-sm)] leading-tight">
+                        {rest.length > 0 && (
+                          <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">
+                            {rest.join(' › ')}
+                          </span>
+                        )}
+                        <span className="block font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                          {label && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
+                        </span>
+                      </span>
+                      <span className="hidden sm:block text-[var(--fs-sm)] font-semibold text-gray-600 truncate">
                         {rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
                         {label && <span className="text-gray-500">{label} </span>}
                         <span className="font-extrabold text-gray-900">{shelf}</span>
                       </span>
-                      <span className={`ml-auto flex-shrink-0 text-[var(--fs-xs)] font-bold ${
+                      <span className={`ml-auto flex-shrink-0 mt-0.5 sm:mt-0 text-[var(--fs-xs)] font-bold ${
                         skipped ? 'text-orange-600' : full ? 'text-green-700' : 'text-gray-400'
                       }`}>
                         {skipped ? 'skipped' : `${counted}/${total}`}{(full || skipped) ? (collapsed ? ' ▸' : ' ▾') : ''}
