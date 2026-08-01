@@ -15,7 +15,7 @@
  * what the screen adds up and what the stock ledger receives cannot drift.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Stepper, leafCategory } from './ui';
 import NumpadModal from './NumpadModal';
 import { packTotal, countableLevels, type PackLevel } from '@/lib/packaging';
@@ -52,13 +52,28 @@ export default function PackCountSheet({
   const [pad, setPad] = useState<null | number | 'loose'>(null);
   const [noteOpen, setNoteOpen] = useState(false);
 
+  // Seed the fields ONLY on the closed→open transition. The parent rebuilds
+  // `initialByLevel` as a fresh object on every render (e.g. while typing a
+  // note), so keying the reset off its identity wiped edits mid-count.
+  const seedRef = useRef({ byLevel: initialByLevel, loose: initialLoose });
+  seedRef.current = { byLevel: initialByLevel, loose: initialLoose };
+  // What the fields held the moment the sheet opened — the baseline we compare
+  // against to decide whether tapping away should COMMIT (a real change) or just
+  // close. The prefill is a display-only reconstruction, so an untouched sheet
+  // must never write it back or re-stamp who counted it.
+  const openedSeed = useRef<{ byLevel: Record<number, number>; loose: number; note: string }>({ byLevel: {}, loose: 0, note: '' });
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
-      setByLevel({ ...(initialByLevel || {}) });
-      setLoose(initialLoose || 0);
+    if (open && !wasOpen.current) {
+      const seededBy = { ...(seedRef.current.byLevel || {}) };
+      const seededLoose = seedRef.current.loose || 0;
+      setByLevel(seededBy);
+      setLoose(seededLoose);
       setPad(null);
+      openedSeed.current = { byLevel: seededBy, loose: seededLoose, note: note || '' };
     }
-  }, [open, initialByLevel, initialLoose]);
+    wasOpen.current = open;
+  }, [open, note]);
 
   // Biggest first, so you count the way you look at a shelf: boxes, then packs,
   // then the ones rattling around loose.
@@ -74,6 +89,31 @@ export default function PackCountSheet({
 
   const bump = (id: number, d: number) =>
     setByLevel((p) => ({ ...p, [id]: Math.max(0, (p[id] || 0) + d) }));
+  const bumpLoose = (d: number) => setLoose((n) => Math.max(0, n + d));
+
+  // Did a NUMBER actually change from what the sheet opened with? (Comparing
+  // values, not "did they tap" — a minus at zero or a numpad-save of the same
+  // number is a no-op and must not trigger a save of the display-only prefill.)
+  const numbersChanged = (() => {
+    const s = openedSeed.current;
+    if ((loose || 0) !== (s.loose || 0)) return true;
+    const seedBy = s.byLevel || {};
+    // Check every level id present on either side; duplicate keys just re-check.
+    const keys = [...Object.keys(byLevel), ...Object.keys(seedBy)];
+    return keys.some((k) => (byLevel[+k] || 0) !== (seedBy[+k] || 0));
+  })();
+  const noteChanged = (note || '') !== (openedSeed.current.note || '');
+
+  // Tapping outside COMMITS what's entered — every plain +/- item on the count
+  // saves the instant you tap it, and staff expected the same here (they lost
+  // their bags + pieces). Commit on a real numeric change, or a note change on a
+  // line that has a count — never turn an untouched, uncounted line into a
+  // phantom zero just because a note was typed or a no-op tap happened. Nothing
+  // changed → just close. "Cancel" always discards.
+  const dismiss = () => {
+    if (numbersChanged || (noteChanged && total > 0)) onSave(byLevel, loose);
+    else onClose();
+  };
 
   const sum = [
     ...countable.map((l) => `(${byLevel[l.id] || 0} × ${l.toBase})`),
@@ -82,7 +122,7 @@ export default function PackCountSheet({
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end" role="dialog" aria-modal="true">
-      <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/40" />
+      <button aria-label="Save and close" onClick={dismiss} className="absolute inset-0 bg-black/40" />
       <div className="relative w-full bg-gray-50 rounded-t-3xl max-h-[92vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]">
         <div className="px-[18px] pt-4 pb-3">
           <div className="flex items-start gap-3">
@@ -130,7 +170,7 @@ export default function PackCountSheet({
             </div>
           </div>
           <Stepper value={loose} uom={words.looseFor(loose)}
-            onMinus={() => setLoose((n) => Math.max(0, n - 1))} onPlus={() => setLoose((n) => n + 1)} onTap={() => setPad('loose')} />
+            onMinus={() => bumpLoose(-1)} onPlus={() => bumpLoose(1)} onTap={() => setPad('loose')} />
         </div>
 
         <div className="mx-[18px] mt-4 bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
