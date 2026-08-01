@@ -1622,6 +1622,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {!isReadOnly && crateSheet.open && crateSheet.product && (
         <CrateCountSheet
+          commitOnDismiss
           note={draftNote}
           onNoteChange={setDraftNote}
           outOfStock={oos.has(K(crateSheet.product.id, crateSheet.loc))}

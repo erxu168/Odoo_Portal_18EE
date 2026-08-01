@@ -102,16 +102,14 @@ export default function PackCountSheet({
     const keys = [...Object.keys(byLevel), ...Object.keys(seedBy)];
     return keys.some((k) => (byLevel[+k] || 0) !== (seedBy[+k] || 0));
   })();
-  const noteChanged = (note || '') !== (openedSeed.current.note || '');
-
   // Tapping outside COMMITS what's entered — every plain +/- item on the count
   // saves the instant you tap it, and staff expected the same here (they lost
-  // their bags + pieces). Commit on a real numeric change, or a note change on a
-  // line that has a count — never turn an untouched, uncounted line into a
-  // phantom zero just because a note was typed or a no-op tap happened. Nothing
-  // changed → just close. "Cancel" always discards.
+  // their bags + pieces). Commit only when a NUMBER actually changed, so an
+  // untouched sheet is never re-saved, re-stamped, or turned into a phantom
+  // zero. A note on its own isn't committed here (it saves with a count change
+  // or via "Save"). "Cancel" always discards.
   const dismiss = () => {
-    if (numbersChanged || (noteChanged && total > 0)) onSave(byLevel, loose);
+    if (numbersChanged) onSave(byLevel, loose);
     else onClose();
   };
 

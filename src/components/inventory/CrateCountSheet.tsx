@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Stepper, leafCategory } from './ui';
 import NumpadModal from './NumpadModal';
 import { crateTotal, pluralizePack, unitWords } from '@/lib/crate-units';
@@ -40,25 +40,42 @@ interface CrateCountSheetProps {
   // The save button's verb. Counting says "Save count"; the Waste Tracker says
   // "Bin it" — same sheet, different promise.
   saveLabel?: string;
+  // When true, leaving via "Back" COMMITS an entered count (like every plain
+  // +/- item saves on tap) instead of discarding it. ONLY the counting session
+  // sets this — Quick Count and, especially, the Waste Tracker ("Bin it") must
+  // never bin something just because you tapped Back.
+  commitOnDismiss?: boolean;
 }
 
 export default function CrateCountSheet({
   open, product, unitsPerCrate, uom, packLabel, looseLabel, initialCrates, initialLoose,
   showSystemQty, systemQty, locationName, onSave, onClose,
-  outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange, saveLabel,
+  outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange, saveLabel, commitOnDismiss,
 }: CrateCountSheetProps) {
   const [crates, setCrates] = useState(0);
   const [loose, setLoose] = useState(0);
   const [pad, setPad] = useState<null | 'crates' | 'loose'>(null);
   const [noteOpen, setNoteOpen] = useState(false);
 
+  // Latest prefill, and what the fields held the moment the sheet opened — the
+  // baseline for deciding whether "Back" should COMMIT (a real change) or just
+  // close. Prefill is a display-only reconstruction, so an untouched sheet must
+  // never write it back or re-stamp who counted it.
+  const seedRef = useRef({ crates: initialCrates, loose: initialLoose });
+  seedRef.current = { crates: initialCrates, loose: initialLoose };
+  const openedSeed = useRef({ crates: 0, loose: 0, note: '' });
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
-      setCrates(initialCrates || 0);
-      setLoose(initialLoose || 0);
+    if (open && !wasOpen.current) {
+      const c = seedRef.current.crates || 0;
+      const l = seedRef.current.loose || 0;
+      setCrates(c);
+      setLoose(l);
       setPad(null);
+      openedSeed.current = { crates: c, loose: l, note: note || '' };
     }
-  }, [open, initialCrates, initialLoose]);
+    wasOpen.current = open;
+  }, [open, note]);
 
   if (!open || !product) return null;
 
@@ -79,12 +96,29 @@ export default function CrateCountSheet({
     else setLoose((l) => Math.max(0, l + delta));
   }
 
+  // Did a NUMBER actually change from what the sheet opened with? (By value, not
+  // "did they tap" — a minus at zero or a numpad-save of the same number is a
+  // no-op and must not save the display-only prefill.)
+  const numbersChanged = (crates || 0) !== (openedSeed.current.crates || 0)
+    || (loose || 0) !== (openedSeed.current.loose || 0);
+
+  // Leaving via "Back": in the counting session this COMMITS what was entered
+  // (staff expected it to, like every plain +/- item) — but only when a NUMBER
+  // actually changed, so an untouched line is never re-saved, re-stamped, or
+  // turned into a phantom/lower count. A note on its own isn't committed here
+  // (it saves with a count change or via "Save count"). Everywhere else (Quick
+  // Count, the Waste Tracker's "Bin it"), Back still just closes.
+  const handleBack = () => {
+    if (commitOnDismiss && numbersChanged) onSave(crates, looseVal);
+    else onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-gray-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {/* Header */}
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
         <div className="flex items-center justify-between mb-1">
-          <button onClick={onClose} className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
+          <button onClick={handleBack} className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
             Back
           </button>
