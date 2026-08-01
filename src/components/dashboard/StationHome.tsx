@@ -74,8 +74,9 @@ export default function StationHome() {
   const total = list?.line_count ?? 0;
   const done = list?.completed_count ?? 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const nextTask = Array.isArray(list?.lines) ? list.lines.find((l: any) => l.state !== 'done') : null;
+  const upcoming: any[] = Array.isArray(list?.lines) ? list.lines.filter((l: any) => l.state !== 'done') : [];
   const allDone = total > 0 && done >= total;
+  const TASK_PREVIEW = 6;
 
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -101,57 +102,63 @@ export default function StationHome() {
         </div>
       </div>
 
-      {/* Tasks hero */}
+      {/* Tasks — the hero of the station screen: shows the actual checklist. */}
       <div className="px-4 -mt-3">
-        <button
-          onClick={() => router.push('/tasks')}
-          className="w-full text-left bg-white border border-gray-200 rounded-2xl shadow-sm p-5 active:scale-[0.99] transition-transform"
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl ${allDone ? 'bg-green-100' : 'bg-[#F1F3F5]'}`} aria-hidden="true">
+        <div className="w-full bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
+          <button onClick={() => router.push('/tasks')} className="w-full flex items-center justify-between text-left active:opacity-70 mb-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-[26px] flex-shrink-0 ${allDone ? 'bg-green-100' : 'bg-[#F1F3F5]'}`} aria-hidden="true">
                 {allDone ? '✅' : '📋'}
               </div>
-              <div>
-                <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight">Today&rsquo;s Tasks</div>
-                <div className="text-[var(--fs-xs)] text-gray-500">Department checklist</div>
+              <div className="min-w-0">
+                <div className="text-[var(--fs-xl)] font-bold text-gray-900 leading-tight">Today&rsquo;s Tasks</div>
+                <div className="text-[var(--fs-xs)] text-gray-500">{total > 0 ? `${done} of ${total} done` : 'Department checklist'}</div>
               </div>
             </div>
-            <span className="text-[var(--fs-xs)] font-bold text-[#2563EB]">Open &rarr;</span>
-          </div>
+            <span className="text-[var(--fs-sm)] font-bold text-[#2563EB] flex-shrink-0 ml-2">Open &rarr;</span>
+          </button>
+
+          {total > 0 && (
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden mb-3">
+              <div className="h-full bg-green-600 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+            </div>
+          )}
 
           {!listReady ? (
-            <div className="h-2 bg-gray-100 rounded-full animate-pulse" />
+            <div className="flex flex-col gap-2">{[0, 1, 2].map(i => <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}</div>
           ) : total === 0 ? (
-            <div className="text-[var(--fs-sm)] text-gray-500 py-1">No checklist for today yet.</div>
+            <div className="text-center py-6">
+              <div className="text-[var(--fs-md)] font-semibold text-gray-600">No checklist for today yet</div>
+              <div className="text-[var(--fs-xs)] text-gray-400 mt-1">It&rsquo;ll appear here once a manager publishes it.</div>
+            </div>
+          ) : allDone ? (
+            <div className="text-center py-4 text-[var(--fs-md)] font-semibold text-green-700">All tasks done — nice work! 🎉</div>
           ) : (
-            <>
-              <div className="flex items-center gap-3 mb-2.5">
-                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-600 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                </div>
-                <span className="text-[13px] font-bold text-gray-500 font-mono tabular-nums">{done} / {total}</span>
-              </div>
-              {allDone ? (
-                <div className="text-[var(--fs-sm)] font-semibold text-green-700">All tasks done — nice work! 🎉</div>
-              ) : (
-                <div className="text-[var(--fs-sm)] text-gray-700">
-                  <span className="text-gray-400 font-semibold">Next:</span>{' '}
-                  <span className="font-semibold text-gray-900">{nextTask?.name || '—'}</span>
-                </div>
+            <div className="flex flex-col divide-y divide-gray-100">
+              {upcoming.slice(0, TASK_PREVIEW).map((t: any) => (
+                <button key={t.id} onClick={() => router.push('/tasks')} className="flex items-center gap-3 py-2.5 text-left active:opacity-70">
+                  <span className="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0" />
+                  <span className="text-[var(--fs-sm)] text-gray-800 truncate">{t.name}</span>
+                </button>
+              ))}
+              {upcoming.length > TASK_PREVIEW && (
+                <div className="pt-2 text-[var(--fs-xs)] font-semibold text-gray-400 pl-8">+{upcoming.length - TASK_PREVIEW} more</div>
               )}
-            </>
+            </div>
           )}
-        </button>
+        </div>
       </div>
 
-      {/* Tool tiles */}
-      <div className="px-4 pt-4 grid grid-cols-3 gap-3">
-        <StationTile label="Cooking Guide" onClick={goGuide} emoji="👨‍🍳" />
-        <StationTile label="Inventory" onClick={() => router.push('/inventory')} emoji="📦" />
-        <StationTile label="Purchase" onClick={() => router.push('/purchase')} emoji="🛒" />
-        <StationTile label="Label Printer" onClick={() => router.push('/labels')} emoji="🏷️" />
-        <StationTile label="Something binned" onClick={() => router.push('/waste')} emoji="🗑️" />
+      {/* Tools — compact secondary launcher (the task list above is the focus). */}
+      <div className="px-4 pt-5">
+        <div className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-2 px-1">Tools</div>
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <StationTile label="Cooking Guide" onClick={goGuide} emoji="👨‍🍳" />
+          <StationTile label="Inventory" onClick={() => router.push('/inventory')} emoji="📦" />
+          <StationTile label="Purchase" onClick={() => router.push('/purchase')} emoji="🛒" />
+          <StationTile label="Label Printer" onClick={() => router.push('/labels')} emoji="🏷️" />
+          <StationTile label="Something binned" onClick={() => router.push('/waste')} emoji="🗑️" />
+        </div>
       </div>
 
       {/* Today's roster */}
@@ -193,12 +200,12 @@ function StationTile({ label, emoji, onClick }: { label: string; emoji: string; 
   return (
     <button
       onClick={onClick}
-      className="rounded-2xl border border-gray-200 bg-white p-3 flex flex-col items-center justify-center text-center aspect-square active:scale-[0.97] transition-transform"
+      className="rounded-xl border border-gray-200 bg-white p-2 flex flex-col items-center justify-center text-center gap-1 min-h-[72px] active:scale-[0.97] transition-transform"
     >
-      <div className="w-14 h-14 rounded-xl flex items-center justify-center mb-2 bg-[#F1F3F5] text-[26px]" aria-hidden="true">
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-[#F1F3F5] text-[20px]" aria-hidden="true">
         {emoji}
       </div>
-      <div className="text-[var(--fs-sm)] font-bold text-gray-900 leading-tight">{label}</div>
+      <div className="text-[var(--fs-xs)] font-bold text-gray-900 leading-tight">{label}</div>
     </button>
   );
 }

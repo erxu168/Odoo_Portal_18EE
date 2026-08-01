@@ -389,17 +389,20 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         onBack={onBack}
       />
 
+      {/* Step indicator (segmented) — shows which step you're on; it is NOT an
+          action button. Current step is a raised white segment on a gray track. */}
       <div className="px-4 pt-3 pb-1">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1" role="tablist" aria-label="Label steps">
           {(['config', 'print'] as Step[]).map((s, i) => {
             const labelsTab = ['1. Configure', '2. Print'];
             const isCurrent = step === s;
             const isReachable = s === 'config' || (s === 'print' && labels.length > 0);
             return (
-              <button key={s} onClick={() => isReachable && setStep(s)}
-                className={`flex-1 py-2 rounded-lg text-[var(--fs-xs)] font-bold text-center transition-all ${
-                  isCurrent ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-400'
-                }`}>
+              <button key={s} onClick={() => isReachable && setStep(s)} disabled={!isReachable}
+                role="tab" aria-selected={isCurrent}
+                className={`flex-1 py-2 min-h-[44px] rounded-lg text-[var(--fs-xs)] font-bold text-center transition-all ${
+                  isCurrent ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                } ${!isReachable ? 'opacity-40' : ''}`}>
                 {labelsTab[i]}
               </button>
             );
@@ -492,10 +495,10 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
       {step === 'config' && (
         <div className="px-4 pt-3 pb-24">
           <button onClick={() => setPickingRecipe(true)} disabled={loadingRecipe}
-            className="w-full mb-3 px-4 py-3 rounded-xl border-2 border-dashed border-pink-300 bg-pink-50/50 text-pink-700 font-bold text-[var(--fs-sm)] flex items-center justify-center gap-2 active:bg-pink-100 disabled:opacity-50">
+            className="w-full mb-3 px-4 py-3 rounded-xl border-2 border-dashed border-green-300 bg-green-50/50 text-green-700 font-bold text-[var(--fs-sm)] flex items-center justify-center gap-2 active:bg-green-100 disabled:opacity-50">
             {loadingRecipe ? (
               <>
-                <div className="w-4 h-4 border-2 border-pink-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
                 Loading recipe…
               </>
             ) : (
@@ -516,7 +519,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
                 {templates.map(t => (
                   <div key={t.id} className="flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm flex items-stretch overflow-hidden">
                     <button onClick={() => applyTemplate(t)}
-                      className="px-3 py-2 text-left active:bg-pink-50">
+                      className="px-3 py-2 text-left active:bg-green-50">
                       <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate max-w-[160px]">{t.product_name}</div>
                       <div className="text-[var(--fs-xs)] text-gray-400 truncate">
                         {t.qty != null ? `${t.qty}${t.uom ? ' ' + t.uom : ''}` : '—'}
@@ -536,11 +539,11 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
-              Product name <span className="text-pink-500">*</span>
+              Product name <span className="text-red-500">*</span>
             </div>
             <input type="text" value={productName} onChange={e => setProductName(e.target.value)}
               placeholder="e.g. Jerk Sauce, Coleslaw, Pickled Onions"
-              className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+              className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
@@ -548,9 +551,9 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
             <div className="flex gap-2 items-center">
               <input type="number" inputMode="decimal" step="0.01" min="0"
                 value={qty} onChange={e => setQty(e.target.value)} placeholder="0"
-                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
               <input type="text" value={uom} onChange={e => setUom(e.target.value)} placeholder="kg"
-                className="w-24 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-bold text-gray-700 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+                className="w-24 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-bold text-gray-700 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
             </div>
           </div>
 
@@ -577,7 +580,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
                     }}
                     className={`h-24 rounded-xl border-2 font-semibold text-sm transition active:scale-[0.97] flex flex-col items-center justify-center gap-1 ${
                       isActive
-                        ? 'bg-pink-50 border-pink-600 text-pink-700'
+                        ? 'bg-green-50 border-green-600 text-green-700'
                         : 'bg-gray-50 border-gray-200 text-gray-500'
                     }`}
                   >
@@ -594,7 +597,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
                 value={storageDays}
                 onChange={e => setStorageDays(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder={storageMode ? 'shelf life in days' : 'pick a storage mode first'}
-                className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none disabled:opacity-40 disabled:bg-gray-100"
+                className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none disabled:opacity-40 disabled:bg-gray-100"
               />
             </div>
             <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
@@ -605,16 +608,16 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Production date</div>
                 <input type="date" value={productionDate} onChange={e => setProductionDate(e.target.value)}
-                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
               </div>
               <div>
                 <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Expiry date</div>
                 <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
-                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
               </div>
             </div>
             <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
@@ -627,7 +630,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-6">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Number of labels</div>
             <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden h-14 focus-within:border-pink-600 focus-within:ring-2 focus-within:ring-pink-100">
+              <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden h-14 focus-within:border-green-600 focus-within:ring-2 focus-within:ring-green-100">
                 <button type="button"
                   onClick={() => setLabelCount(String(Math.max(1, (parseInt(labelCount, 10) || 1) - 1)))}
                   disabled={(parseInt(labelCount, 10) || 1) <= 1}
@@ -654,13 +657,13 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
           <div className="flex gap-2">
             <button onClick={saveTemplate} disabled={!canGenerate || savingTemplate}
               className={`px-5 py-4 rounded-xl border-2 font-bold text-[var(--fs-sm)] transition-all active:scale-[0.975] disabled:opacity-40 ${
-                savedFlash ? 'border-green-500 bg-green-50 text-green-700' : 'border-pink-200 bg-white text-pink-700 active:bg-pink-50'
+                savedFlash ? 'border-green-500 bg-green-50 text-green-700' : 'border-green-200 bg-white text-green-700 active:bg-green-50'
               }`}>
               {savedFlash ? '✓ Saved' : savingTemplate ? '…' : 'Save'}
             </button>
             <button onClick={handleGenerate} disabled={!canGenerate}
               className={`flex-1 py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
-                canGenerate ? 'bg-pink-600 text-white shadow-pink-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
+                canGenerate ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
               }`}>
               Generate Labels{countNum > 0 ? ` (${countNum})` : ''}
             </button>
@@ -722,7 +725,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
                     {ble.isConnected ? (
                       <button onClick={() => printOne(idx)} disabled={printing}
                         className={`text-[var(--fs-xs)] px-3 py-2 rounded-xl font-bold text-center disabled:opacity-40 ${
-                          isPrinted ? 'bg-gray-100 text-gray-600 active:bg-gray-200' : 'bg-pink-600 text-white active:bg-pink-700 shadow-sm'
+                          isPrinted ? 'bg-gray-100 text-gray-600 active:bg-gray-200' : 'bg-green-600 text-white active:bg-green-700 shadow-sm'
                         }`}>
                         {isPrintingThis ? '…' : isPrinted ? 'Reprint' : 'Print'}
                       </button>
@@ -747,7 +750,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
             </button>
             {ble.isConnected ? (
               <button onClick={printAll} disabled={printing}
-                className="flex-1 py-4 rounded-xl bg-pink-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-pink-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+                className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
                 {printing ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

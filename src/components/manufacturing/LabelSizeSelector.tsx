@@ -195,7 +195,7 @@ export default function LabelSizeSelector({ companyId, onSizeChange }: LabelSize
           <optgroup label="Saved Sizes">
             {savedSizes.map(s => (
               <option key={s.id} value={`saved:${s.id}`}>
-                {s.name} ({s.width_mm} \u00d7 {s.height_mm} mm)
+                {s.name} ({s.width_mm} × {s.height_mm} mm)
               </option>
             ))}
           </optgroup>
