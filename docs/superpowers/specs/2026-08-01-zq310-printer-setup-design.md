@@ -31,19 +31,27 @@ delivered as a Claude artifact ("Zebra ZQ310 Setup — WAJ Labels") on 2026-08-0
 - Company scope: saved sizes + default preference are per user+company — must be set while
   active company = What A Jerk.
 
-## App bugs found during adversarial verification (not yet fixed)
+## App bugs found during adversarial verification — all fixed same night
 
-1. **Saved label sizes print at the wrong dimensions.** `LabelPrint` sends
-   `labelSizeId: 'saved-<id>'`, but `resolveLabelSize` (`src/lib/zpl.ts:15–26`, used by
-   `src/app/api/labels/generate/route.ts:50`) only honors width/height when
-   `sizeId === 'custom'` — any `saved-*` id silently falls back to 55 × 75. The HTML preview
-   renders from local state, hiding the mismatch. Workaround in the runbook: use
-   `Custom size…` directly, never "Save this size for reuse". Fix direction: honor
-   client-sent `widthMm`/`heightMm` for `saved-*` ids (or resolve them server-side).
-2. **Code 128 barcode cannot fit at 48 mm.** `^BY2` at 203 dpi with the 20-char
-   `LBL-YYYYMMDD-HHMM-NN` payload needs ~64 mm (~50 mm even in subset C) → clipped right
-   edge, likely unscannable on this printer. Fix direction: drop to `^BY1` and/or shorten
-   the payload when width < ~55 mm.
+1. **Saved label sizes printed at the wrong dimensions.** `LabelPrint` sends
+   `labelSizeId: 'saved-<id>'`, but `resolveLabelSize` only honored width/height for
+   `sizeId === 'custom'` — any `saved-*` id silently fell back to 55 × 75 while the HTML
+   preview (local state) looked correct. **Fixed `f9e4551`**: presets still win; any
+   non-preset id uses the client-resolved dimensions.
+2. **Code 128 barcode could not fit at 48 mm.** `^BY2` at 203 dpi with the 20-char
+   `LBL-YYYYMMDD-HHMM-NN` payload needs ~64 mm → clipped right edge. **Fixed `38ae574`**:
+   drops to `^BY1` when 2 dots/module exceeds the printable width.
+3. **Factory ZQ300s sit in line-print mode** and print incoming ZPL as literal source text
+   (confirmed on a physical strip: `^XA^PW384…` printed as characters). **Fixed `28564c5`**:
+   LabelPrint's printer bar gained a one-tap "Printer prints code instead of a label?" button
+   that sends `! U1 setvar "device.languages" "zpl"` over the open connection; the setting
+   persists, so it is one tap per new printer. Follow-up: the button lives only in
+   LabelPrint — extract a shared printer-bar component so PackageLabel/LocationLabels get it.
+
+Also hit live: declaring the legacy Bluetooth permission trio with `maxSdkVersion="30"`
+broke Android 12+ printing entirely (Capacitor validates the plugin's full annotated
+permission list against the installed manifest) — reverted to Portal-manifest parity in
+`7ca5270`; the trap is documented in `build-station.yml`.
 3. Minor UX facts (runbook already matches reality): "Set as default" success shows a
    persistent green "✓ Default" (the "Saved!" flash is unreachable); connection does not
    persist across full app restarts (re-pick from "Paired devices" — two taps); the
