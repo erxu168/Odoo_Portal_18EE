@@ -607,30 +607,74 @@ export default function StaffPeople() {
           </div>
           <div className="flex flex-col gap-2">
             {otherAccounts.map((a) => (
-              <div key={a.id} className={`bg-white border border-gray-200 rounded-2xl p-4 ${!a.active ? 'opacity-50' : ''}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[15px] font-semibold text-gray-900 truncate">{a.name}</div>
-                    <div className="text-[12px] text-gray-500 font-mono mt-0.5 truncate">{a.email}</div>
+              <div key={a.id} className={`bg-white border border-gray-200 rounded-2xl overflow-hidden ${!a.active ? 'opacity-50' : ''}`}>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold text-gray-900 truncate">{a.name}</div>
+                      <div className="text-[12px] text-gray-500 font-mono mt-0.5 truncate">{a.email}</div>
+                    </div>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${roleColors[a.role] || 'bg-gray-100 text-gray-500'}`}>{a.role}</span>
                   </div>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${roleColors[a.role] || 'bg-gray-100 text-gray-500'}`}>{a.role}</span>
+                  <div className="flex items-center gap-2 mt-3 text-[12px] flex-wrap">
+                    <select value={a.role} onChange={(e) => changeRole(a, e.target.value)}
+                      className="px-2 py-1 rounded-lg border border-gray-200 text-gray-700 bg-white text-[12px]">
+                      <option value="staff">Staff</option>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    {/* Which app tiles this shared device (e.g. the kitchen tablet) shows. */}
+                    <button onClick={() => setExpandedModules(expandedModules === a.id ? null : a.id)}
+                      className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${expandedModules === a.id ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
+                      Modules
+                    </button>
+                    <button onClick={() => toggleActive(a)}
+                      className={`px-3 py-1 rounded-lg border text-[12px] ${a.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
+                      {a.active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                    <button onClick={() => deleteAccount(a)}
+                      className="px-3 py-1 rounded-lg border border-red-300 text-red-700 active:bg-red-50 text-[12px] font-semibold">
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 mt-3 text-[12px]">
-                  <select value={a.role} onChange={(e) => changeRole(a, e.target.value)}
-                    className="px-2 py-1 rounded-lg border border-gray-200 text-gray-700 bg-white text-[12px]">
-                    <option value="staff">Staff</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <button onClick={() => toggleActive(a)}
-                    className={`px-3 py-1 rounded-lg border text-[12px] ${a.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
-                    {a.active ? 'Deactivate' : 'Reactivate'}
-                  </button>
-                  <button onClick={() => deleteAccount(a)}
-                    className="px-3 py-1 rounded-lg border border-red-300 text-red-700 active:bg-red-50 text-[12px] font-semibold">
-                    Delete
-                  </button>
-                </div>
+
+                {/* Expanded module access — controls which tiles a shared device shows on its home screen */}
+                {expandedModules === a.id && (
+                  <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                        App modules {a.module_access ? '· custom' : '· role default'}
+                      </span>
+                      {a.module_access && (
+                        <button onClick={() => resetModules(a)} className="text-[11px] font-semibold text-gray-500 active:opacity-70">
+                          Reset to role default
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {PORTAL_MODULES.map((m) => {
+                        const checked = userModuleIds(a).includes(m.id);
+                        return (
+                          <button key={m.id} onClick={() => toggleModule(a, m.id)}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                              checked ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 active:bg-gray-50'
+                            }`}>
+                            <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                              checked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
+                            }`}>
+                              {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-semibold text-gray-900">{m.label}</div>
+                            </div>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono flex-shrink-0">{m.minRole}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
