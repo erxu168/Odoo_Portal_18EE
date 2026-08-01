@@ -3,25 +3,37 @@ name: Build Time Clock APK
 # Cloud-builds the "Kiosk Attendance" Android kiosk app (a Capacitor wrapper of
 # https://portal.krawings.de/kiosk) with no local Android Studio needed. The finished
 # .apk is published to a rolling GitHub release so any tablet can install it directly.
+#
+# One-app-per-folder: everything lives under apps/timeclock/ and the build runs there
+# (Capacitor's CWD), so it generates its own throwaway android/ and never collides with
+# the committed Portal app at apps/portal/. This is the KIOSK variant: ci/prepare-native.sh
+# wires the lock-task native code into the generated project each build.
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [ main ]
     paths:
-      - 'docs/android-timeclock/**'
+      - 'apps/timeclock/**'
       - '.github/workflows/build-timeclock.yml'
+      - 'package.json'
+      - 'package-lock.json'
   push:
     branches: [ main ]
     paths:
-      - 'docs/android-timeclock/**'
+      - 'apps/timeclock/**'
       - '.github/workflows/build-timeclock.yml'
+      - 'package.json'
+      - 'package-lock.json'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    defaults:
+      run:
+        working-directory: apps/timeclock
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -46,18 +58,9 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Install JS dependencies
+      - name: Install JS dependencies (root node_modules)
+        working-directory: .
         run: npm ci
-
-      - name: Use the Kiosk Attendance Capacitor config
-        # The repo root has capacitor.config.ts (the PORTAL app: appId de.krawings.portal,
-        # server.url = origin). Capacitor loads config .ts > .js > .json, so unless we remove
-        # the .ts our copied .json is IGNORED — the APK is built as the Portal app pointed at
-        # the origin, which redirects to /login. Remove it so the kiosk .json (with the
-        # /kiosk path) is the config Capacitor actually uses.
-        run: |
-          rm -f capacitor.config.ts capacitor.config.js
-          cp docs/android-timeclock/capacitor.config.json ./capacitor.config.json
 
       - name: Provide a webDir (the app loads the live site via server.url)
         run: |
@@ -65,10 +68,12 @@ jobs:
           printf '' > www/index.html
 
       - name: Generate the native Android project
-        run: npx cap add android
+        run: |
+          rm -rf android          # defensive: android/ is generated + gitignored, never committed
+          npx cap add android
 
       - name: Wire in the kiosk lock-task native code
-        run: bash docs/android-timeclock/ci/prepare-native.sh
+        run: bash ci/prepare-native.sh
 
       - name: Sync Capacitor into the native project
         run: npx cap sync android
@@ -76,18 +81,15 @@ jobs:
       - name: Generate the app icon
         run: |
           set -e
-          # Legacy square/round icons: @capacitor/assets reads icon-only.png correctly
-          # and also writes the adaptive-icon XML.
-          mkdir -p assets
-          cp docs/android-timeclock/assets/icon-only.png assets/icon-only.png
+          # Legacy square/round icons: @capacitor/assets reads assets/icon-only.png.
           npx --yes @capacitor/assets generate --android
           # Adaptive icon: @capacitor/assets does NOT honor a custom foreground at the
-          # correct 108dp sizes, so we write the adaptive foreground (our art) and a
-          # solid-white background ourselves, at the proper per-density sizes. This runs
-          # LAST so nothing overwrites it.
+          # correct 108dp sizes, so write the adaptive foreground (our committed art) and a
+          # solid-white background ourselves, at the proper per-density sizes. Runs LAST so
+          # nothing overwrites it.
           if ! command -v convert >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; fi
           RES=android/app/src/main/res
-          FG=docs/android-timeclock/assets/icon-foreground.png
+          FG=assets/icon-foreground.png
           for pair in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
             d=${pair%%:*}; s=${pair##*:}
             convert "$FG" -resize ${s}x${s} "$RES/mipmap-$d/ic_launcher_foreground.png"
@@ -97,24 +99,35 @@ jobs:
           file "$RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
 
       - name: Build the debug APK
+        working-directory: apps/timeclock/android
         run: |
-          cd android
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Assert appId + kiosk receiver wired in
+        working-directory: .
+        run: |
+          set -e
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging apps/timeclock/android/app/build/outputs/apk/debug/app-debug.apk | grep -q "package: name='de.krawings.timeclock'"
+          grep -q 'KioskDeviceAdminReceiver' apps/timeclock/android/app/src/main/AndroidManifest.xml
+          test -f apps/timeclock/android/app/src/main/java/de/krawings/timeclock/KioskDeviceAdminReceiver.java
+          echo "OK: de.krawings.timeclock with kiosk lock-task native code"
 
       - name: Upload the APK as a build artifact
         uses: actions/upload-artifact@v4
         with:
           name: krawings-timeclock-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: apps/timeclock/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Publish APK to the 'timeclock-latest' release
         if: github.ref == 'refs/heads/main'
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk krawings-timeclock.apk
+          cp apps/timeclock/android/app/build/outputs/apk/debug/app-debug.apk krawings-timeclock.apk
           gh release delete timeclock-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create timeclock-latest krawings-timeclock.apk \
             --repo "${{ github.repository }}" \

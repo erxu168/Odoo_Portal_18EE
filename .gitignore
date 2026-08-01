@@ -84,3 +84,8 @@ android-timeclock/
 /apps/cooktimer/www/
 /apps/cooktimer/assets/icon-foreground.png
 /apps/cooktimer/assets/icon-background.png
+
+# Time Clock / Kiosk app (apps/timeclock) — android/ + web stub generated per build.
+# (Its icon-foreground/background are COMMITTED source art, unlike the other apps.)
+/apps/timeclock/android/
+/apps/timeclock/www/

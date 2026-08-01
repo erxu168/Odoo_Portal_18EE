@@ -7,12 +7,12 @@
 # work. See docs/android-timeclock/README.md for the human walkthrough.
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # docs/android-timeclock
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # apps/timeclock
 NATIVE="$HERE/native"
-ROOT="$(cd "$HERE/../.." && pwd)"                          # repo root
-PKG="$ROOT/android/app/src/main/java/de/krawings/timeclock"
-RES_XML="$ROOT/android/app/src/main/res/xml"
-MANIFEST="$ROOT/android/app/src/main/AndroidManifest.xml"
+ANDROID="$HERE/android"                                    # apps/timeclock/android (Capacitor-generated per build)
+PKG="$ANDROID/app/src/main/java/de/krawings/timeclock"
+RES_XML="$ANDROID/app/src/main/res/xml"
+MANIFEST="$ANDROID/app/src/main/AndroidManifest.xml"
 
 mkdir -p "$PKG" "$RES_XML"
 cp "$NATIVE/MainActivity.java"             "$PKG/MainActivity.java"

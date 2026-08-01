@@ -1,0 +1,13 @@
+{
+  "name": "krawings-timeclock",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper (appId de.krawings.timeclock) around https://portal.krawings.de/kiosk — the 'Kiosk Attendance' time-clock app. KIOSK variant: ci/prepare-native.sh wires lock-task native code into the generated android/ project each build. Built by .github/workflows/build-timeclock.yml with this folder as its CWD; @capacitor/* resolve from the repo-root node_modules. The android/ project is generated per build and gitignored.",
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/core": "^8.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.0"
+  }
+}
