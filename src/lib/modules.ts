@@ -15,29 +15,52 @@ export interface PortalModule {
   id: string;
   label: string;
   minRole: 'staff' | 'manager' | 'admin';
+  /** Where the dashboard tile / nav link goes. null = a "coming soon" placeholder. */
+  href: string | null;
+  /** Dashboard tile + (fallback) nav icon. */
+  emoji: string;
+  /** Dashboard tile subtitle. */
+  subtitle: string;
+  /** Chef Guide has cooking vs production variants that share /recipes. */
+  scope?: 'cooking' | 'production';
+  /** false = governed for access but NOT shown as a dashboard tile (e.g. Termination). */
+  tile?: boolean;
+  /** Hamburger placement: 'nav' (default) or 'admin'. */
+  drawer?: 'nav' | 'admin';
 }
 
+/**
+ * THE single source of truth for the portal's modules. Both the dashboard tiles
+ * (DashboardHome) and the hamburger nav (AppDrawer) derive their list from this,
+ * so they can never drift — add a module here and it appears in BOTH, gated by the
+ * same per-user access. Order here = the default dashboard tile order.
+ */
 export const PORTAL_MODULES: PortalModule[] = [
-  { id: 'production', label: 'Manufacturing', minRole: 'staff' },
-  { id: 'recipes', label: 'Chef Guide', minRole: 'staff' },
-  { id: 'production-guide', label: 'Production Guide', minRole: 'manager' },
-  { id: 'inventory', label: 'Inventory', minRole: 'staff' },
-  { id: 'products', label: 'Products', minRole: 'manager' },
-  { id: 'labels', label: 'Label Printer', minRole: 'staff' },
-  { id: 'waste', label: 'Waste Tracker', minRole: 'staff' },
-  { id: 'shift-handover', label: 'Shift Handover', minRole: 'staff' },
-  { id: 'purchase', label: 'Purchase', minRole: 'staff' },
-  { id: 'hr', label: 'HR', minRole: 'staff' },
-  { id: 'tasks', label: 'My Tasks', minRole: 'staff' },
-  { id: 'shifts', label: 'Shifts', minRole: 'staff' },
-  { id: 'prep-planner', label: 'Prep Planner', minRole: 'manager' },
-  { id: 'cooktimer', label: 'Cooking Timer', minRole: 'manager' },
-  { id: 'sales', label: 'Sales', minRole: 'manager' },
-  { id: 'credentials', label: 'Supplier Logins', minRole: 'manager' },
-  { id: 'tablets', label: 'Shared Tablets', minRole: 'manager' },
-  { id: 'termination', label: 'Termination', minRole: 'admin' },
-  { id: 'rentals', label: 'Rentals', minRole: 'admin' },
+  { id: 'shift-handover',   label: 'Shift Handover',   minRole: 'staff',   href: '/shift-handover', emoji: '🔄', subtitle: 'Notes & photos for the next shift' },
+  { id: 'production',       label: 'Manufacturing',    minRole: 'staff',   href: '/manufacturing',  emoji: '🏭', subtitle: 'Prep & production orders' },
+  { id: 'recipes',         label: 'Chef Guide',       minRole: 'staff',   href: '/recipes',        emoji: '👨‍🍳', subtitle: 'Cooking guides', scope: 'cooking' },
+  { id: 'production-guide', label: 'Production Guide', minRole: 'manager', href: '/recipes',        emoji: '🥫', subtitle: 'Sauces, prep & batches', scope: 'production' },
+  { id: 'inventory',       label: 'Inventory',        minRole: 'staff',   href: '/inventory',      emoji: '📦', subtitle: 'Stock counting & tracking' },
+  { id: 'labels',          label: 'Label Printer',    minRole: 'staff',   href: '/labels',         emoji: '🖨️', subtitle: 'Print food & shelf labels' },
+  { id: 'waste',           label: 'Waste Tracker',    minRole: 'staff',   href: '/waste',          emoji: '🗑️', subtitle: 'Log & track kitchen waste' },
+  { id: 'products',        label: 'Products',         minRole: 'manager', href: '/products',       emoji: '🏷️', subtitle: 'Catalog, units & photos' },
+  { id: 'purchase',        label: 'Purchase',         minRole: 'staff',   href: '/purchase',       emoji: '🛒', subtitle: 'Orders & suppliers' },
+  { id: 'shifts',          label: 'Planning',         minRole: 'staff',   href: '/shifts',         emoji: '📅', subtitle: 'Shifts, claims & covers' },
+  { id: 'tasks',           label: 'My Tasks',         minRole: 'staff',   href: '/tasks',          emoji: '✅', subtitle: 'Daily department checklist' },
+  { id: 'prep-planner',    label: 'Prep Planner',     minRole: 'manager', href: '/prep-planner',   emoji: '📊', subtitle: 'Demand forecasts & prep targets' },
+  { id: 'cooktimer',       label: 'Cooking Timer',    minRole: 'manager', href: '/cooktimer-setup', emoji: '🍳', subtitle: 'Stations & cook profiles' },
+  { id: 'sales',           label: 'Sales',            minRole: 'manager', href: '/sales',          emoji: '📈', subtitle: 'What a Jerk revenue & top sellers' },
+  { id: 'hr',              label: 'HR',               minRole: 'staff',   href: '/hr',             emoji: '👤', subtitle: 'Profile & onboarding' },
+  { id: 'rentals',         label: 'Rentals',          minRole: 'admin',   href: '/rentals',        emoji: '🏠', subtitle: 'Properties & tenancies' },
+  { id: 'credentials',     label: 'Supplier Logins',  minRole: 'manager', href: '/admin/credentials', emoji: '🔑', subtitle: 'Vendor credentials', drawer: 'admin' },
+  { id: 'tablets',         label: 'Shared Tablets',   minRole: 'manager', href: '/admin/tablets',  emoji: '📱', subtitle: 'Kitchen tablet access', drawer: 'admin' },
+  { id: 'termination',     label: 'Termination',      minRole: 'admin',   href: '/hr/termination', emoji: '📄', subtitle: 'Offboarding & documents', tile: false, drawer: 'admin' },
 ];
+
+/** Modules shown as dashboard tiles (everything except tile:false). */
+export const DASHBOARD_MODULES = PORTAL_MODULES.filter((m) => m.tile !== false);
+/** Modules shown in the hamburger's "Navigate" section (not the Admin group). */
+export const NAV_MODULES = PORTAL_MODULES.filter((m) => (m.drawer ?? 'nav') === 'nav' && m.href);
 
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
 import CookPlanModal, { type CookPlanItem } from '@/components/prep-planner/CookPlanModal';
 import { DEFAULT_COMPANY_ID } from '@/components/prep-planner/companies';
-import { GOVERNED_MODULE_IDS } from '@/lib/modules';
+import { GOVERNED_MODULE_IDS, DASHBOARD_MODULES } from '@/lib/modules';
 
 function berlinToday(): string {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
@@ -26,28 +26,14 @@ interface Tile {
   scope?: 'cooking' | 'production';
 }
 
-const TILES: Tile[] = [
-  { id: 'shift-handover', label: 'Shift Handover', subtitle: 'Notes & photos for the next shift', href: '/shift-handover', minRole: 'staff', emoji: '🔄' },
-  { id: 'production', label: 'Manufacturing', subtitle: 'Prep & production orders', href: '/manufacturing', minRole: 'staff', emoji: '🏭' },
-  { id: 'recipes', label: 'Chef Guide', subtitle: 'Cooking guides', href: '/recipes', minRole: 'staff', scope: 'cooking', emoji: '👨‍🍳' },
-  { id: 'production-guide', label: 'Production Guide', subtitle: 'Sauces, prep & batches', href: '/recipes', minRole: 'manager', scope: 'production', emoji: '🥫' },
-  { id: 'inventory', label: 'Inventory', subtitle: 'Stock counting & tracking', href: '/inventory', minRole: 'staff', emoji: '📦' },
-  { id: 'products', label: 'Products', subtitle: 'Catalog, units & photos', href: '/products', minRole: 'manager', emoji: '🏷️' },
-  // "Lists & Options" retired — editable lists now live inside each module's own
-  // Settings (Inventory ⚙ / Purchase). /settings/lists redirects home.
-  { id: 'purchase', label: 'Purchase', subtitle: 'Orders & suppliers', href: '/purchase', minRole: 'staff', emoji: '🛒' },
-  { id: 'hr', label: 'HR', subtitle: 'Profile & onboarding', href: '/hr', minRole: 'staff', emoji: '👤' },
-  { id: 'credentials', label: 'Supplier Logins', subtitle: 'Vendor credentials', href: '/admin/credentials', minRole: 'manager', emoji: '🔑' },
-  { id: 'tablets', label: 'Shared Tablets', subtitle: 'Kitchen tablet access', href: '/admin/tablets', minRole: 'manager', emoji: '📱' },
-  { id: 'rentals', label: 'Rentals', subtitle: 'Properties & tenancies', href: '/rentals', minRole: 'admin', emoji: '🏠' },
-  { id: 'prep-planner', label: 'Prep Planner', subtitle: 'Demand forecasts & prep targets', href: '/prep-planner', minRole: 'manager', emoji: '📊' },
-  { id: 'cooktimer', label: 'Cooking Timer', subtitle: 'Stations & cook profiles', href: '/cooktimer-setup', minRole: 'manager', emoji: '🍳' },
-  { id: 'sales', label: 'Sales', subtitle: 'What a Jerk revenue & top sellers', href: '/sales', minRole: 'manager', emoji: '📈' },
-  { id: 'shifts', label: 'Planning', subtitle: 'Shifts, claims & covers', href: '/shifts', minRole: 'staff', emoji: '📅' },
-  { id: 'tasks', label: 'My Tasks', subtitle: 'Daily department checklist', href: '/tasks', minRole: 'staff', emoji: '✅' },
+// Tiles come from the ONE shared module registry (src/lib/modules.ts) so the
+// dashboard and the hamburger nav can never drift apart. Only the ungoverned
+// "coming soon" placeholders are appended locally.
+const PLACEHOLDER_TILES: Tile[] = [
   { id: 'leave', label: 'Leave', subtitle: 'Coming soon', href: null, minRole: 'staff', emoji: '🌴' },
   { id: 'payroll', label: 'Payroll', subtitle: 'Coming soon', href: null, minRole: 'staff', emoji: '💳' },
 ];
+const TILES: Tile[] = [...DASHBOARD_MODULES, ...PLACEHOLDER_TILES];
 
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 
