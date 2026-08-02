@@ -142,7 +142,9 @@ export default function StaffPeople() {
 
   // Active accounts that are NOT tied to any employee (shared devices, etc.).
   const otherAccounts = useMemo(
-    () => accounts.filter((a) => a.employee_id == null && a.status === 'active'),
+    // Shared tablet/device accounts moved to the Tablets & Devices screen; only other
+    // non-employee logins (e.g. service/admin accounts) remain here.
+    () => accounts.filter((a) => a.employee_id == null && a.status === 'active' && !a.is_shared_device),
     [accounts],
   );
 
@@ -603,7 +605,8 @@ export default function StaffPeople() {
             Other logins ({otherAccounts.length})
           </div>
           <div className="text-[12px] text-gray-500 mb-2">
-            Accounts not linked to an employee — e.g. shared devices like the kitchen tablet.
+            Accounts not linked to an employee. Shared kitchen/department tablets are now
+            managed under <span className="font-semibold">Tablets &amp; Devices</span>.
           </div>
           <div className="flex flex-col gap-2">
             {otherAccounts.map((a) => (

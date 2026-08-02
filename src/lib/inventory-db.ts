@@ -434,6 +434,12 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     // The word staff count in: 'crate', 'bunch', 'piece', 'tray'… (null = 'pack').
     db.exec("ALTER TABLE product_flags ADD COLUMN pack_label TEXT");
   }
+  if (!pfCols.some(c => c.name === 'level_shape')) {
+    // Container-level counting: which drawing staff mark the open container's
+    // level on — 'round' | 'rect' | 'barrel' | 'bottle'. NULL = feature off
+    // for this product (manager opt-in, Ethan's explicit call).
+    db.exec("ALTER TABLE product_flags ADD COLUMN level_shape TEXT");
+  }
   for (const table of ['count_entries', 'quick_counts']) {
     const cols = (db.prepare(`PRAGMA table_info('${table}')`).all() as { name: string }[]).map(c => c.name);
     if (!cols.includes('crate_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN crate_qty REAL`);
@@ -1915,6 +1921,8 @@ export function deleteCountsForProduct(productId: number): number {
 // PRODUCT FLAGS (per-product counting requirements)
 // ===
 
+export type LevelShape = 'round' | 'rect' | 'barrel' | 'bottle';
+
 export interface ProductFlag {
   odoo_product_id: number;
   requires_photo: boolean;
@@ -1922,6 +1930,7 @@ export interface ProductFlag {
   pack_label: string | null;       // what staff count in: 'crate' | 'bunch' | 'piece' | 'tray'… (null → 'pack')
   count_mode: CountMode | null;    // 'simple' | 'pack_loose' — null = infer from units_per_crate
   loose_label: string | null;      // single-unit word for pack_loose mode ('bottles'…)
+  level_shape: LevelShape | null;  // container drawing for level marking; null = off
   updated_by: number | null;
   updated_at: string | null;
 }
@@ -1944,9 +1953,30 @@ export function getProductFlags(ids?: number[]): ProductFlag[] {
     pack_label: r.pack_label ?? null,
     count_mode: (r.count_mode as CountMode) ?? null,
     loose_label: r.loose_label ?? null,
+    level_shape: (r.level_shape as LevelShape) ?? null,
     updated_by: r.updated_by,
     updated_at: r.updated_at,
   }));
+}
+
+/**
+ * Set (or clear) which container drawing a product's level is marked on.
+ * Upsert leaves every other flag field untouched, like its siblings.
+ */
+export function setProductLevelShape(
+  productId: number,
+  shape: LevelShape | null,
+  userId: number,
+) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, level_shape, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      level_shape = excluded.level_shape,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, shape, userId, now());
 }
 
 export function setProductFlag(

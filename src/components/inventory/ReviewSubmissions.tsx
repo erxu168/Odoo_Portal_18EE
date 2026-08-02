@@ -6,8 +6,11 @@ import StandardFilter from '@/components/ui/StandardFilter';
 import RecordLink from '@/components/ui/RecordLink';
 import PhotoLightbox from './PhotoLightbox';
 import NumpadModal from './NumpadModal';
-import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords, crateTotal } from '@/lib/crate-units';
+import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords, crateTotal, quarterFromLoose, pluralizePack } from '@/lib/crate-units';
+import { ContainerLevelGlyph, type ContainerShape } from '@/components/ui/ContainerLevelPicker';
 import { typeIcon, typeLabel, LOCATION_TYPES } from '@/lib/location-types';
+
+const LEVEL_WORD: Record<number, string> = { 0.25: '\u00BC', 0.5: '\u00BD', 0.75: '\u00BE' };
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -45,8 +48,10 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   // product_id -> what it came out at the last few APPROVED counts. Context only.
   const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number | null; date: string; not_found?: boolean }[]>>({});
   const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> whole-unit word
+  const [reviewLevelShapes, setReviewLevelShapes] = useState<Record<number, ContainerShape>>({});
   const [reviewLooseLabels, setReviewLooseLabels] = useState<Record<number, string>>({}); // product_id -> single-unit word
   const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
+  const [reviewQCShape, setReviewQCShape] = useState<ContainerShape | null>(null);
 
   useEffect(() => {
     fetch('/api/inventory/locations')
@@ -167,16 +172,19 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         const ids = productList.map((p: any) => p.id).filter(Boolean);
         const labelMap: Record<number, string> = {};
         const looseMap: Record<number, string> = {};
+        const levelMap: Record<number, ContainerShape> = {};
         if (ids.length > 0) {
           const flagRes = await fetch(`/api/inventory/product-flags?ids=${ids.join(',')}`).then(r => r.json());
           (flagRes.flags || []).forEach((f: any) => {
             if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
             if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
+            if (f.level_shape) levelMap[f.odoo_product_id] = f.level_shape;
           });
         }
         setReviewPackLabels(labelMap);
         setReviewLooseLabels(looseMap);
-      } catch { setReviewPackLabels({}); setReviewLooseLabels({}); }
+        setReviewLevelShapes(levelMap);
+      } catch { setReviewPackLabels({}); setReviewLooseLabels({}); setReviewLevelShapes({}); }
     } catch (err) {
       console.error('Failed to load review data:', err);
     } finally {
@@ -255,6 +263,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     setReviewQC(qc);
     setQcProduct(null);
     setReviewQCLabel(null);
+    setReviewQCShape(null);
     setErrorMsg(null);
     try {
       const prodRes = await fetch(`/api/inventory/products?ids=${qc.product_id}`).then(r => r.json());
@@ -263,7 +272,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       try {
         const flagRes = await fetch(`/api/inventory/product-flags?ids=${qc.product_id}`).then(r => r.json());
         setReviewQCLabel((flagRes.flags || [])[0]?.pack_label || null);
-      } catch { setReviewQCLabel(null); }
+        setReviewQCShape((flagRes.flags || [])[0]?.level_shape || null);
+      } catch { setReviewQCLabel(null); setReviewQCShape(null); }
     } catch (err) {
       console.error('Failed to load QC product:', err);
     }
@@ -361,11 +371,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               <div className="flex-1 bg-green-50 rounded-xl p-4 text-center">
                 <div className="text-[28px] font-bold text-green-700 font-mono">{reviewQC.counted_qty}</div>
                 <div className="text-[var(--fs-xs)] text-green-600 font-semibold">{uom} counted</div>
-                {qcIsCrate && qcSplit && (
-                  <div className="text-[var(--fs-xs)] text-green-700 mt-1 font-mono">
-                    = {formatSplit(qcSplit.crates, qcSplit.loose, uom, reviewQCLabel ?? (baseIsMeasure(uom) ? 'piece' : 'crate'))}
-                  </div>
-                )}
+                {qcIsCrate && qcSplit && (() => {
+                  const lbl = reviewQCLabel ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
+                  // Quick counts are single entries, so the stored size is the
+                  // size the level was marked against — no aggregate ambiguity.
+                  const q = reviewQCShape && baseIsMeasure(uom) && reviewQC.loose_qty != null && !reviewQC.out_of_stock
+                    ? quarterFromLoose(Number(reviewQC.loose_qty), Number(reviewQC.units_per_crate)) : null;
+                  return (
+                    <div className="text-[var(--fs-xs)] text-green-700 mt-1 font-mono">
+                      {reviewQCShape && q != null && q > 0 && q < 1 ? (
+                        <>
+                          = {qcSplit.crates > 0 ? `${qcSplit.crates} ${pluralizePack(lbl, qcSplit.crates)} + ` : ''}{LEVEL_WORD[q]} open {'\u2248'} {reviewQC.counted_qty} {uom}
+                          <span className="ml-1"><ContainerLevelGlyph shape={reviewQCShape} fraction={q} height={16} /></span>
+                        </>
+                      ) : (
+                        <>= {formatSplit(qcSplit.crates, qcSplit.loose, uom, lbl)}</>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -768,6 +792,10 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   // split here read "5 crates" over a product with 2 in the bar and
                   // 5 in the cellar — the split of one spot, captioning the total.
                   const pEntries = entriesByProduct[p.id] || [];
+                  // Set ONLY when the stored aggregate still adds up to the
+                  // displayed total — the level glyph must ride on the same
+                  // guard, or it testifies over corrected/retracted numbers.
+                  let splitIsStored = false;
                   const split = isCrate ? (() => {
                     const stored = pEntries.some((e: any) => e.crate_qty != null || e.loose_qty != null)
                       ? pEntries.reduce(
@@ -784,7 +812,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     // and this screen showed 1 bunch over a count of 0. Use it only
                     // while it still adds up; otherwise derive it from the total,
                     // which is what approval actually writes.
-                    if (stored && crateTotal(stored.crates, stored.loose, entry?.units_per_crate) === val) return stored;
+                    if (stored && crateTotal(stored.crates, stored.loose, entry?.units_per_crate) === val) { splitIsStored = true; return stored; }
                     return splitFromTotal(val, entry?.units_per_crate);
                   })() : null;
                   return (
@@ -937,7 +965,40 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                           {isOut ? (
                             <span className="text-red-600 font-sans font-semibold">None here</span>
                           ) : isCrate && dispMode === 'split' && split ? (
-                            <span className="text-gray-900">{formatSplit(split.crates, split.loose, pWords.loose, packLabel)}</span>
+                            <span className="text-gray-900">
+                              {(() => {
+                                // The marked level, said and drawn back — ONLY when
+                                // exactly one entry carries a stored loose amount
+                                // that is a clean partial quarter of ITS OWN stored
+                                // pack size. Aggregating two ¼-open buckets into a
+                                // ½ glyph would be a lie; anything unclear stays as
+                                // the plain split words.
+                                const shape = reviewLevelShapes[p.id];
+                                // Conservative on every axis: the stored aggregate
+                                // must have PASSED the adds-up guard above, the
+                                // base must be a measure, EVERY positive-loose
+                                // entry counts (a second open container without a
+                                // stored size also suppresses), and a retracted
+                                // ("nothing here") or not-found entry never
+                                // testifies.
+                                const withLoose = pEntries.filter((e: any) => e.loose_qty != null && Number(e.loose_qty) > 0);
+                                const soloRow = withLoose.length === 1 ? withLoose[0] : null;
+                                const solo = splitIsStored && baseIsMeasure(uom) && soloRow
+                                  && Number(soloRow.units_per_crate) > 0
+                                  && !soloRow.out_of_stock && !soloRow.not_found ? soloRow : null;
+                                const q = shape && solo ? quarterFromLoose(Number(solo.loose_qty), Number(solo.units_per_crate)) : null;
+                                if (shape && q != null && q > 0 && q < 1) {
+                                  return (
+                                    <>
+                                      {split.crates > 0 ? `${split.crates} ${pluralizePack(packLabel, split.crates)} + ` : ''}
+                                      {LEVEL_WORD[q]} open {'\u2248'} {val} {uom}
+                                      <span className="ml-1.5"><ContainerLevelGlyph shape={shape} fraction={q} /></span>
+                                    </>
+                                  );
+                                }
+                                return formatSplit(split.crates, split.loose, pWords.loose, packLabel);
+                              })()}
+                            </span>
                           ) : (
                             <span className="text-gray-900">{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></span>
                           )}

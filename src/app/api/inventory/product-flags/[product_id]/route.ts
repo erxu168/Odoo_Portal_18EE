@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel, setProductCountMode, getProductFlags } from '@/lib/inventory-db';
+import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel, setProductCountMode, setProductLevelShape, getProductFlags } from '@/lib/inventory-db';
 
 export async function PUT(
   request: Request,
@@ -31,7 +31,39 @@ export async function PUT(
   try {
     initInventoryTables();
     const body = await request.json();
-    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; count_mode?: string | null; loose_label?: string | null } = { success: true };
+
+    // VALIDATE the whole body BEFORE any write: a 400 must leave every flag
+    // untouched. (A request like {units_per_crate: 20, level_shape: "triangle"}
+    // used to change the size and then report failure.)
+    let sizeParsed: number | null | undefined;
+    if ('units_per_crate' in body) {
+      const raw = body.units_per_crate;
+      if (raw === null || raw === '' || raw === undefined) sizeParsed = null;
+      else {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0 || n > 100000) {
+          return NextResponse.json({ error: 'Invalid crate size' }, { status: 400 });
+        }
+        sizeParsed = n > 0 ? n : null;
+      }
+    }
+    if ('count_mode' in body) {
+      const m = body.count_mode;
+      if (m !== null && m !== 'simple' && m !== 'pack_loose') {
+        return NextResponse.json({ error: 'Invalid count_mode' }, { status: 400 });
+      }
+    }
+    let shapeParsed: string | null | undefined;
+    if ('level_shape' in body) {
+      const raw = body.level_shape;
+      const candidate = (raw == null || raw === '') ? null : String(raw);
+      if (candidate !== null && !['round', 'rect', 'barrel', 'bottle'].includes(candidate)) {
+        return NextResponse.json({ error: 'Invalid level shape' }, { status: 400 });
+      }
+      shapeParsed = candidate;
+    }
+
+    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; count_mode?: string | null; loose_label?: string | null; level_shape?: string | null } = { success: true };
 
     if ('requires_photo' in body) {
       const requiresPhoto = !!body.requires_photo;
@@ -40,17 +72,7 @@ export async function PUT(
     }
 
     if ('units_per_crate' in body) {
-      const raw = body.units_per_crate;
-      let size: number | null;
-      if (raw === null || raw === '' || raw === undefined) {
-        size = null;
-      } else {
-        const n = Number(raw);
-        if (!Number.isFinite(n) || n < 0 || n > 100000) {
-          return NextResponse.json({ error: 'Invalid crate size' }, { status: 400 });
-        }
-        size = n > 0 ? n : null;
-      }
+      const size = sizeParsed as number | null;
       setProductCrateSize(productId, size, user.id);
       result.units_per_crate = size;
     }
@@ -70,11 +92,7 @@ export async function PUT(
       let mode = current?.count_mode ?? null;
       let loose = current?.loose_label ?? null;
       if ('count_mode' in body) {
-        const m = body.count_mode;
-        if (m !== null && m !== 'simple' && m !== 'pack_loose') {
-          return NextResponse.json({ error: 'Invalid count_mode' }, { status: 400 });
-        }
-        mode = m ?? null;
+        mode = body.count_mode ?? null;   // validated above
       }
       if ('loose_label' in body) {
         const raw = body.loose_label;
@@ -83,6 +101,12 @@ export async function PUT(
       setProductCountMode(productId, mode, loose, user.id);
       result.count_mode = mode;
       result.loose_label = loose;
+    }
+
+    if ('level_shape' in body) {
+      const shape = (shapeParsed ?? null) as 'round' | 'rect' | 'barrel' | 'bottle' | null;   // validated above
+      setProductLevelShape(productId, shape, user.id);
+      result.level_shape = shape;
     }
 
     return NextResponse.json(result);

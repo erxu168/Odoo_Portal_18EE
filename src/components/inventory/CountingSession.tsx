@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
+import { type ContainerShape } from '@/components/ui/ContainerLevelPicker';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import OfflineBanner from './OfflineBanner';
@@ -76,6 +77,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> whole-unit word ('crate')
   const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});         // product_id -> single-unit word ('bottle')
+  const [levelShapes, setLevelShapes] = useState<Record<number, ContainerShape>>({});  // product_id -> container drawing for level marking
   const [crateSplits, setCrateSplits] = useState<Record<string, { crates: number; loose: number }>>({});
   const [rowNotes, setRowNotes] = useState<Record<string, string>>({});   // per-line note, keyed like every other line map
   const [draftNote, setDraftNote] = useState('');                          // note being typed in the open sheet
@@ -253,6 +255,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         if ((cached as any).spotPaths) setCachedSpotPaths((cached as any).spotPaths);
         if (cached.flags) setFlags(cached.flags);
         if (cached.crateSizes) setCrateSizes(cached.crateSizes);
+        if (cached.levelShapes) setLevelShapes(cached.levelShapes as Record<number, ContainerShape>);
         if (cached.crateLabels) setCrateLabels(cached.crateLabels);
         if (cached.looseLabels) setLooseLabels(cached.looseLabels);
       } else {
@@ -292,21 +295,24 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const crateMap: Record<number, number> = {};
       const labelMap: Record<number, string> = {};
       const looseMap: Record<number, string> = {};
+      const levelMap: Record<number, ContainerShape> = {};
       (d.flags || []).forEach((f: any) => {
         map[f.odoo_product_id] = !!f.requires_photo;
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
         if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
         if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
+        if (f.level_shape) levelMap[f.odoo_product_id] = f.level_shape;
       });
       setFlags(map);
       setCrateSizes(crateMap);
       setCrateLabels(labelMap);
       setLooseLabels(looseMap);
+      setLevelShapes(levelMap);
       // Pack sizes and photo rules into the cache so an offline reload still
       // knows a crate is 24. This must work on a session's FIRST open, when the
       // row does not exist yet — hence a patch that creates it.
       void patchCachedSessionData(sessionId, {
-        flags: map, crateSizes: crateMap, crateLabels: labelMap, looseLabels: looseMap,
+        flags: map, crateSizes: crateMap, crateLabels: labelMap, looseLabels: looseMap, levelShapes: levelMap,
       });
     }).catch(() => {});
   }, [sessionId]);
@@ -1692,6 +1698,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           showSystemQty={userRole !== 'staff'}
           systemQty={systemQtys[crateSheet.product.id] ?? null}
           locationName={locationName}
+          levelShape={levelShapes[crateSheet.product.id] || null}
           onSave={(crates, loose) => {
             const had = rowNotes[K(crateSheet.product.id, crateSheet.loc)] || '';
             saveCrateCount(crateSheet.product, crateSheet.loc, crates, loose, draftNote !== had ? draftNote : undefined);

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/ui/AppHeader';
 import PermissionsMatrix from '@/components/admin/PermissionsMatrix';
 
 export default function PermissionsPage() {
@@ -23,5 +24,10 @@ export default function PermissionsPage() {
       </div>
     );
   }
-  return <PermissionsMatrix />;
+  return (
+    <>
+      <AppHeader supertitle="ADMIN" title="Permissions" subtitle="Who can do what, per role" />
+      <PermissionsMatrix />
+    </>
+  );
 }

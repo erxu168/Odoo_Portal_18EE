@@ -9,7 +9,7 @@ import { locationPathLabel } from '@/lib/location-tree';
 import { berlinToday, isCanonicalDay } from '@/lib/berlin-date';
 import {
   getStorageItem, getStorageItemView, updateStorageItem, softDeleteStorageItem,
-  listLookups, getLookup, listPhotos,
+  listLookups, getLookup, listPhotos, parseAmount,
 } from '@/lib/shift-handover/db';
 
 // GET — one storage item's full detail (for the tap-to-open sheet).
@@ -65,7 +65,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     patch.name = name;
   }
   if (body?.amount !== undefined) {
-    const amt = Number(body.amount);
+    const amt = parseAmount(body.amount);
     if (!Number.isFinite(amt) || amt <= 0) return jsonError(400, 'How much is it?');
     patch.amount = amt;
   }

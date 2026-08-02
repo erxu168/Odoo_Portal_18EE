@@ -83,6 +83,11 @@ export function shiftDayAdd(dateStr: string, delta: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Parse an amount that may use a comma decimal (German tablets show "," ). */
+export function parseAmount(v: string | number | null | undefined): number {
+  return Number(String(v ?? '').trim().replace(',', '.'));
+}
+
 export function useAsync() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

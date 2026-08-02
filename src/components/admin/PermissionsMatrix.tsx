@@ -65,7 +65,6 @@ export default function PermissionsMatrix() {
 
   return (
     <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-[20px] font-extrabold text-gray-900 mb-1">Permissions</h1>
       <p className="text-[13px] text-gray-500 mb-4">
         Choose which role can do each action. Changes take effect the next time that person opens the page. Admins always keep access.
       </p>

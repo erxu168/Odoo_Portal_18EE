@@ -113,6 +113,7 @@ list told only about the room keeps rendering orphans.
 | `Field` | `ui/Field.tsx` | Label + control + hint/error row | 1 |
 | `OptionGrid` | `ui/OptionGrid.tsx` | Big-target replacement for radios — glove-friendly | 2 |
 | `Numpad` | `ui/Numpad.tsx` | Large touch numeric keypad | 2 |
+| `ContainerLevelPicker` / `ContainerLevelGlyph` | `ui/ContainerLevelPicker.tsx` | Mark the open container's level by eye — drawings of the REAL containers (white 10 L bucket, 20 L tub, blue 30 L drum, bottle), quarter steps, 44px zones; glyph = tiny read-only variant for review lines. Feeds the existing loose quantity via `looseFromFraction`/`quarterFromLoose` in `crate-units` | 2 |
 | `PhoneInput` | `ui/PhoneInput.tsx` | Country code + validation | 1 |
 | `RichTextEditor` | `ui/RichTextEditor.tsx` | Formatted-note editor | 2 |
 | `Chip` | `ui/Chip.tsx` | Status badge — colour AND icon carry meaning | 1 |
