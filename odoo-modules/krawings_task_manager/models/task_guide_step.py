@@ -164,13 +164,15 @@ class KrawingsTaskGuideStep(models.Model):
                 })
 
     @api.model
-    def get_media(self, kind, step_id, allowed_company_ids=None):
+    def get_media(self, kind, step_id, allowed_company_ids=None, parent_id=None):
         """Serve one step's photo or PDF bytes for the portal. `kind` is:
           - 'guide'    — a library guide step (company via guide_id).
           - 'list'     — a daily snapshot step (company via list line).
           - 'template' — LEGACY editable-source kind; resolves a step whether it
             still hangs off a template line OR has been moved onto its guide, so
             the previous portal keeps working across the library migration.
+        When `parent_id` is given, the step must actually hang off THAT parent —
+        closes a same-company step-id substitution gap on the media routes.
         Company-scoped through the parent and fails CLOSED for a company-less
         parent. Returns {filename, mimetype, data_base64} or False."""
         if kind not in ('guide', 'template', 'list'):
@@ -193,6 +195,15 @@ class KrawingsTaskGuideStep(models.Model):
             elif rec.template_line_id:
                 company = rec.template_line_id.template_id.company_id
             else:
+                return False
+        # Substitution guard: the step must belong to the claimed parent id.
+        if parent_id is not None:
+            pid = int(parent_id)
+            if kind == 'guide' and rec.guide_id.id != pid:
+                return False
+            if kind == 'list' and rec.list_line_id.id != pid:
+                return False
+            if kind == 'template' and pid not in (rec.guide_id.id, rec.template_line_id.id):
                 return False
         # Fail CLOSED: require an explicit allowed-company scope, and the
         # parent's company must be inside it. A company-less parent never leaks.

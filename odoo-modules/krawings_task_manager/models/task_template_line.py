@@ -123,9 +123,10 @@ class KrawingsTaskTemplateLine(models.Model):
                 rec.guide_id and rec.guide_id.published and rec.guide_id.step_count
             )
 
-    @api.constrains('guide_id')
+    @api.constrains('guide_id', 'template_id')
     def _check_guide_company(self):
-        """A task may only link a guide from its own company."""
+        """A task may only link a guide from its own company — re-checked when the
+        task moves to another template/company, not just when the link changes."""
         for line in self:
             if line.guide_id and line.template_id.company_id != line.guide_id.company_id:
                 raise ValidationError('A task can only link a guide from the same company.')
@@ -152,13 +153,26 @@ class KrawingsTaskTemplateLine(models.Model):
         Guide = self.env['krawings.task.guide'].sudo()
         guide = line.guide_id
         if not guide:
-            guide = Guide.create({
-                'name': line.name or 'Guide',
-                'company_id': line.template_id.company_id.id,
-                'published': False,
-                'revision': 0,
-            })
-            line.guide_id = guide.id
+            # Serialize concurrent first-saves: lock the line so two old-portal
+            # saves can't each auto-create a separate guide and orphan one of them.
+            self.env.flush_all()
+            self.env.cr.execute(
+                'SELECT guide_id FROM krawings_task_template_line WHERE id = %s FOR UPDATE',
+                (line.id,),
+            )
+            row = self.env.cr.fetchone()
+            existing = row[0] if row else None
+            if existing:
+                guide = Guide.browse(existing)
+            else:
+                guide = Guide.create({
+                    'name': line.name or 'Guide',
+                    'company_id': line.template_id.company_id.id,
+                    'published': False,
+                    'revision': 0,
+                })
+                line.guide_id = guide.id
+                self.env.flush_all()   # release the row lock holding the link
         return Guide.portal_save_guide(guide.id, revision, published, steps)
 
     @api.model
@@ -169,6 +183,44 @@ class KrawingsTaskTemplateLine(models.Model):
             raise UserError('Task not found.')
         line.guide_id = False
         return {'ok': True, 'revision': 0}
+
+    # ── Library-era attach / detach (many tasks → one guide) ──────────────
+    @api.model
+    def portal_guide_link(self, template_line_id):
+        """Link metadata for the task's guide picker: which library guide (if
+        any) this task points at, and its headline state."""
+        line = self.sudo().browse(int(template_line_id))
+        if not line.exists():
+            return False
+        g = line.guide_id
+        return {
+            'template_line_id': line.id,
+            'guide_id': g.id if g else False,
+            'name': g.name if g else '',
+            'published': g.published if g else False,
+            'revision': g.revision if g else 0,
+            'step_count': g.step_count if g else 0,
+        }
+
+    @api.model
+    def portal_attach_guide(self, template_line_id, guide_id):
+        """Attach (guide_id truthy) or detach (falsy) a library guide to this
+        task. Only links — never edits guide content or bumps its revision, so a
+        future spawn is the only thing affected. Company match is enforced here
+        AND by _check_guide_company. Returns the fresh link metadata."""
+        line = self.sudo().browse(int(template_line_id))
+        if not line.exists():
+            raise UserError('Task not found.')
+        if guide_id:
+            guide = self.env['krawings.task.guide'].sudo().browse(int(guide_id))
+            if not guide.exists():
+                raise UserError('Guide not found.')
+            if guide.company_id != line.template_id.company_id:
+                raise UserError('That guide belongs to a different company.')
+            line.guide_id = guide.id
+        else:
+            line.guide_id = False
+        return self.portal_guide_link(line.id)
 
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().

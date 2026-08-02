@@ -20,6 +20,15 @@
                 ('template_line_id.template_id.company_id', 'in', company_ids),
                 ('list_line_id.list_id.company_id', 'in', company_ids)]</field>
         </record>
+    </data>
+
+    <!-- Guide record rules are noupdate=0 (default) ON PURPOSE: the guide-parent
+         paths were added/changed in 18.0.8.0.0, and rules in a noupdate="1" block
+         are NOT re-applied on module upgrade — the DB would keep the old
+         template/list-only domains and library-owned steps/pins would be invisible
+         through record-rule-protected (non-sudo) ORM paths. Keeping them updatable
+         means every upgrade installs the current, correct domains. -->
+    <data>
         <!-- Reusable library guide: scope to the caller's companies. -->
         <record id="rule_task_guide_company" model="ir.rule">
             <field name="name">Guide: company multi-company rule</field>
@@ -48,7 +57,7 @@
         </record>
         <!-- Daily snapshots are immutable: only sudo (spawn / migration) may
              write or unlink guide records that belong to a daily list line. A
-             non-sudo user (incl. managers) can only edit TEMPLATE guides. -->
+             non-sudo user (incl. managers) can only edit library/template guides. -->
         <record id="rule_task_guide_step_daily_readonly" model="ir.rule">
             <field name="name">Guide step: daily snapshot is read-only</field>
             <field name="model_id" ref="model_krawings_task_guide_step"/>

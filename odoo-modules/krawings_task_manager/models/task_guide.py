@@ -67,6 +67,19 @@ class KrawingsTaskGuide(models.Model):
         for rec in self:
             rec.template_line_count = len(rec.template_line_ids)
 
+    @api.constrains('company_id')
+    def _check_company_matches_links(self):
+        """A guide can't be moved to another company while a task in a different
+        company still links it (the mirror of template.line._check_guide_company,
+        which only fires on the task side)."""
+        for guide in self:
+            for line in guide.template_line_ids:
+                if line.template_id.company_id != guide.company_id:
+                    raise ValidationError(
+                        'This guide is linked to a task in another company. '
+                        'Detach those tasks before changing its company.'
+                    )
+
     @api.constrains('published', 'step_ids')
     def _check_published_guide_complete(self):
         """Invariant: a PUBLISHED guide is always complete (>=1 step, every step
