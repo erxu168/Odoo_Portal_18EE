@@ -997,6 +997,19 @@ export async function getTemplateCompany(templateId: number): Promise<number | n
   return m2oId(rows[0].company_id);
 }
 
+/** Company + published state of a library guide, or null if not found. Used to
+ * company-scope the guide routes (and gate staff Training to published only). */
+export async function getGuideScope(
+  guideId: number,
+): Promise<{ companyId: number | null; published: boolean } | null> {
+  if (!guideId) return null;
+  const rows = await getOdoo().searchRead(
+    'krawings.task.guide', [['id', '=', guideId]], ['company_id', 'published'], { limit: 1 },
+  );
+  if (!rows.length) return null;
+  return { companyId: m2oId(rows[0].company_id), published: !!rows[0].published };
+}
+
 /** Company that owns a department, or null if not found. Used to company-scope routes. */
 export async function getDepartmentCompany(departmentId: number): Promise<number | null> {
   if (!departmentId) return null;

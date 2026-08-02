@@ -11,7 +11,7 @@ import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
 import { type GuidePin, type EditorPhoto } from '../../../_components/SetupGuideEditor';
-import GuidedTutorialEditor from '../../../_components/GuidedTutorialEditor';
+import GuidePicker from '../../../_components/GuidePicker';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -565,36 +565,8 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   // A line's optional how-to now lives in a separate GuidedTutorialEditor (its own
   // API), opened per already-saved line via `guideEditorOpen` below.
   const [isSetupGuide] = useState(false);
-  const [guideEditorOpen, setGuideEditorOpen] = useState(false);
-  // Local mirror of the guide's step count + published state, so the tutorial
-  // button label stays correct after the editor saves/removes a guide WITHOUT
-  // closing this modal. The `line` prop is a snapshot taken when the modal
-  // opened; a background list refresh updates the row behind the modal but not
-  // this captured prop, so we re-read the guide directly on the editor's onSaved.
-  const [guideMeta, setGuideMeta] = useState<{ stepCount: number; published: boolean }>({
-    stepCount: line?.guide_step_count ?? 0,
-    published: !!line?.guide_published,
-  });
-  // Orders overlapping refreshes: the editor can allow a second save (and a
-  // second refresh) before the first GET returns, so only the latest-STARTED
-  // refresh may write — a slower earlier response can't clobber newer state.
-  const guideMetaGen = useRef(0);
-  async function refreshGuideMeta() {
-    if (!line || line.id <= 0) return;
-    const myGen = ++guideMetaGen.current;
-    try {
-      const res = await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/guide`);
-      if (!res.ok) return;
-      const body = await res.json();
-      if (myGen !== guideMetaGen.current) return;   // superseded by a newer refresh
-      setGuideMeta({
-        stepCount: Array.isArray(body.steps) ? body.steps.length : 0,
-        published: !!body.published,
-      });
-    } catch {
-      // Leave the prior label — the row badge behind the modal still refreshes on close.
-    }
-  }
+  // The task's linked guide is managed by <GuidePicker/> below (its own API);
+  // this modal just refreshes the list behind it via onBackgroundRefresh.
   const [photos, setPhotos] = useState<EditorPhoto[]>(
     (line?.setup_photo_seqs ?? []).map(seq => ({
       seq,
@@ -929,34 +901,29 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             </div>
           </div>
 
-          {/* Guided tutorial — optional step-by-step how-to, saved via its OWN API
-              (independent of this line's save). Only offered for an already-saved
-              line, since the guide needs a real lineId. */}
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
-            {line && line.id > 0 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setGuideEditorOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  {guideMeta.stepCount > 0
-                    ? `📖 Edit guide · ${guideMeta.stepCount} step${guideMeta.stepCount === 1 ? '' : 's'} · ${guideMeta.published ? 'Live' : 'Draft'}`
-                    : '📖 Add guided tutorial'}
-                </button>
-                <p className="text-[11px] text-gray-400 mt-1">A step-by-step how-to for staff. Optional — it never completes the task.</p>
-              </>
-            ) : (
-              <p className="text-[11px] text-gray-400">💡 Save this task first, then reopen it to add a guided tutorial.</p>
-            )}
-          </div>
+          {/* Guided tutorial — link a REUSABLE library guide (many tasks → one
+              guide). Only offered for an already-saved line, since attaching
+              needs a real lineId. */}
+          {line && line.id > 0 ? (
+            <GuidePicker
+              templateId={tplId}
+              lineId={line.id}
+              taskName={line.name}
+              onChanged={onBackgroundRefresh}
+            />
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
+              <p className="text-[11px] text-gray-400">💡 Save this task first, then reopen it to link a guided tutorial.</p>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</label>
             <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Attachments (instructions, references)</label>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Reference files · quick single files</label>
+            <p className="text-[11px] text-gray-400 mb-1.5">One-off PDFs or images to open. For a step-by-step how-to, use the guided tutorial above.</p>
             <AttachmentList
               attachments={attachments}
               canDelete
@@ -1011,15 +978,6 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
         </div>
       </div>
     </div>
-    {guideEditorOpen && line && line.id > 0 && (
-      <GuidedTutorialEditor
-        templateId={tplId}
-        lineId={line.id}
-        lineName={line.name}
-        onClose={() => setGuideEditorOpen(false)}
-        onSaved={() => { onBackgroundRefresh(); void refreshGuideMeta(); }}
-      />
-    )}
     </>
   );
 }

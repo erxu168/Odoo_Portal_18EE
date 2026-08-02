@@ -297,7 +297,9 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         {error && <p className="mt-1.5 text-xs font-semibold text-red-600">{error}</p>}
       </div>
     </div>
-    {showGuide && <GuidedTutorialPlayer lineId={task.id} onClose={() => setShowGuide(false)} />}
+    {showGuide && (
+      <GuidedTutorialPlayer source={{ kind: 'daily', lineId: task.id }} onClose={() => setShowGuide(false)} />
+    )}
     </>
   );
 }

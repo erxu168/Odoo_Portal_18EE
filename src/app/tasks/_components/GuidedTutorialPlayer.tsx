@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import PinnableImage from '@/components/ui/PinnableImage';
 import { useTopBar } from '@/components/ui/TopBarContext';
 import { youtubeEmbedUrl, youtubeWatchUrl } from '@/lib/youtube-url';
-import type { StaffGuide, StaffGuideStep, TemplateGuide } from '@/lib/task-guide';
+import type { StaffGuide, StaffGuideStep, TemplateGuide, LibraryGuide } from '@/lib/task-guide';
 
 /**
  * GuidedTutorialPlayer — STAFF full-screen player for a task's guided tutorial.
@@ -23,17 +23,55 @@ import type { StaffGuide, StaffGuideStep, TemplateGuide } from '@/lib/task-guide
  *   Staff (default):
  *     GET /api/tasks/lines/{lineId}/guide                       -> StaffGuide
  *     GET /api/tasks/lines/{lineId}/guide/steps/{stepId}/media  -> raw photo/pdf bytes
- *   Manager preview (when `templateId` is set — read-only, never completes):
- *     GET /api/tasks/templates/{templateId}/lines/{lineId}/guide                      -> TemplateGuide
- *     GET /api/tasks/templates/{templateId}/lines/{lineId}/guide/steps/{stepId}/media -> raw bytes
+ *   Manager library preview (kind 'library-manager' — read-only):
+ *     GET /api/tasks/guides/{guideId}                       -> LibraryGuide
+ *     GET /api/tasks/guides/{guideId}/steps/{stepId}/media  -> raw bytes
+ *   Staff Training (kind 'training' — read-only, no task):
+ *     GET /api/tasks/training/guides/{guideId}                       -> {name,steps}
+ *     GET /api/tasks/training/guides/{guideId}/steps/{stepId}/media  -> raw bytes
  */
 
+/** Where the player reads its guide from. 'daily' is a real task's frozen
+ * snapshot (the only mode that sits next to a tickable task); the other two are
+ * read-only previews of a reusable library guide. */
+export type PlayerSource =
+  | { kind: 'daily'; lineId: number }
+  | { kind: 'library-manager'; guideId: number }
+  | { kind: 'training'; guideId: number };
+
 interface Props {
-  lineId: number;
+  source: PlayerSource;
   onClose: () => void;
-  /** When set, render a manager PREVIEW of the TEMPLATE line's guide (read-only,
-   * never completes anything). Omitted for the normal staff daily-snapshot view. */
-  templateId?: number;
+}
+
+function guideEndpoint(s: PlayerSource): string {
+  if (s.kind === 'daily') return `/api/tasks/lines/${s.lineId}/guide`;
+  if (s.kind === 'library-manager') return `/api/tasks/guides/${s.guideId}`;
+  return `/api/tasks/training/guides/${s.guideId}`;
+}
+
+function mediaEndpoint(s: PlayerSource, sid: number): string {
+  if (s.kind === 'daily') return `/api/tasks/lines/${s.lineId}/guide/steps/${sid}/media`;
+  if (s.kind === 'library-manager') return `/api/tasks/guides/${s.guideId}/steps/${sid}/media`;
+  return `/api/tasks/training/guides/${s.guideId}/steps/${sid}/media`;
+}
+
+/** Normalize a library/training payload ({name, steps:[GuideStepRead-ish]}) into
+ * the StaffGuide shape the player renders. */
+function normalizeLibrary(data: { name?: string; steps: TemplateGuide['steps'] }): StaffGuide {
+  return {
+    line_name: data.name || '',
+    steps: data.steps.map(s => ({
+      id: s.id,
+      media_type: s.media_type,
+      explanation: s.explanation,
+      has_image: s.has_image,
+      has_pdf: s.has_pdf,
+      pdf_filename: s.pdf_filename,
+      youtube_url: s.youtube_url,
+      pins: s.pins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, note: p.note })),
+    })),
+  };
 }
 
 /** Focusable descendants, in DOM order, used to trap Tab inside the dialog. */
@@ -46,7 +84,9 @@ function focusableWithin(root: HTMLElement | null): HTMLElement[] {
   );
 }
 
-export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Props) {
+export default function GuidedTutorialPlayer({ source, onClose }: Props) {
+  const isPreview = source.kind !== 'daily';
+  const endpoint = guideEndpoint(source);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guide, setGuide] = useState<StaffGuide | null>(null);
@@ -91,15 +131,13 @@ export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Pr
   const isLast = index >= total - 1;
 
   const mediaSrc = useCallback(
-    (sid: number) =>
-      templateId
-        ? `/api/tasks/templates/${templateId}/lines/${lineId}/guide/steps/${sid}/media`
-        : `/api/tasks/lines/${lineId}/guide/steps/${sid}/media`,
-    [lineId, templateId],
+    (sid: number) => mediaEndpoint(source, sid),
+    [source],
   );
 
-  // Load the guide: the staff daily snapshot, or (preview) the template line's
-  // guide. Re-runs on line/template change and on a "Try again" tap (reloadTick).
+  // Load the guide from whichever source is set. Re-runs on source change and on
+  // a "Try again" tap (reloadTick). daily → StaffGuide as-is; the two library
+  // sources → LibraryGuide/{name,steps} normalized into the StaffGuide shape.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -109,33 +147,13 @@ export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Pr
     setActivePin(null);
     setImgError(new Set());
 
-    const guideUrl = templateId
-      ? `/api/tasks/templates/${templateId}/lines/${lineId}/guide`
-      : `/api/tasks/lines/${lineId}/guide`;
-
-    fetch(guideUrl, { headers: { Accept: 'application/json' } })
+    fetch(endpoint, { headers: { Accept: 'application/json' } })
       .then(async res => {
         if (!res.ok) throw new Error('guide-load-failed');
-        if (templateId) {
-          // Template read returns { revision, published, steps } with no
-          // line_name — normalise into the StaffGuide shape the player consumes.
-          const tg = (await res.json()) as TemplateGuide;
-          const normalized: StaffGuide = {
-            line_name: '',
-            steps: tg.steps.map(s => ({
-              id: s.id,
-              media_type: s.media_type,
-              explanation: s.explanation,
-              has_image: s.has_image,
-              has_pdf: s.has_pdf,
-              pdf_filename: s.pdf_filename,
-              youtube_url: s.youtube_url,
-              pins: s.pins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, note: p.note })),
-            })),
-          };
-          return normalized;
-        }
-        return (await res.json()) as StaffGuide;
+        const json = await res.json();
+        return source.kind === 'daily'
+          ? (json as StaffGuide)
+          : normalizeLibrary(json as LibraryGuide);
       })
       .then(data => {
         if (cancelled) return;
@@ -153,7 +171,7 @@ export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Pr
     return () => {
       cancelled = true;
     };
-  }, [lineId, templateId, reloadTick]);
+  }, [endpoint, source.kind, reloadTick]);
 
   // Any pin note belongs to the step it was opened on — close it on navigation.
   // Also clear the step we're landing on from imgError, so a photo that failed
@@ -271,7 +289,7 @@ export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Pr
               How-to guide
             </p>
             <h1 id={titleId} className="text-lg font-bold leading-tight truncate">
-              {guide?.line_name || (templateId ? 'Guide preview' : 'Guided tutorial')}
+              {guide?.line_name || (isPreview ? 'Guide preview' : 'Guided tutorial')}
             </h1>
           </div>
           <button
@@ -402,8 +420,8 @@ export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Pr
         <div className="flex-shrink-0 bg-white border-t border-gray-200 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="max-w-md mx-auto">
             {/* Persistent reminder — the guide is instructional only; staff still
-                tick the task off themselves. Hidden in manager preview. */}
-            {!templateId && (
+                tick the task off themselves. Hidden in any preview (no task). */}
+            {!isPreview && (
               <p className="mb-2 text-center text-xs font-medium text-gray-500">
                 This just shows you how — you still tick the task off yourself.
               </p>

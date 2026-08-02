@@ -13,10 +13,13 @@ export async function GET(
 ) {
   try {
     const user = requireAuth();
+    const lineId = parseInt(params.id, 10);
     const stepId = parseInt(params.stepId, 10);
-    if (Number.isNaN(stepId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    if (Number.isNaN(lineId) || Number.isNaN(stepId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     const allowed = parseCompanyIds(user.allowed_company_ids);
-    const media = await getStepMedia('list', stepId, allowed);
+    // parentId=lineId → the step must belong to THIS daily line (not just any
+    // same-company snapshot step), closing a step-id substitution gap.
+    const media = await getStepMedia('list', stepId, allowed, lineId);
     if (!media) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return new NextResponse(Buffer.from(media.data_base64, 'base64'), {
       status: 200,

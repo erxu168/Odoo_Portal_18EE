@@ -119,14 +119,107 @@ export interface GuideMediaBytes {
   data_base64: string;
 }
 
-/** Photo or PDF bytes for one step. kind: 'template' (editor) | 'list' (daily). */
+/**
+ * Photo or PDF bytes for one step. `kind`:
+ *   - 'guide'    library guide step (manager editor / staff Training)
+ *   - 'list'     daily snapshot step (staff daily player)
+ *   - 'template' LEGACY editable-source kind (kept for back-compat)
+ * When `parentId` is given the step must belong to that parent (guide id / list
+ * line id) — closes a same-company step-id substitution gap. Fails closed.
+ */
 export async function getStepMedia(
-  kind: 'template' | 'list',
+  kind: 'guide' | 'template' | 'list',
   stepId: number,
   allowedCompanyIds: number[],
+  parentId?: number,
 ): Promise<GuideMediaBytes | null> {
   const r: unknown = await getOdoo().call('krawings.task.guide.step', 'get_media', [
-    kind, stepId, allowedCompanyIds,
+    kind, stepId, allowedCompanyIds, parentId ?? null,
   ]);
   return (r as GuideMediaBytes) || null;
+}
+
+// ── Reusable guide LIBRARY (krawings.task.guide) ──────────────────────────
+
+/** Headline row for the Library list + task picker. */
+export interface LibraryGuideSummary {
+  id: number;
+  name: string;
+  company_id: number;
+  published: boolean;
+  revision: number;
+  step_count: number;
+  template_line_count: number;
+}
+
+/** A full library guide for the editor (steps; media bytes fetched separately). */
+export interface LibraryGuide {
+  id: number;
+  name: string;
+  company_id: number;
+  revision: number;
+  published: boolean;
+  template_line_count: number;
+  steps: GuideStepRead[];
+}
+
+export async function listLibraryGuides(allowedCompanyIds: number[]): Promise<LibraryGuideSummary[]> {
+  const r: unknown = await getOdoo().call('krawings.task.guide', 'portal_list_guides', [allowedCompanyIds]);
+  return (Array.isArray(r) ? r : []) as LibraryGuideSummary[];
+}
+
+export async function readLibraryGuide(guideId: number): Promise<LibraryGuide | null> {
+  const r: unknown = await getOdoo().call('krawings.task.guide', 'portal_read_guide', [guideId]);
+  return (r as LibraryGuide) || null;
+}
+
+export async function createLibraryGuide(name: string, companyId: number): Promise<{ id: number; revision: number }> {
+  return getOdoo().call('krawings.task.guide', 'portal_create_guide', [name, companyId]);
+}
+
+export async function saveLibraryGuide(
+  guideId: number,
+  revision: number,
+  published: boolean,
+  steps: GuideStepSave[],
+  name?: string,
+): Promise<SaveGuideResult> {
+  const clean = steps.map(s =>
+    s.media_type === 'youtube'
+      ? { ...s, youtube_url: canonicalYoutubeUrl(s.youtube_url) || s.youtube_url }
+      : s,
+  );
+  return getOdoo().call('krawings.task.guide', 'portal_save_guide', [
+    guideId, revision, published, clean, name ?? null,
+  ]);
+}
+
+export async function deleteLibraryGuide(guideId: number): Promise<{ ok: boolean }> {
+  return getOdoo().call('krawings.task.guide', 'portal_delete_guide', [guideId]);
+}
+
+// ── Task ↔ guide link (attach / detach; many tasks → one guide) ───────────
+
+export interface GuideLink {
+  template_line_id: number;
+  guide_id: number | false;
+  name: string;
+  published: boolean;
+  revision: number;
+  step_count: number;
+}
+
+export async function getTemplateLineGuideLink(templateLineId: number): Promise<GuideLink | null> {
+  const r: unknown = await getOdoo().call('krawings.task.template.line', 'portal_guide_link', [templateLineId]);
+  return (r as GuideLink) || null;
+}
+
+/** Attach a guide (guideId) or detach (null). Never edits guide content. */
+export async function attachGuideToTemplateLine(
+  templateLineId: number,
+  guideId: number | null,
+): Promise<GuideLink> {
+  return getOdoo().call('krawings.task.template.line', 'portal_attach_guide', [
+    templateLineId, guideId ?? false,
+  ]);
 }

@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 const BASE_TABS = [
   { href: '/tasks/manager',           label: 'Dashboard', adminOnly: false },
   { href: '/tasks/manager/templates', label: 'Templates', adminOnly: false },
+  { href: '/tasks/manager/training',  label: 'Guides',    adminOnly: false },
   { href: '/tasks/admin',             label: 'Settings',  adminOnly: true  },
 ];
 

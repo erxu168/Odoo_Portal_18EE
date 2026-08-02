@@ -28,29 +28,33 @@ import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/l
 import { compressImage } from './photoUpload';
 
 /*
- * GuidedTutorialEditor — manager/admin editor for a task's optional "guided
- * tutorial": an ordered list of how-to steps attached to a TEMPLATE line. It is
- * PURELY INSTRUCTIONAL — nothing here ever completes a task (no toggle, no
- * subtask, no completed_at). It mirrors SetupGuideEditor's save-freeze and
- * late-callback guards, but this component owns its own load/save/delete.
+ * GuidedTutorialEditor — manager/admin editor for a REUSABLE library guide
+ * (krawings.task.guide): an ordered list of how-to steps + the guide's name. It
+ * is PURELY INSTRUCTIONAL — nothing here ever completes a task. Editing a guide
+ * updates it everywhere it is linked (edit-once-updates-everywhere); each daily
+ * task keeps the frozen snapshot it took at spawn. Owns its own load/save/delete.
  *
- * Server contract (krawings.task.template.line.portal_save_guide): a save is an
- * ATOMIC AGGREGATE REBUILD — the server unlinks every existing step and recreates
- * them fresh, so ALL local step ids go stale the instant a save succeeds. A step
- * whose photo/pdf is unchanged sends its `id` and NO *_base64, and the server
- * carries the prior bytes over by that id. Therefore, after a successful save we
- * MUST re-GET the guide so local steps pick up their new ids (and drop the pending
- * base64 the server now owns) — otherwise a second save would reference deleted
- * ids and lose the "kept" photos. Optimistic concurrency: PUT sends the current
- * `revision`; a stale editor gets 409 and must reload.
+ * Server contract (krawings.task.guide.portal_save_guide via
+ * /api/tasks/guides/{guideId}): a save is an ATOMIC AGGREGATE REBUILD — the
+ * server unlinks every existing step and recreates them fresh, so ALL local step
+ * ids go stale the instant a save succeeds. A step whose photo/pdf is unchanged
+ * sends its `id` and NO *_base64, and the server carries the prior bytes over by
+ * that id. Therefore, after a successful save we MUST re-GET the guide so local
+ * steps pick up their new ids (and drop the pending base64 the server now owns) —
+ * otherwise a second save would reference deleted ids and lose the "kept" photos.
+ * Optimistic concurrency: PUT sends the current `revision`; a stale editor gets
+ * 409 and must reload.
  */
 
 interface Props {
-  templateId: number;
-  lineId: number;
-  lineName: string;
+  guideId: number;
+  /** Name shown until the GET lands (e.g. from the library list row). */
+  guideName: string;
   onClose: () => void;
+  /** Called after any save/delete so the Library list can refresh. */
   onSaved?: () => void;
+  /** Called after the guide is DELETED (the record is gone — close the editor). */
+  onDeleted?: () => void;
 }
 
 /** One step as the editor works with it: a stable local `key` (used for React
@@ -133,17 +137,18 @@ function focusableWithin(root: HTMLElement | null): HTMLElement[] {
   );
 }
 
-export default function GuidedTutorialEditor({ templateId, lineId, lineName, onClose, onSaved }: Props) {
-  const guideBase = `/api/tasks/templates/${templateId}/lines/${lineId}/guide`;
+export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSaved, onDeleted }: Props) {
+  const guideBase = `/api/tasks/guides/${guideId}`;
   const mediaHref = useCallback(
     (stepId: number) => `${guideBase}/steps/${stepId}/media`,
     [guideBase],
   );
 
   const [steps, setSteps] = useState<EditorStep[]>([]);
+  const [name, setName] = useState(guideName);
+  const [usedCount, setUsedCount] = useState(0);
   const [published, setPublished] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [hadGuide, setHadGuide] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -228,9 +233,10 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
       if (!mountedRef.current) return;
       const raw: GuideStepRead[] = Array.isArray(body.steps) ? body.steps : [];
       setSteps(raw.map(hydrate));
+      if (typeof body.name === 'string') setName(body.name);
+      setUsedCount(Number(body.template_line_count) || 0);
       setPublished(!!body.published);
       setRevision(Number(body.revision) || 0);
-      setHadGuide(raw.length > 0);
       setStale(false);
       setDirty(false);
       setActivePin(null);
@@ -512,11 +518,13 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
     // Draft saves allow incomplete steps; publishing requires a complete guide.
     const v = validate(published);
     if (v) { setError(v); setNotice(null); return; }
+    const cleanName = name.trim();
+    if (!cleanName) { setError('Give this guide a name.'); setNotice(null); return; }
 
     setError(null); setNotice(null);
     savingRef.current = true; setSaving(true);
     // Snapshot the payload AFTER freezing, so no concurrent mutation can slip in.
-    const payload = { revision, published, steps: buildSteps() };
+    const payload = { revision, published, name: cleanName, steps: buildSteps() };
     try {
       const res = await fetch(guideBase, {
         method: 'PUT',
@@ -555,27 +563,27 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
 
   async function handleDelete() {
     if (savingRef.current) return;
-    if (!confirm('Remove this whole guide? Every step will be permanently deleted. This cannot be undone.')) return;
+    if (usedCount > 0) {
+      setError(`This guide is used by ${usedCount} task${usedCount === 1 ? '' : 's'}. Detach it from those tasks first, then delete it.`);
+      return;
+    }
+    if (!confirm('Delete this whole guide? Every step is permanently removed. Tasks that already ran keep their own copy. This cannot be undone.')) return;
     setError(null); setNotice(null);
     savingRef.current = true; setSaving(true);
     try {
       const res = await fetch(guideBase, { method: 'DELETE', credentials: 'same-origin' });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || body?.ok === false) {
-        if (mountedRef.current) setError(body?.error || 'Could not remove the guide.');
+        // 409 = the guide is still linked by a task — surface the server message.
+        if (mountedRef.current) setError(body?.error || 'Could not delete the guide.');
         return;
       }
       onSaved?.();
       if (!mountedRef.current) return;
-      setSteps([]);
-      setPublished(false);
-      setHadGuide(false);
-      setActivePin(null);
-      if (typeof body?.revision === 'number') setRevision(body.revision);
       setDirty(false);
-      setNotice('Guide removed.');
+      (onDeleted ?? onClose)();
     } catch (e: unknown) {
-      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not remove the guide.');
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not delete the guide.');
     } finally {
       savingRef.current = false;
       if (mountedRef.current) setSaving(false);
@@ -605,15 +613,20 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label={`Guided tutorial for ${lineName}`}
+        aria-label={`Edit guide ${name || guideName}`}
         className="bg-white w-full max-w-md sm:max-w-lg rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[92dvh] shadow-xl outline-none"
         onClick={e => e.stopPropagation()}
       >
         {/* Header — portal blue */}
         <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-start gap-3 flex-shrink-0">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Guided tutorial</p>
-            <h2 className="text-base font-bold leading-tight truncate">{lineName}</h2>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Guide</p>
+            <h2 className="text-base font-bold leading-tight truncate">{name || guideName}</h2>
+            {usedCount > 0 && (
+              <p className="text-[11px] text-blue-100 leading-snug">
+                Used by {usedCount} task{usedCount === 1 ? '' : 's'} — edits apply to all of them.
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -642,9 +655,25 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
           ) : (
             <fieldset disabled={frozen} className="border-0 p-0 m-0 space-y-3 min-w-0">
               <p className="text-[12px] text-gray-500 leading-snug">
-                Build a step-by-step how-to for this task. It only shows staff how to do the job — it never
-                ticks the task off. Staff still complete the task themselves.
+                Build a reusable step-by-step how-to. Link it to any task, or let staff find it in Training.
+                It only shows staff how to do the job — it never ticks a task off.
               </p>
+
+              {/* Guide name */}
+              <div>
+                <label htmlFor="guide-name" className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                  Guide name
+                </label>
+                <input
+                  id="guide-name"
+                  type="text"
+                  value={name}
+                  maxLength={120}
+                  onChange={(e) => { setName(e.target.value); markDirty(); }}
+                  placeholder="e.g. Turn on the smoker"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                />
+              </div>
 
               {/* Draft / Published toggle */}
               <div className="rounded-xl border border-gray-200 p-3 flex items-center gap-3">
@@ -733,15 +762,13 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
                 </div>
               </div>
 
-              {hadGuide && (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  className="w-full text-[13px] font-semibold text-red-600 hover:text-red-700 py-2"
-                >
-                  Remove guide
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="w-full text-[13px] font-semibold text-red-600 hover:text-red-700 py-2"
+              >
+                Delete guide
+              </button>
             </fieldset>
           )}
         </div>
@@ -784,11 +811,10 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
     </div>
 
     {/* Staff-player preview of the SAVED guide. Enabled only when clean (not
-        dirty) with at least one step, since the player reads the saved template.
-        Passing templateId makes the player read this TEMPLATE line's guide (the
-        manager-preview endpoint) rather than a daily staff line of the same id. */}
+        dirty) with at least one step, since the player reads the saved guide via
+        the manager library-preview endpoint (read-only, never completes). */}
     {previewOpen && (
-      <GuidedTutorialPlayer templateId={templateId} lineId={lineId} onClose={() => setPreviewOpen(false)} />
+      <GuidedTutorialPlayer source={{ kind: 'library-manager', guideId }} onClose={() => setPreviewOpen(false)} />
     )}
     </>
   );
