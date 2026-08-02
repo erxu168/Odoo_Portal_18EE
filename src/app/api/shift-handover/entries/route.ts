@@ -8,7 +8,7 @@ import { berlinToday, isCanonicalDay } from '@/lib/berlin-date';
 import {
   getDb, ensureDefaultLogTypes, ensureDefaultLookups, listLookups, getLookup, getLogType,
   createLogEntry, createStorageItem, setEntryStorageItem, addPhoto, filterValidPhotos,
-  getIdempotentResult, claimIdempotency, setIdempotencyResult, getLogEntry, listPhotos,
+  getIdempotentResult, claimIdempotency, setIdempotencyResult, getLogEntry, listPhotos, parseAmount,
 } from '@/lib/shift-handover/db';
 
 // POST — add one entry to the log. A "storage" (Prepped) type also pins a
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     if (!storageName) return jsonError(400, 'What did you prep?');
 
     // Amount + unit are required; unit must be one of this restaurant's units.
-    const rawAmt = Number(body?.storage?.amount);
+    const rawAmt = parseAmount(body?.storage?.amount);
     if (!Number.isFinite(rawAmt) || rawAmt <= 0) return jsonError(400, 'How much did you prep?');
     amount = rawAmt;
     const rawUnit = typeof body?.storage?.unit === 'string' ? body.storage.unit.trim() : '';

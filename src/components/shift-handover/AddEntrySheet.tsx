@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import PhotoCaptureStrip from '@/components/inventory/PhotoCaptureStrip';
-import { Sheet, Field, Select, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync } from './common';
+import { Sheet, Field, Select, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync, parseAmount } from './common';
 import { LocationPickerSheet, LocationPathButton, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import type { FeedEntry } from './EntryCard';
 
@@ -70,7 +70,7 @@ export function AddEntrySheet({ types, preppedItems, units, editEntry, onClose, 
     if (!typeId) { setError('Pick a type first.'); return; }
     if (isStorage) {
       if (!resolvedName) { setError(itemChoice === OTHER ? 'Type what it is.' : 'What is it?'); return; }
-      const amt = Number(amount);
+      const amt = parseAmount(amount);
       if (!Number.isFinite(amt) || amt <= 0) { setError('How much did you prep?'); return; }
       if (!unit) { setError('Pick a unit.'); return; }
       if (whereId == null) { setError('Choose where you put it.'); return; }
@@ -79,7 +79,7 @@ export function AddEntrySheet({ types, preppedItems, units, editEntry, onClose, 
     const res = await run(() => apiSend('/api/shift-handover/entries', 'POST', {
       type_id: typeId, note, photos,
       storage: isStorage ? {
-        name: resolvedName, item_id: resolvedItemId, amount: Number(amount), unit,
+        name: resolvedName, item_id: resolvedItemId, amount: parseAmount(amount), unit,
         prepared_on: preparedOn, location_id: whereId, use_first: useFirst,
       } : null,
       idempotency_key: key,

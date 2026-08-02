@@ -19,6 +19,10 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 const b = (v: unknown) => (v ? 1 : 0);
+/** Parse an amount that may use a comma decimal (German input). NaN if unparseable. */
+export function parseAmount(v: unknown): number {
+  return Number(String(v ?? '').trim().replace(',', '.'));
+}
 
 /** The out-of-the-box entry types seeded for a restaurant on first use. */
 export const DEFAULT_LOG_TYPES: Array<{ name: string; emoji: string; is_alert?: boolean; is_storage?: boolean }> = [
@@ -190,6 +194,10 @@ function migrateHandoverSchema(): void {
   addColumn('handover_storage_items', 'item_id', 'item_id INTEGER');
   // Why it left the tray when cleared: 'moved_out' | 'used_up' | 'discarded'.
   addColumn('handover_storage_items', 'cleared_reason', 'cleared_reason TEXT');
+  // For a PARTIAL use, we log the consumed portion as its own cleared "event"
+  // row pointing back at the still-here item; this marks such rows so they show
+  // in history but never get restored into the tray as a duplicate.
+  addColumn('handover_storage_items', 'parent_item_id', 'parent_item_id INTEGER');
   // Backfill a prepared-on date for rows that predate the field: prefer the
   // linked log entry's operational (Berlin) date, else the added-at day.
   try { getDb().exec("UPDATE handover_storage_items SET prepared_on = COALESCE((SELECT operational_date FROM handover_log_entries WHERE id = handover_storage_items.entry_id), substr(added_at, 1, 10)) WHERE prepared_on IS NULL AND added_at IS NOT NULL"); } catch { /* best effort */ }
@@ -511,14 +519,68 @@ export function markStorageUsed(id: number, companyId: number, actor: { userId: 
 /** How long after clearing an item the "Undo" still works (a real undo, not a
  *  way to resurrect days-old stock). */
 export const UNDO_WINDOW_MS = 120_000;
-/** Undo a clear: put a JUST-cleared item back. False once the undo window passes. */
+/** Undo a clear: put a JUST-cleared item back. False once the undo window passes.
+ *  Never restores a partial-use event row (parent_item_id set) — the item it came
+ *  from is still in the tray. */
 export function restoreStorageItem(id: number, companyId: number): boolean {
   const cutoff = new Date(Date.now() - UNDO_WINDOW_MS).toISOString();
   const r = getDb().prepare(
     `UPDATE handover_storage_items SET status = 'here', cleared_reason = NULL, used_by_user_id = NULL, used_by_name = NULL, used_at = NULL, updated_at = ?
-     WHERE id = ? AND company_id = ? AND status = 'used' AND used_at >= ?`,
+     WHERE id = ? AND company_id = ? AND status = 'used' AND parent_item_id IS NULL AND used_at >= ?`,
   ).run(nowISO(), id, companyId, cutoff);
   return r.changes > 0;
+}
+
+export interface ClearOutcome { ok: boolean; cleared: boolean; remaining: number | null; deduped?: boolean }
+
+/**
+ * Clear an item from the tray. `usedAmount == null` (or >= what's there, or a
+ * remainder that rounds to nothing) is a FULL clear (marks the item used);
+ * otherwise it's a PARTIAL — the consumed portion is logged as its own cleared
+ * history row (pointing back at the item) and the still-here item's amount is
+ * reduced. Atomic, and idempotent when an `idemKey` is passed (a retried/duplicate
+ * submit returns { deduped } instead of double-counting).
+ */
+export function clearStorageItem(
+  companyId: number, actor: { userId: number; name: string }, itemId: number,
+  reason: ClearReason, usedAmount: number | null, idemKey?: string | null,
+): ClearOutcome {
+  // Never let a non-positive amount reach the DB (0 would log nothing; a negative
+  // would ADD stock).
+  if (usedAmount != null && (!Number.isFinite(usedAmount) || usedAmount <= 0)) return { ok: false, cleared: false, remaining: null };
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6; // kill float artifacts (0.3-0.1)
+  const db = getDb();
+  const run = db.transaction((): ClearOutcome => {
+    const item = db.prepare("SELECT * FROM handover_storage_items WHERE id = ? AND company_id = ? AND status = 'here'").get(itemId, companyId) as StorageItem | undefined;
+    if (!item) return { ok: false, cleared: false, remaining: null }; // gone → don't claim the key
+    if (idemKey) claimIdempotency(idemKey, companyId, 'clear'); // UNIQUE → throws on a retry
+    const have = item.amount;
+    // Full clear: no/whole amount, no amount on record, or a remainder that rounds away.
+    if (usedAmount == null || have == null || usedAmount >= have || round6(have - usedAmount) <= 0) {
+      const changed = markStorageUsed(itemId, companyId, actor, reason);
+      if (idemKey) setIdempotencyResult(idemKey, companyId, 'clear', itemId);
+      return { ok: changed, cleared: true, remaining: null };
+    }
+    const remaining = round6(have - usedAmount);
+    const ts = nowISO();
+    // The consumed portion, as its own cleared "event" row for the history.
+    const evId = db.prepare(
+      `INSERT INTO handover_storage_items (company_id, name, item_id, amount, unit, prepared_on, location_id, location_text, use_first, status, cleared_reason, parent_item_id, entry_id, added_by_user_id, added_by_name, added_at, used_by_user_id, used_by_name, used_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'used', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(companyId, item.name, item.item_id, usedAmount, item.unit, item.prepared_on, item.location_id, item.location_text,
+      reason, itemId, item.entry_id, item.added_by_user_id, item.added_by_name, item.added_at, actor.userId, actor.name, ts, ts, ts).lastInsertRowid as number;
+    // Reduce what's left in the tray.
+    db.prepare('UPDATE handover_storage_items SET amount = ?, updated_at = ? WHERE id = ? AND company_id = ?').run(remaining, ts, itemId, companyId);
+    if (idemKey) setIdempotencyResult(idemKey, companyId, 'clear', evId);
+    return { ok: true, cleared: false, remaining };
+  });
+  try {
+    return run();
+  } catch (e) {
+    // A retry with the same key hit the UNIQUE claim → it was already applied.
+    if (idemKey && getIdempotentResult(idemKey, companyId, 'clear') != null) return { ok: true, cleared: false, remaining: null, deduped: true };
+    throw e;
+  }
 }
 
 // ── Photos ───────────────────────────────────────────────────────────────────

@@ -6,10 +6,11 @@ import AppHeader from '@/components/ui/AppHeader';
 import Toast from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Spinner, EmptyState } from '@/components/inventory/ui';
-import { Sheet, apiGet, apiSend, fmtDayShort, shiftDayAdd } from './common';
+import { apiGet, apiSend, fmtDayShort, shiftDayAdd } from './common';
 import { CompanyPill } from './CompanyPill';
 import { StorageTray, type StorageRow } from './StorageTray';
 import { StorageItemDetail } from './StorageItemDetail';
+import { ClearSheet } from './ClearSheet';
 import { EntryCard, type FeedEntry } from './EntryCard';
 import { AddEntrySheet, type LogTypeChip, type NamedLookup } from './AddEntrySheet';
 import { ManageTypes } from './ManageTypes';
@@ -26,12 +27,6 @@ interface Feed {
   entries: FeedEntry[];
   me: { actor_name: string; can_post: boolean; can_manage: boolean };
 }
-
-const REASONS: Array<{ key: string; label: string; emoji: string }> = [
-  { key: 'moved_out', label: 'Moved out', emoji: '↗️' },
-  { key: 'used_up', label: 'Used up', emoji: '✅' },
-  { key: 'discarded', label: 'Discarded', emoji: '🗑️' },
-];
 
 function partOfDay(iso: string): string {
   const h = new Date(iso).getHours();
@@ -58,10 +53,12 @@ export function ShiftHandoverApp() {
   const [viewer, setViewer] = useState<string | null>(null);
   const [ackBusy, setAckBusy] = useState<number | null>(null);
   const [storageBusy, setStorageBusy] = useState<number | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const patch = (fn: (f: Feed) => Feed) => setFeed((f) => (f ? fn(f) : f));
+  const showErr = (text: string) => setToast({ text, kind: 'error' });
+  const showOk = (text: string) => setToast({ text, kind: 'success' });
 
   const load = useCallback((d?: string) => {
     const qd = d !== undefined ? d : date;
@@ -78,17 +75,67 @@ export function ShiftHandoverApp() {
   const goDate = (d: string) => { setFeed(null); setDate(d); load(d); };
   const onSwitched = useCallback(() => { setFeed(null); setDate(''); setScreen('log'); load(''); }, [load]);
 
-  // Clear an item with a reason — optimistic remove + Undo, no full reload.
-  async function clearStorage(item: StorageRow, reason: string) {
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+  // Ensure a storage row is present with a given amount (re-add if it was removed).
+  const upsertStorage = (f: Feed, base: StorageRow, amount: number): Feed => {
+    const exists = f.storage.some((s) => s.id === base.id);
+    return { ...f, storage: exists
+      ? f.storage.map((s) => (s.id === base.id ? { ...s, amount } : s))
+      : sortStorage([...f.storage, { ...base, amount }]) };
+  };
+
+  // Clear an item — "just some" (an amount is passed) or "all of it" (no amount).
+  // For "just some" we ALWAYS send the amount and let the server decide full-vs-
+  // partial against the CURRENT stock, then reconcile the tray from its response.
+  async function clearStorage(item: StorageRow, reason: string, usedAmount?: number, idemKey?: string) {
     setReasonItem(null);
     setStorageBusy(item.id);
+
+    if (usedAmount != null) {
+      const clientRemaining = item.amount != null ? round6(item.amount - usedAmount) : null;
+      // Optimistic: reduce if some is left, else assume it clears.
+      if (clientRemaining != null && clientRemaining > 0) patch((f) => upsertStorage(f, item, clientRemaining));
+      else patch((f) => ({ ...f, storage: f.storage.filter((s) => s.id !== item.id) }));
+      try {
+        const r: { cleared?: boolean; remaining?: number | null; deduped?: boolean } = await apiSend(`/api/shift-handover/storage/${item.id}/used`, 'POST', { reason, amount: usedAmount, idempotency_key: idemKey });
+        if (r?.deduped) { load(); return; }
+        if (r?.cleared) {
+          patch((f) => ({ ...f, storage: f.storage.filter((s) => s.id !== item.id) }));
+          showOk(`${item.name} cleared`);
+        } else {
+          // Server had more than we thought (e.g. a concurrent top-up) — reconcile.
+          const remaining = r?.remaining ?? clientRemaining ?? item.amount ?? 0;
+          patch((f) => upsertStorage(f, item, remaining));
+          showOk(`${item.name}: ${usedAmount} ${item.unit ?? ''} logged · ${remaining} left`);
+        }
+      } catch (e) {
+        if ((e as { status?: number })?.status === 409) {
+          patch((f) => ({ ...f, storage: f.storage.filter((s) => s.id !== item.id) }));
+          showErr('Already cleared by someone else.');
+        } else if (item.amount != null) {
+          patch((f) => upsertStorage(f, item, item.amount as number));
+          showErr(e instanceof Error ? e.message : 'Could not update it.');
+        } else {
+          patch((f) => ({ ...f, storage: sortStorage([...f.storage, item]) }));
+          showErr(e instanceof Error ? e.message : 'Could not update it.');
+        }
+      } finally { setStorageBusy(null); }
+      return;
+    }
+
+    // "All of it" — remove + offer Undo.
     patch((f) => ({ ...f, storage: f.storage.filter((s) => s.id !== item.id) }));
     try {
-      await apiSend(`/api/shift-handover/storage/${item.id}/used`, 'POST', { reason });
+      const r: { deduped?: boolean } = await apiSend(`/api/shift-handover/storage/${item.id}/used`, 'POST', { reason, idempotency_key: idemKey });
+      if (r?.deduped) { load(); return; }
       setUndo(item);
     } catch (e) {
-      patch((f) => ({ ...f, storage: sortStorage([...f.storage, item]) }));
-      setToast(e instanceof Error ? e.message : 'Could not clear it.');
+      if ((e as { status?: number })?.status === 409) {
+        showErr('Already cleared by someone else.');
+      } else {
+        patch((f) => ({ ...f, storage: sortStorage([...f.storage, item]) }));
+        showErr(e instanceof Error ? e.message : 'Could not clear it.');
+      }
     } finally { setStorageBusy(null); }
   }
   async function undoClear() {
@@ -97,7 +144,7 @@ export function ShiftHandoverApp() {
     try {
       await apiSend(`/api/shift-handover/storage/${u.id}/restore`, 'POST');
       patch((f) => ({ ...f, storage: sortStorage([...f.storage, u]) }));
-    } catch (e) { setToast(e instanceof Error ? e.message : 'Too late to undo.'); }
+    } catch (e) { showErr(e instanceof Error ? e.message : 'Too late to undo.'); }
   }
 
   async function ack(entry: FeedEntry) {
@@ -108,7 +155,7 @@ export function ShiftHandoverApp() {
         ? { ...e, acknowledged_by_name: r.acknowledged_by_name, acknowledged_at: r.acknowledged_at, can_acknowledge: false } : e) }));
     } catch (e) {
       if ((e as { status?: number })?.status === 409) load(); // content changed — refresh
-      else setToast(e instanceof Error ? e.message : 'Could not acknowledge.');
+      else showErr(e instanceof Error ? e.message : 'Could not acknowledge.');
     } finally { setAckBusy(null); }
   }
 
@@ -129,7 +176,7 @@ export function ShiftHandoverApp() {
         entries: [...f.entries, entry].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
         storage: storageItem ? sortStorage([...f.storage, storageItem]) : f.storage,
       }));
-      setToast(e instanceof Error ? e.message : 'Could not delete.');
+      showErr(e instanceof Error ? e.message : 'Could not delete.');
     }
   }
 
@@ -163,7 +210,7 @@ export function ShiftHandoverApp() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-28">
-      <Toast message={toast || ''} type="error" visible={!!toast} onDismiss={() => setToast(null)} />
+      <Toast message={toast?.text || ''} type={toast?.kind || 'error'} visible={!!toast} onDismiss={() => setToast(null)} />
 
       <AppHeader
         supertitle="Shift Handover"
@@ -273,17 +320,8 @@ export function ShiftHandoverApp() {
       )}
 
       {reasonItem && (
-        <Sheet title={`${reasonItem.name} — what happened to it?`} onClose={() => setReasonItem(null)}>
-          <div className="flex flex-col gap-2 pb-1">
-            {REASONS.map((r) => (
-              <button key={r.key} onClick={() => clearStorage(reasonItem, r.key)}
-                className="flex items-center gap-3 min-h-[52px] px-4 rounded-xl border border-gray-200 bg-white text-left active:bg-gray-50">
-                <span className="text-[20px]">{r.emoji}</span>
-                <span className="text-[var(--fs-base)] font-semibold text-gray-900">{r.label}</span>
-              </button>
-            ))}
-          </div>
-        </Sheet>
+        <ClearSheet item={reasonItem} onClose={() => setReasonItem(null)}
+          onSubmit={(reason, amount, idemKey) => clearStorage(reasonItem, reason, amount, idemKey)} />
       )}
 
       {confirmDel && (

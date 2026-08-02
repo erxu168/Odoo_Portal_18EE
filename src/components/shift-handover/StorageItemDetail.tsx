@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { Sheet, Field, Select, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync, fmtDayShort } from './common';
+import { Sheet, Field, Select, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync, fmtDayShort, parseAmount } from './common';
 import { LocationPickerSheet, LocationPathButton, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import type { StorageRow } from './StorageTray';
 import type { NamedLookup } from './AddEntrySheet';
@@ -50,7 +50,7 @@ export function StorageItemDetail({ item, preppedItems, units, canEdit, onClose,
 
   async function save() {
     if (!resolvedName) { setError('What is it?'); return; }
-    const amt = Number(amount);
+    const amt = parseAmount(amount);
     if (!Number.isFinite(amt) || amt <= 0) { setError('How much is it?'); return; }
     if (!unit) { setError('Pick a unit.'); return; }
     if (whereId == null) { setError('Choose where it is.'); return; }
