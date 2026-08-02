@@ -23,26 +23,37 @@ interface AppHeaderProps {
   subtitle?: string;
   showBack?: boolean;
   onBack?: () => void;
+  root?: boolean;   // a genuine top-level screen with nowhere to return to → home-only (no Back arrow)
   action?: React.ReactNode;
 }
 
-export default function AppHeader({ supertitle, title, subtitle, showBack, onBack, action }: AppHeaderProps) {
+export default function AppHeader({ supertitle, title, subtitle, showBack, onBack, root, action }: AppHeaderProps) {
   const router = useRouter();
 
   function goHome() {
     router.push('/');
   }
 
+  // Back is the DEFAULT: every screen you navigate INTO shows a Back arrow (+ Home on the
+  // right). An explicit `showBack` prop still wins (so all existing callers are unchanged);
+  // a true top-level screen passes `root` to stay home-only. A missing `onBack` falls back
+  // to a guarded history-back so nobody has to wire it up.
+  const showBackButton = showBack ?? !root;
+  const handleBack = onBack ?? (() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push('/');
+  });
+
   return (
     <div className="bg-[#2563EB] px-5 pt-12 lg:pt-8 pb-0 relative overflow-hidden rounded-b-[28px]">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
       <div className="flex items-center gap-3 relative pb-3">
         <button
-          onClick={showBack ? onBack : goHome}
-          aria-label={showBack ? 'Back' : 'Home'}
+          onClick={showBackButton ? handleBack : goHome}
+          aria-label={showBackButton ? 'Back' : 'Home'}
           className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-white active:bg-white/20 transition-colors"
         >
-          {showBack ? <BackIcon size={22} /> : <HomeIcon size={22} />}
+          {showBackButton ? <BackIcon size={22} /> : <HomeIcon size={22} />}
         </button>
         <div className="flex-1 min-w-0">
           {supertitle && (
@@ -56,7 +67,7 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
           )}
         </div>
         {action && <div className="flex-shrink-0">{action}</div>}
-        {showBack && (
+        {showBackButton && (
           <button
             onClick={goHome}
             aria-label="Home"
