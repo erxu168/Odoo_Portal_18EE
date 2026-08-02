@@ -145,10 +145,10 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
             <span className="text-xl leading-none mt-0.5" aria-hidden="true">⚠️</span>
             <div className="min-w-0 flex-1">
               <div className="text-[var(--fs-base)] font-bold text-gray-900">
-                {counts.notTracked} product{counts.notTracked === 1 ? '' : 's'} can&rsquo;t be counted yet
+                {counts.notTracked} product{counts.notTracked === 1 ? '' : 's'} without an Odoo stock number
               </div>
               <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
-                Odoo isn&rsquo;t keeping a stock figure for them, so a count has nowhere to save. Tap to see which.
+                Counts of these still save in the portal, but Odoo&rsquo;s own quantity stays empty. Tap to see which.
               </div>
             </div>
           </div>

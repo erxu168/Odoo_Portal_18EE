@@ -247,7 +247,7 @@ export default function CreateProductSheet({
                 <span className="block text-[var(--fs-sm)] font-bold text-gray-900">Count this in stock</span>
                 <span className="block text-[11px] text-gray-500">
                   {storable ? 'Odoo keeps a quantity, so counts of it can be saved.'
-                    : 'No quantity is kept — a count of it cannot be saved. Only turn this off for something you never count.'}
+                    : 'Odoo keeps no stock number for it — counts stay portal-only. Only turn this off for something you never count.'}
                 </span>
               </span>
             </button>

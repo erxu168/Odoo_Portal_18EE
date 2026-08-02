@@ -414,7 +414,7 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
         {gap ? (
           <>
             Showing <strong className="text-gray-900">{filtered.length}</strong> product{filtered.length === 1 ? '' : 's'} with{' '}
-            {{ untracked: 'no stock figure in Odoo — a count of these cannot be saved', spot: 'no spot set', pack: 'no pack size', photo: 'no photo rule', picture: 'no picture' }[gap]}
+            {{ untracked: 'no stock figure in Odoo — counts of these stay portal-only', spot: 'no spot set', pack: 'no pack size', photo: 'no photo rule', picture: 'no picture' }[gap]}
             {narrowed.length !== filtered.length && <> {'\u00B7'} {narrowed.length - filtered.length} hidden</>}
           </>
         ) : (

@@ -287,6 +287,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         }
       }
     }
+    // Request language ON PURPOSE: name/description are translated fields —
+    // forcing en_US here would overwrite the ENGLISH translation from a German
+    // session. The TRACKING_LOCKED mapping below matches both the English and
+    // German wording of the refusal instead.
     await odoo.write('product.product', [productId], vals);
 
     return NextResponse.json({ message: 'Product updated' });
@@ -295,6 +299,15 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     // show its reason so the manager knows WHY it was refused.
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[products PUT]', msg);
+    // Odoo permanently locks the tracking switch once a product has history
+    // ("was already used"). Say that in kitchen language, with the way out.
+    if (/inventory tracking of a product that was already used/i.test(msg)
+        || /Bestandsverfolgung.*bereits benutzt/i.test(msg)) {   // de_DE wording (verified against Odoo 18 i18n)
+      return NextResponse.json({
+        error: 'Odoo locks this switch once a product has history (purchases, recipes or stock movements). You can still count this product — its counts stay recorded in the portal; only Odoo\u2019s own stock number stays untracked.',
+        code: 'TRACKING_LOCKED',
+      }, { status: 409 });
+    }
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }

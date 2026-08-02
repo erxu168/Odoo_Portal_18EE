@@ -9,6 +9,7 @@ import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords, parE
 import { CategoryPathButton, CategoryPickerSheet, CategoryForm, type CategoryRow } from './CategoryPicker';
 import PackagingLevels from './PackagingLevels';
 import DropZone from '@/components/ui/DropZone';
+import { ContainerLevelGlyph, type ContainerShape } from '@/components/ui/ContainerLevelPicker';
 import PhotoLightbox from './PhotoLightbox';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
@@ -150,6 +151,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [savedPackSize, setSavedPackSize] = useState('');
   const [looseLabel, setLooseLabel] = useState('');
   const [levelShape, setLevelShape] = useState<string>('');   // '' = off
+  // Why the stock switch refused — shown INLINE under the toggle, persistently.
+  // The transient top-of-sheet flash scrolls out of view exactly when someone
+  // is down at the Stock section flipping this.
+  const [storableError, setStorableError] = useState<string | null>(null);
+  const productIdRef = useRef(product.id);
+  productIdRef.current = product.id;
+  useEffect(() => { setStorableError(null); }, [product.id]);   // never carry a refusal to another product
   // The saved packaging chain, reported up by <PackagingLevels> when it loads
   // or saves — read here only to translate a typed par into boxes.
   const [packChain, setPackChain] = useState<{ name: string; to_base: number }[]>([]);
@@ -366,6 +374,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             purchase: onRetired(m.supplier_taxes_id || []),
           });
           setStorable(m.is_storable === true);
+          setStorableError(null);   // a stale refusal must not follow us to another product
         }
         if (m) {
           const dc = m.default_code || '';
@@ -493,19 +502,34 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   async function saveStorable(next: boolean) {
     if (readOnly) return;
     const prev = storable;
+    const pid = product.id;   // a late response must not touch another product's screen
     setStorable(next);
+    setStorableError(null);
     setBusy('storable');
     try {
-      const res = await fetch(`/api/inventory/products/${product.id}`, {
+      const res = await fetch(`/api/inventory/products/${pid}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_storable: next }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setStorable(prev); flash('err', d.error || 'Could not change this'); return; }
-      flash('ok', next ? 'This product will be counted in stock' : 'This product is no longer counted');
+      if (productIdRef.current !== pid) return;
+      if (!res.ok) {
+        setStorable(prev);
+        // The reason must live WHERE THE SWITCH IS, and stay put — a snapped-
+        // back toggle with no visible why reads as a bug (it did to Ethan).
+        setStorableError(d.error || 'Could not change this — try again.');
+        flash('err', d.error || 'Could not change this');
+        return;
+      }
+      flash('ok', next ? 'Odoo now keeps a stock number for this product' : 'Odoo no longer keeps a stock number — portal counts still work');
       onChanged({ is_storable: next });
-    } catch { setStorable(prev); flash('err', 'Network error — nothing changed.'); }
-    finally { setBusy(null); }
+    } catch {
+      if (productIdRef.current !== pid) return;
+      setStorable(prev);
+      setStorableError('Network error — nothing changed. Try again.');
+      flash('err', 'Network error — nothing changed.');
+    }
+    finally { if (productIdRef.current === pid) setBusy(null); }
   }
 
   async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string; default_code?: string; list_price?: number; standard_price?: number; description?: string }) {
@@ -1097,10 +1121,15 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                     <span className="block text-[var(--fs-xs)] text-gray-500">
                       {storable
                         ? 'Odoo keeps a quantity for this product, so counts save.'
-                        : 'Odoo keeps NO quantity for this product — a count of it cannot be saved. Turn this on before counting it.'}
+                        : 'Odoo keeps NO stock number for this product. Counts still save in the portal — but Odoo\u2019s own quantity stays empty until this is on.'}
                     </span>
                   </span>
                 </button>
+                {storableError && (
+                  <div className="mt-2.5 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-[var(--fs-xs)] text-red-700 font-semibold leading-snug">
+                    {storableError}
+                  </div>
+                )}
                 {!storable && !readOnly && (
                   <p className="text-[var(--fs-xs)] text-gray-500 mt-2.5 pl-[56px]">
                     Leave it off only for things you never count {'—'} a service, or a fee.
@@ -1173,15 +1202,17 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             <>
               <label className={label}>Level diagram for the open {effPack}</label>
               <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4">
-                <div className="flex gap-1.5 flex-wrap">
+                <div className="flex gap-2 flex-wrap items-stretch">
                   {[['', 'Off'], ['round', 'Round bucket'], ['rect', 'Rect. bucket'], ['barrel', 'Barrel'], ['bottle', 'Bottle']].map(([val, lbl]) => (
                     <button key={val} type="button" disabled={readOnly || (val !== '' && savedPackSize === '')}
                       aria-pressed={levelShape === val}
                       onClick={() => saveLevelShape(val)}
-                      className={`min-h-[40px] px-3 rounded-xl border text-[var(--fs-xs)] font-bold transition-colors disabled:opacity-40 ${
-                        levelShape === val ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
+                      className={`min-h-[44px] min-w-[76px] px-3 py-2 rounded-xl border transition-colors disabled:opacity-40 flex flex-col items-center justify-center gap-1 ${
+                        levelShape === val ? 'bg-blue-50 border-blue-600 ring-1 ring-blue-600' : 'bg-white border-gray-200 active:bg-gray-50'
                       }`}>
-                      {lbl}
+                      {/* the drawing itself IS the choice — staff-recognisable, per Ethan */}
+                      {val !== '' && <ContainerLevelGlyph shape={val as ContainerShape} fraction={0.75} height={30} />}
+                      <span className={`text-[var(--fs-xs)] font-bold ${levelShape === val ? 'text-blue-800' : 'text-gray-600'}`}>{lbl}</span>
                     </button>
                   ))}
                 </div>
