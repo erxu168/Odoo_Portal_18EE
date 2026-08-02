@@ -41,13 +41,15 @@ def youtube_video_id(url):
 
 
 class KrawingsTaskGuideStep(models.Model):
-    """One step of a task's optional guided tutorial. A guide is just the
-    ordered collection of these steps — there is no separate header model.
+    """One step of a guided tutorial. A guide is just the ordered collection of
+    these steps — there is no separate content model beyond krawings.task.guide.
 
-    Dual parent, mirroring krawings.task.setup.photo: a step belongs to a
-    TEMPLATE line (the editable source, edited by managers/admins) OR to a
-    daily LIST line (an immutable snapshot taken at spawn time). Exactly one
-    parent is set.
+    A step belongs to exactly ONE parent:
+      - guide_id       — the reusable library guide (the editable source).
+      - list_line_id   — a daily task's immutable snapshot, taken at spawn.
+      - template_line_id — LEGACY per-task guide (pre-library). Kept nullable
+        through the expand window so the registry loads before the 18.0.8.0.0
+        migration moves the live step onto its guide; dropped in 18.0.9.0.0.
 
     A guide is PURELY INSTRUCTIONAL: viewing steps or tapping pins never marks
     the task done. Staff always complete the task through the normal control."""
@@ -55,13 +57,21 @@ class KrawingsTaskGuideStep(models.Model):
     _description = 'Guided Tutorial Step'
     _order = 'sequence, id'
 
+    guide_id = fields.Many2one(
+        'krawings.task.guide', ondelete='cascade', index=True,
+    )
     template_line_id = fields.Many2one(
         'krawings.task.template.line', ondelete='cascade', index=True,
-    )
+    )  # LEGACY (expand window) — see class docstring.
     list_line_id = fields.Many2one(
         'krawings.task.list.line', ondelete='cascade', index=True,
     )
-    # Traceability from a daily snapshot back to the template step it came from.
+    # Traceability from a daily snapshot back to the library guide step it came
+    # from. source_template_step_id is LEGACY (kept through the expand window,
+    # backfilled into source_guide_step_id by the migration, dropped in 18.0.9).
+    source_guide_step_id = fields.Many2one(
+        'krawings.task.guide.step', ondelete='set null',
+    )
     source_template_step_id = fields.Many2one(
         'krawings.task.guide.step', ondelete='set null',
     )
@@ -88,8 +98,13 @@ class KrawingsTaskGuideStep(models.Model):
 
     _sql_constraints = [
         ('one_parent',
-         'CHECK((template_line_id IS NOT NULL) != (list_line_id IS NOT NULL))',
-         'A guide step belongs to exactly one template line or one list line.'),
+         'CHECK(('
+         '(guide_id IS NOT NULL)::int'
+         ' + (template_line_id IS NOT NULL)::int'
+         ' + (list_line_id IS NOT NULL)::int) = 1)',
+         'A guide step belongs to exactly one guide, template line, or list line.'),
+        ('uniq_guide_seq', 'unique(guide_id, sequence)',
+         'Step sequence numbers must be unique per guide.'),
         ('uniq_template_seq', 'unique(template_line_id, sequence)',
          'Step sequence numbers must be unique per template line.'),
         ('uniq_list_seq', 'unique(list_line_id, sequence)',
@@ -119,17 +134,17 @@ class KrawingsTaskGuideStep(models.Model):
                 raise ValidationError('Only a YouTube step can carry a video link.')
 
     @api.model
-    def snapshot_to_list_line(self, template_line, list_line):
-        """Deep-copy a template line's published guide (steps + pins) onto a
-        freshly spawned daily list line, so staff always see what was current
-        that day even if the template is edited later. Called from the spawn
-        path. Odoo's filestore checksum dedup means identical image/pdf bytes
-        are not physically duplicated."""
+    def snapshot_to_list_line(self, guide, list_line):
+        """Deep-copy a library guide (steps + pins) onto a freshly spawned daily
+        list line, so staff always see what was current that day even if the
+        guide is edited later. Odoo's filestore checksum dedup means identical
+        image/pdf bytes are not physically duplicated. (The spawn path in
+        task_template.py inlines the same copy; this helper mirrors it.)"""
         Pin = self.env['krawings.task.guide.pin'].sudo()
-        for step in template_line.guide_step_ids.sorted('sequence'):
+        for step in guide.step_ids.sorted('sequence'):
             new_step = self.sudo().create({
                 'list_line_id': list_line.id,
-                'source_template_step_id': step.id,
+                'source_guide_step_id': step.id,
                 'sequence': step.sequence,
                 'media_type': step.media_type,
                 'explanation': step.explanation,
@@ -150,22 +165,35 @@ class KrawingsTaskGuideStep(models.Model):
 
     @api.model
     def get_media(self, kind, step_id, allowed_company_ids=None):
-        """Serve one step's photo or PDF bytes for the portal. `kind` is
-        'template' or 'list'; company-scoped through the parent line and fails
-        CLOSED for a company-less parent. Returns {filename, mimetype,
-        data_base64} or False."""
-        if kind not in ('template', 'list'):
+        """Serve one step's photo or PDF bytes for the portal. `kind` is:
+          - 'guide'    — a library guide step (company via guide_id).
+          - 'list'     — a daily snapshot step (company via list line).
+          - 'template' — LEGACY editable-source kind; resolves a step whether it
+            still hangs off a template line OR has been moved onto its guide, so
+            the previous portal keeps working across the library migration.
+        Company-scoped through the parent and fails CLOSED for a company-less
+        parent. Returns {filename, mimetype, data_base64} or False."""
+        if kind not in ('guide', 'template', 'list'):
             return False
         rec = self.sudo().browse(int(step_id))
         if not rec.exists():
             return False
-        # A step must be parented to the kind of line the caller claims.
-        if kind == 'template' and not rec.template_line_id:
-            return False
-        if kind == 'list' and not rec.list_line_id:
-            return False
-        company = (rec.template_line_id.template_id.company_id
-                   if rec.template_line_id else rec.list_line_id.list_id.company_id)
+        # Resolve the parent's company for the kind the caller claims.
+        if kind == 'list':
+            if not rec.list_line_id:
+                return False
+            company = rec.list_line_id.list_id.company_id
+        elif kind == 'guide':
+            if not rec.guide_id:
+                return False
+            company = rec.guide_id.company_id
+        else:  # 'template' — editable source, template line or its guide
+            if rec.guide_id:
+                company = rec.guide_id.company_id
+            elif rec.template_line_id:
+                company = rec.template_line_id.template_id.company_id
+            else:
+                return False
         # Fail CLOSED: require an explicit allowed-company scope, and the
         # parent's company must be inside it. A company-less parent never leaks.
         allowed = [int(c) for c in (allowed_company_ids or [])]

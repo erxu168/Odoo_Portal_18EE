@@ -17,6 +17,13 @@ _logger = logging.getLogger(__name__)
 BERLIN_TZ = pytz.timezone('Europe/Berlin')
 
 
+def _guide_pub(tline):
+    """True when a task links a PUBLISHED, non-empty library guide worth
+    snapshotting onto the day's line. Drafts / empty / unlinked → no snapshot."""
+    g = tline.guide_id
+    return bool(g and g.published and g.step_ids)
+
+
 class KrawingsTaskTemplate(models.Model):
     _name = 'krawings.task.template'
     _description = 'Department Task Template'
@@ -185,11 +192,17 @@ class KrawingsTaskTemplate(models.Model):
                         })
                         for p in tline.setup_photo_ids
                     ] if tline.is_setup_guide else []),
-                    # Guided-tutorial snapshot: only a PUBLISHED guide is copied
-                    # onto the daily line (drafts stay invisible to staff). Deep
-                    # copy of every step + its note-pins; filestore checksum-
+                    # Guided-tutorial snapshot: only a PUBLISHED linked guide is
+                    # copied onto the daily line (drafts stay invisible to staff).
+                    # Deep copy of every step + its note-pins; filestore checksum-
                     # dedupes identical image/pdf bytes. Purely instructional.
-                    'guide_snapshot_revision': tline.guide_revision if tline.guide_published else 0,
+                    # guide_source_id/name are audit only — playback reads the
+                    # list-owned snapshot below, never the live guide.
+                    'guide_snapshot_revision': (
+                        tline.guide_id.revision if _guide_pub(tline) else 0
+                    ),
+                    'guide_source_id': tline.guide_id.id if _guide_pub(tline) else False,
+                    'guide_source_name': tline.guide_id.name if _guide_pub(tline) else False,
                     'guide_step_ids': ([
                         (0, 0, {
                             'sequence': s.sequence,
@@ -200,7 +213,7 @@ class KrawingsTaskTemplate(models.Model):
                             'pdf_file': s.pdf_file,
                             'pdf_filename': s.pdf_filename or False,
                             'youtube_url': s.youtube_url or False,
-                            'source_template_step_id': s.id,
+                            'source_guide_step_id': s.id,
                             'pin_ids': [
                                 (0, 0, {
                                     'sequence': pin.sequence,
@@ -211,8 +224,8 @@ class KrawingsTaskTemplate(models.Model):
                                 for pin in s.pin_ids.sorted('sequence')
                             ],
                         })
-                        for s in tline.guide_step_ids.sorted('sequence')
-                    ] if tline.guide_published else []),
+                        for s in tline.guide_id.step_ids.sorted('sequence')
+                    ] if _guide_pub(tline) else []),
                     'subtask_ids': [
                         (0, 0, {
                             'name': st.name,

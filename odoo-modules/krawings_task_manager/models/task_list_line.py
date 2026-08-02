@@ -59,11 +59,22 @@ class KrawingsTaskListLine(models.Model):
         'krawings.task.setup.photo', 'list_line_id',
     )
 
-    # ── Guided tutorial snapshot (copied from the template at spawn; only
-    # when the template guide was PUBLISHED). Immutable per-day history.
-    # Purely instructional — never affects completion. ───────────────────
+    # ── Guided tutorial snapshot (copied from the LINKED guide at spawn; only
+    # when that guide was PUBLISHED). Immutable per-day history. Purely
+    # instructional — never affects completion. Playback reads ONLY these
+    # list-owned steps; guide_source_* are audit trail and are NEVER
+    # dereferenced for content (the guide may be edited or deleted later). ──
     guide_step_ids = fields.One2many('krawings.task.guide.step', 'list_line_id')
     guide_snapshot_revision = fields.Integer(readonly=True)
+    guide_source_id = fields.Many2one(
+        'krawings.task.guide', ondelete='set null', readonly=True,
+        help='The library guide this snapshot was taken from (audit only).',
+    )
+    guide_source_name = fields.Char(
+        readonly=True,
+        help="The guide's name at snapshot time — survives the guide being "
+             'renamed or deleted.',
+    )
     has_guide = fields.Boolean(compute='_compute_guide', store=True)
     guide_step_count = fields.Integer(compute='_compute_guide', store=True)
 

@@ -88,212 +88,87 @@ class KrawingsTaskTemplateLine(models.Model):
         'krawings.task.setup.photo', 'template_line_id',
     )
 
-    # ── Guided tutorial (optional per-task how-to) ───────────────────────
-    # An ordered sequence of steps (photo / youtube / tip / pdf + explanation;
-    # photo steps may carry note-pins). PURELY INSTRUCTIONAL — never completes
-    # the task; staff still tick it themselves. Managers/admins edit here; a
-    # PUBLISHED guide is snapshotted onto each daily line at spawn. This
-    # supersedes the setup-guide fields above (migrated in 18.0.7.0.0).
-    guide_step_ids = fields.One2many('krawings.task.guide.step', 'template_line_id')
+    # ── Guided tutorial link (optional per-task how-to) ──────────────────
+    # A task LINKS one reusable library guide (krawings.task.guide); many tasks
+    # may share one guide, and editing the guide updates them all. PURELY
+    # INSTRUCTIONAL — never completes the task; staff still tick it themselves.
+    # A PUBLISHED linked guide is snapshotted onto each daily line at spawn.
+    # (Before 18.0.8.0.0 the guide's steps lived directly on this line; the
+    # migration moved them into a standalone guide and set guide_id.)
+    guide_id = fields.Many2one(
+        'krawings.task.guide', ondelete='restrict', index=True,
+        help='The reusable guide this task links (built in the guide Library).',
+    )
+    # Read-through mirrors of the linked guide, so the daily hydration and task
+    # list can filter/show the guide without dereferencing guide_id everywhere.
+    guide_name = fields.Char(related='guide_id.name', readonly=True)
     guide_published = fields.Boolean(
-        default=False,
-        help="When on, staff see this task's guide. Off = draft (managers only).",
+        related='guide_id.published', store=True, readonly=True,
     )
     guide_revision = fields.Integer(
-        default=0,
-        help='Bumped on every guide save; optimistic-concurrency token for the editor.',
+        related='guide_id.revision', store=True, readonly=True,
     )
-    has_guide = fields.Boolean(compute='_compute_guide', store=True,
-                               help='A PUBLISHED guide with at least one step exists.')
-    guide_step_count = fields.Integer(compute='_compute_guide', store=True)
+    guide_step_count = fields.Integer(
+        related='guide_id.step_count', store=True, readonly=True,
+    )
+    has_guide = fields.Boolean(
+        compute='_compute_has_guide', store=True,
+        help='A PUBLISHED linked guide with at least one step exists.',
+    )
 
-    @api.depends('guide_step_ids', 'guide_published')
-    def _compute_guide(self):
+    @api.depends('guide_id.published', 'guide_id.step_count')
+    def _compute_has_guide(self):
         for rec in self:
-            rec.guide_step_count = len(rec.guide_step_ids)
-            # has_guide reflects staff visibility (published + non-empty). The
-            # editor uses guide_step_count to know a draft has content.
-            rec.has_guide = bool(rec.guide_published and rec.guide_step_ids)
+            rec.has_guide = bool(
+                rec.guide_id and rec.guide_id.published and rec.guide_id.step_count
+            )
 
-    @api.constrains('guide_published', 'guide_step_ids')
-    def _check_published_guide_complete(self):
-        """Invariant: a PUBLISHED guide is always complete (>=1 step, every step
-        has an explanation + its own media). This is the backstop that makes
-        "published ⟹ complete" true even against a direct write to
-        guide_published or a step, and guarantees the nightly snapshot only ever
-        copies complete guides. portal_save_guide raises friendlier per-step
-        messages before this fires."""
+    @api.constrains('guide_id')
+    def _check_guide_company(self):
+        """A task may only link a guide from its own company."""
         for line in self:
-            if not line.guide_published:
-                continue
-            steps = line.guide_step_ids.sorted('sequence')
-            if not steps:
-                raise ValidationError('A published guide needs at least one step.')
-            for i, s in enumerate(steps, 1):
-                if not (s.explanation and s.explanation.strip()):
-                    raise ValidationError('Step %s needs an explanation before the guide can be published.' % i)
-                if s.media_type == 'photo' and not s.image:
-                    raise ValidationError('Step %s needs a photo before the guide can be published.' % i)
-                if s.media_type == 'pdf' and not s.pdf_file:
-                    raise ValidationError('Step %s needs a PDF before the guide can be published.' % i)
-                if s.media_type == 'youtube' and not (s.youtube_url and s.youtube_url.strip()):
-                    raise ValidationError('Step %s needs a YouTube link before the guide can be published.' % i)
+            if line.guide_id and line.template_id.company_id != line.guide_id.company_id:
+                raise ValidationError('A task can only link a guide from the same company.')
 
-    # ── Guided-tutorial editor RPC (manager/admin; company checked in the route) ──
+    # ── Guided-tutorial editor RPC — BACKWARD-COMPAT SHIMS ────────────────
+    # The library-era editor talks to krawings.task.guide directly. These shims
+    # keep the PREVIOUS portal build working across the deploy window: they act
+    # on this task's LINKED guide, auto-creating+attaching one on first save so
+    # the old "edit the guide on the task" flow is unchanged. Removed in the
+    # 18.0.9.0.0 contract migration once the portal is fully cut over.
     @api.model
     def portal_read_guide(self, template_line_id):
-        """Return a template line's full guide for the editor. Media bytes are
-        NOT inlined — the editor fetches them via the step-media route."""
         line = self.sudo().browse(int(template_line_id))
-        if not line.exists():
-            return False
-        steps = []
-        for s in line.guide_step_ids.sorted('sequence'):
-            steps.append({
-                'id': s.id,
-                'media_type': s.media_type,
-                'explanation': s.explanation or '',
-                'has_image': bool(s.image),
-                'image_filename': s.image_filename or '',
-                'has_pdf': bool(s.pdf_file),
-                'pdf_filename': s.pdf_filename or '',
-                'youtube_url': s.youtube_url or '',
-                'pins': [
-                    {'id': p.id, 'pin_x': p.pin_x, 'pin_y': p.pin_y, 'note': p.note or ''}
-                    for p in s.pin_ids.sorted('sequence')
-                ],
-            })
-        return {'revision': line.guide_revision, 'published': line.guide_published, 'steps': steps}
+        if not line.exists() or not line.guide_id:
+            return {'revision': 0, 'published': False, 'steps': []}
+        data = self.env['krawings.task.guide'].sudo().portal_read_guide(line.guide_id.id)
+        return data or {'revision': 0, 'published': False, 'steps': []}
 
     @api.model
     def portal_save_guide(self, template_line_id, revision, published, steps):
-        """Atomically replace a template line's whole ordered guide.
-
-        Row-locks the line and compares `revision` (optimistic concurrency): a
-        stale editor gets {conflict:True} (mapped to 409) instead of clobbering
-        another manager. Array order is authoritative → normalized sequences.
-        A step may `keep` its existing photo/pdf (no base64 re-sent); the prior
-        bytes are carried over server-side. Everything is validated by the step/
-        pin model constraints. Returns {ok, revision}."""
         line = self.sudo().browse(int(template_line_id))
         if not line.exists():
             raise UserError('Task not found.')
-        steps = steps or []
-        if len(steps) > GUIDE_MAX_STEPS:
-            raise UserError('A guide can have at most %s steps.' % GUIDE_MAX_STEPS)
-
-        self.env.flush_all()
-        self.env.cr.execute(
-            'SELECT guide_revision FROM krawings_task_template_line WHERE id = %s FOR UPDATE',
-            (line.id,),
-        )
-        row = self.env.cr.fetchone()
-        current = (row[0] if row else 0) or 0
-        if int(revision) != int(current):
-            return {'conflict': True, 'revision': current}
-
-        # Snapshot existing media so a `keep` step needn't re-upload its bytes.
-        prior = {
-            s.id: {
-                'image': s.image, 'image_filename': s.image_filename,
-                'pdf_file': s.pdf_file, 'pdf_filename': s.pdf_filename,
-            }
-            for s in line.guide_step_ids
-        }
-
-        # Completeness is a PUBLISH-time rule: a published guide must have every
-        # step finished (explanation + its own media). A DRAFT may be saved with
-        # half-finished steps so managers can checkpoint work-in-progress.
-        if published:
-            for idx, st in enumerate(steps, 1):
-                mt = st.get('media_type')
-                prev = prior.get(int(st.get('id') or 0), {})
-                if not (st.get('explanation') or '').strip():
-                    raise UserError('Step %s needs an explanation before you can publish.' % idx)
-                if mt == 'photo' and not (st.get('image_base64') or prev.get('image')):
-                    raise UserError('Step %s needs a photo before you can publish.' % idx)
-                if mt == 'pdf' and not (st.get('pdf_base64') or prev.get('pdf_file')):
-                    raise UserError('Step %s needs a PDF before you can publish.' % idx)
-                if mt == 'youtube' and not (st.get('youtube_url') or '').strip():
-                    raise UserError('Step %s needs a YouTube link before you can publish.' % idx)
-
-        line.guide_step_ids.unlink()  # cascade pins; clean sequences on rebuild
-
-        Step = self.env['krawings.task.guide.step'].sudo()
-        Pin = self.env['krawings.task.guide.pin'].sudo()
-        seq = 10
-        for st in steps:
-            mt = st.get('media_type')
-            explanation = (st.get('explanation') or '').strip()
-            if len(explanation) > GUIDE_MAX_EXPLANATION:
-                raise UserError('An explanation is too long (max %s characters).' % GUIDE_MAX_EXPLANATION)
-            prev = prior.get(int(st.get('id') or 0), {})
-            vals = {
-                'template_line_id': line.id,
-                'sequence': seq,
-                'media_type': mt,
-                'explanation': explanation,
-                'image': False, 'image_filename': False,
-                'pdf_file': False, 'pdf_filename': False,
-                'youtube_url': False,
-            }
-            if mt == 'photo':
-                if st.get('image_base64'):
-                    b64 = st['image_base64']
-                    if len(b64) > GUIDE_MAX_IMAGE_B64:
-                        raise UserError('A photo is too large (max ~9 MB).')
-                    vals['image'] = b64
-                    vals['image_filename'] = st.get('image_filename') or 'photo.jpg'
-                else:
-                    vals['image'] = prev.get('image')
-                    vals['image_filename'] = prev.get('image_filename')
-            elif mt == 'pdf':
-                if st.get('pdf_base64'):
-                    b64 = st['pdf_base64']
-                    if len(b64) > GUIDE_MAX_PDF_B64:
-                        raise UserError('A PDF is too large (max ~15 MB).')
-                    vals['pdf_file'] = b64
-                    vals['pdf_filename'] = st.get('pdf_filename') or 'document.pdf'
-                else:
-                    vals['pdf_file'] = prev.get('pdf_file')
-                    vals['pdf_filename'] = prev.get('pdf_filename')
-            elif mt == 'youtube':
-                vals['youtube_url'] = (st.get('youtube_url') or '').strip()
-            # 'tip' keeps everything empty.
-            step = Step.create(vals)   # model constraints validate media + explanation
-
-            if mt == 'photo':
-                pins = st.get('pins') or []
-                if len(pins) > GUIDE_MAX_PINS:
-                    raise UserError('A photo can have at most %s note-pins.' % GUIDE_MAX_PINS)
-                pseq = 10
-                for p in pins:
-                    note = (p.get('note') or '').strip()
-                    if len(note) > GUIDE_MAX_NOTE:
-                        raise UserError('A pin note is too long (max %s characters).' % GUIDE_MAX_NOTE)
-                    Pin.create({
-                        'step_id': step.id,
-                        'sequence': pseq,
-                        'pin_x': float(p.get('pin_x') or 0.0),
-                        'pin_y': float(p.get('pin_y') or 0.0),
-                        'note': note,
-                    })
-                    pseq += 10
-            seq += 10
-
-        new_rev = current + 1
-        line.write({'guide_revision': new_rev, 'guide_published': bool(published)})
-        return {'ok': True, 'revision': new_rev}
+        Guide = self.env['krawings.task.guide'].sudo()
+        guide = line.guide_id
+        if not guide:
+            guide = Guide.create({
+                'name': line.name or 'Guide',
+                'company_id': line.template_id.company_id.id,
+                'published': False,
+                'revision': 0,
+            })
+            line.guide_id = guide.id
+        return Guide.portal_save_guide(guide.id, revision, published, steps)
 
     @api.model
     def portal_delete_guide(self, template_line_id):
-        """Remove a template line's whole guide."""
+        """Detach this task's guide (the shared library guide is kept)."""
         line = self.sudo().browse(int(template_line_id))
         if not line.exists():
             raise UserError('Task not found.')
-        line.guide_step_ids.unlink()
-        line.write({'guide_published': False, 'guide_revision': (line.guide_revision or 0) + 1})
-        return {'ok': True, 'revision': line.guide_revision}
+        line.guide_id = False
+        return {'ok': True, 'revision': 0}
 
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().

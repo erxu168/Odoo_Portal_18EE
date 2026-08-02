@@ -20,20 +20,29 @@
                 ('template_line_id.template_id.company_id', 'in', company_ids),
                 ('list_line_id.list_id.company_id', 'in', company_ids)]</field>
         </record>
+        <!-- Reusable library guide: scope to the caller's companies. -->
+        <record id="rule_task_guide_company" model="ir.rule">
+            <field name="name">Guide: company multi-company rule</field>
+            <field name="model_id" ref="model_krawings_task_guide"/>
+            <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        </record>
         <!-- Guided-tutorial steps/pins carry image/pdf bytes; scope them to the
-             company through whichever parent line is set (rules don't propagate
-             through Many2one). -->
+             company through whichever parent is set — the library guide, a
+             legacy template line (expand window), or a daily list line (rules
+             don't propagate through Many2one). -->
         <record id="rule_task_guide_step_company" model="ir.rule">
             <field name="name">Guide step: company multi-company rule</field>
             <field name="model_id" ref="model_krawings_task_guide_step"/>
-            <field name="domain_force">['|',
+            <field name="domain_force">['|', '|',
+                ('guide_id.company_id', 'in', company_ids),
                 ('template_line_id.template_id.company_id', 'in', company_ids),
                 ('list_line_id.list_id.company_id', 'in', company_ids)]</field>
         </record>
         <record id="rule_task_guide_pin_company" model="ir.rule">
             <field name="name">Guide pin: company multi-company rule</field>
             <field name="model_id" ref="model_krawings_task_guide_pin"/>
-            <field name="domain_force">['|',
+            <field name="domain_force">['|', '|',
+                ('step_id.guide_id.company_id', 'in', company_ids),
                 ('step_id.template_line_id.template_id.company_id', 'in', company_ids),
                 ('step_id.list_line_id.list_id.company_id', 'in', company_ids)]</field>
         </record>

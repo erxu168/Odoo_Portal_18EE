@@ -17,6 +17,8 @@ access_task_item_user,krawings.task.item user,model_krawings_task_item,base.grou
 access_task_item_manager,krawings.task.item manager,model_krawings_task_item,hr.group_hr_manager,1,1,1,1
 access_task_setup_photo_user,krawings.task.setup.photo user,model_krawings_task_setup_photo,base.group_user,1,0,0,0
 access_task_setup_photo_manager,krawings.task.setup.photo manager,model_krawings_task_setup_photo,hr.group_hr_manager,1,1,1,1
+access_task_guide_user,krawings.task.guide user,model_krawings_task_guide,base.group_user,1,0,0,0
+access_task_guide_manager,krawings.task.guide manager,model_krawings_task_guide,hr.group_hr_manager,1,1,1,1
 access_task_guide_step_user,krawings.task.guide.step user,model_krawings_task_guide_step,base.group_user,1,0,0,0
 access_task_guide_step_manager,krawings.task.guide.step manager,model_krawings_task_guide_step,hr.group_hr_manager,1,1,1,1
 access_task_guide_pin_user,krawings.task.guide.pin user,model_krawings_task_guide_pin,base.group_user,1,0,0,0
