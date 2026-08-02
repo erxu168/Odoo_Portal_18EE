@@ -101,7 +101,8 @@ class KrawingsTaskTemplateLine(models.Model):
     )
     # Read-through mirrors of the linked guide, so the daily hydration and task
     # list can filter/show the guide without dereferencing guide_id everywhere.
-    guide_name = fields.Char(related='guide_id.name', readonly=True)
+    # Explicit string= avoids a duplicate "Name" label clash with the line's name.
+    guide_name = fields.Char(related='guide_id.name', string='Guide name', readonly=True)
     guide_published = fields.Boolean(
         related='guide_id.published', store=True, readonly=True,
     )

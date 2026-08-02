@@ -1,6 +1,6 @@
 {
     'name': 'Krawings Task Manager',
-    'version': '18.0.8.0.0',
+    'version': '18.0.8.1.0',
     'category': 'Human Resources',
     'summary': 'Department-based daily task lists for Krawings Portal PWA',
     'description': """
