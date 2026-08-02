@@ -97,6 +97,8 @@ export default function StationHome() {
     { label: 'Purchase', module: 'purchase', emoji: '🛒', onClick: () => router.push('/purchase') },
     { label: 'Label Printer', module: 'labels', emoji: '🏷️', onClick: () => router.push('/labels') },
     { label: 'Waste Tracker', module: 'waste', emoji: '🗑️', onClick: () => router.push('/waste') },
+    { label: 'Shift Handover', module: 'shift-handover', emoji: '🔄', onClick: () => router.push('/shift-handover') },
+    { label: 'Cooking Timer', module: 'cooktimer', emoji: '🍳', onClick: () => router.push('/cooktimer') },
   ].filter(t => modules != null && modules.includes(t.module));
 
   const hour = now.getHours();
