@@ -29,6 +29,16 @@ class KrawingsTaskListLine(models.Model):
         help='Denormalized employee name preserved for history.',
     )
 
+    # ── Photo review (manager oversight) ─────────────────────────────────
+    # A manager can FLAG a proof photo that looks wrong. This is an oversight
+    # signal only: it does NOT reopen the task (the task stays done); the staff
+    # member is told (portal push) it looked wrong. The manager clears the flag.
+    review_flagged = fields.Boolean(default=False, readonly=True)
+    review_flag_reason = fields.Char(readonly=True)
+    review_flagged_by_id = fields.Many2one('hr.employee', readonly=True, ondelete='set null')
+    review_flagged_by_name = fields.Char(readonly=True)
+    review_flagged_at = fields.Datetime(readonly=True)
+
     is_ad_hoc = fields.Boolean(default=False, readonly=True)
     source_template_line_id = fields.Many2one(
         'krawings.task.template.line', ondelete='set null', readonly=True,
@@ -346,3 +356,126 @@ class KrawingsTaskListLine(models.Model):
             'note_by_name': employee.name if employee and employee.exists() else False,
         })
         return True
+
+    # ── Photo review + end-of-day summary (manager oversight) ────────────
+    @api.model
+    def _proof_photo_map(self, line_ids):
+        """{line_id: [{id, name, mimetype}]} of PROOF photos (res_field empty) for
+        the given daily lines. Excludes field-backed binaries (setup photos)."""
+        if not line_ids:
+            return {}
+        atts = self.env['ir.attachment'].sudo().search_read(
+            [('res_model', '=', self._name), ('res_id', 'in', list(line_ids)),
+             ('res_field', '=', False)],
+            ['id', 'res_id', 'name', 'mimetype'], order='id asc',
+        )
+        out = {}
+        for a in atts:
+            out.setdefault(a['res_id'], []).append(
+                {'id': a['id'], 'name': a['name'], 'mimetype': a.get('mimetype') or ''}
+            )
+        return out
+
+    @api.model
+    def portal_review_feed(self, allowed_company_ids, date_str=None, employee_id=None):
+        """Manager oversight feed: completed tasks that carry a PROOF photo for
+        `date_str` (default today), in the caller's companies, newest first;
+        optionally one staff member. Fails CLOSED without a company scope.
+        Returns {stats:{submitted,flagged,looks_good}, items:[...]}."""
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed:
+            return {'stats': {'submitted': 0, 'flagged': 0, 'looks_good': 0}, 'items': []}
+        domain = [
+            ('list_id.company_id', 'in', allowed),
+            ('completed_at', '!=', False),
+            ('list_id.date', '=', date_str or fields.Date.context_today(self)),
+        ]
+        if employee_id:
+            domain.append(('completed_by_id', '=', int(employee_id)))
+        lines = self.sudo().search(domain, order='completed_at desc')
+        photos = self._proof_photo_map(lines.ids)
+        items = []
+        for l in lines:
+            atts = photos.get(l.id, [])
+            if not atts:
+                continue  # only submissions WITH a proof photo
+            items.append({
+                'line_id': l.id,
+                'name': l.name,
+                'day_part': l.day_part,
+                'completed_by_id': l.completed_by_id.id or False,
+                'completed_by_name': l.completed_by_name or (l.completed_by_id.name if l.completed_by_id else ''),
+                'completed_at': fields.Datetime.to_string(l.completed_at) if l.completed_at else '',
+                'flagged': l.review_flagged,
+                'flag_reason': l.review_flag_reason or '',
+                'flagged_by_name': l.review_flagged_by_name or '',
+                'attachments': atts,
+            })
+        flagged = sum(1 for i in items if i['flagged'])
+        return {
+            'stats': {'submitted': len(items), 'flagged': flagged, 'looks_good': len(items) - flagged},
+            'items': items,
+        }
+
+    @api.model
+    def portal_set_photo_flag(self, line_id, flagged, reason=None, employee=None, allowed_company_ids=None):
+        """Manager flags/clears a proof photo. Oversight ONLY — never changes the
+        task's completion. Company-scoped; a past-day list is read-only. Returns
+        {line_id, flagged, reason, completed_by_id} so the route can push the
+        redo notice to the staff member who did it."""
+        line = self.sudo().browse(int(line_id))
+        if not line.exists():
+            raise UserError('Task not found.')
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        company_id = line.list_id.company_id.id
+        if not allowed or not company_id or company_id not in allowed:
+            raise UserError('Not allowed for this company.')
+        if line.list_id.date and line.list_id.date < fields.Date.context_today(self):
+            raise UserError('Past task lists are read-only.')
+        if flagged:
+            if isinstance(employee, int):
+                employee = self.env['hr.employee'].sudo().browse(employee)
+            line.write({
+                'review_flagged': True,
+                'review_flag_reason': (reason or '').strip() or 'Please redo this one.',
+                'review_flagged_by_id': employee.id if employee and employee.exists() else False,
+                'review_flagged_by_name': employee.name if employee and employee.exists() else False,
+                'review_flagged_at': fields.Datetime.now(),
+            })
+        else:
+            line.write({
+                'review_flagged': False,
+                'review_flag_reason': False,
+                'review_flagged_by_id': False,
+                'review_flagged_by_name': False,
+                'review_flagged_at': False,
+            })
+        return {
+            'line_id': line.id,
+            'flagged': line.review_flagged,
+            'reason': line.review_flag_reason or '',
+            'completed_by_id': line.completed_by_id.id or False,
+        }
+
+    @api.model
+    def portal_day_summary(self, company_id, date_str=None):
+        """End-of-day counts for one company + date: done/total, the names of
+        missed (incomplete) tasks, and how many proof photos were submitted.
+        Used by the nightly summary cron; company scoping is the caller's job."""
+        company_id = int(company_id)
+        date = date_str or fields.Date.to_string(fields.Date.context_today(self))
+        lines = self.sudo().search([
+            ('list_id.company_id', '=', company_id),
+            ('list_id.date', '=', date),
+        ])
+        done = lines.filtered(lambda l: l.completed_at)
+        missed = lines - done
+        photos = self._proof_photo_map(done.ids)
+        return {
+            'company_id': company_id,
+            'date': date,
+            'total': len(lines),
+            'done': len(done),
+            'missed_names': missed.sorted('sequence').mapped('name'),
+            'photos_to_review': sum(len(v) for v in photos.values()),
+        }
