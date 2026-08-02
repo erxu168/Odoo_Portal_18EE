@@ -244,8 +244,16 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       mediaTokens.current = new Map();
     } catch (e: unknown) {
       if (!mountedRef.current) return;
-      if (!opts?.silent) setLoadError(e instanceof Error ? e.message : 'Could not load the guide');
-      else setError(e instanceof Error ? e.message : 'Could not refresh the guide');
+      if (!opts?.silent) {
+        setLoadError(e instanceof Error ? e.message : 'Could not load the guide');
+      } else {
+        // The MANDATORY post-save re-GET failed: local step ids are now stale
+        // (the server rebuilt the aggregate), so a follow-up save would reference
+        // deleted ids and drop the kept photos/PDFs. Mark stale to DISABLE Save
+        // until a successful reload — never let a second save run on stale ids.
+        setStale(true);
+        setError('Saved, but couldn’t reload the latest version. Reload before editing again so your photos aren’t lost.');
+      }
     } finally {
       if (mountedRef.current && !opts?.silent) setLoading(false);
     }

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError, type PortalUser } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
 import { getGuideScope } from '@/lib/odoo-tasks';
 import { readLibraryGuide, saveLibraryGuide, deleteLibraryGuide } from '@/lib/task-guide';
 import { sanitizeSteps } from '@/lib/task-guide-validate';
+import { userCompanyAllowed } from '@/lib/company-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,14 +14,12 @@ function guideId(params: { guideId: string }): number | null {
   return Number.isNaN(id) ? null : id;
 }
 
-/** The guide must exist and belong to one of the manager's companies. */
+/** The guide must exist and belong to one of the user's companies (admin: any).
+ * Fails CLOSED for an empty/mismatched scope. */
 async function assertScope(user: PortalUser, id: number): Promise<void> {
   const scope = await getGuideScope(id);
   if (!scope) throw new AuthError('Not found', 404);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (allowed.length && (scope.companyId === null || !allowed.includes(scope.companyId))) {
-    throw new AuthError('Forbidden', 403);
-  }
+  if (!userCompanyAllowed(user, scope.companyId)) throw new AuthError('Forbidden', 403);
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { guideId: string } }) {
@@ -86,8 +84,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: { guideId:
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[tasks] DELETE guide error:', err);
-    // Odoo blocks deleting a guide that tasks still link — surface that as 409.
     const message = err instanceof Error ? err.message : 'Failed to delete guide';
-    return NextResponse.json({ error: message }, { status: 409 });
+    // Only "a task still links this guide" is a genuine conflict (409); anything
+    // else (outage, malformed response) is a 500 so it isn't shown as "in use".
+    const isConflict = /used by|detach/i.test(message);
+    return NextResponse.json({ error: message }, { status: isConflict ? 409 : 500 });
   }
 }

@@ -55,7 +55,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
 
   useEffect(() => { void loadLink(); }, [loadLink]);
 
-  const attach = useCallback(async (guideId: number | null) => {
+  const attach = useCallback(async (guideId: number | null): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
@@ -69,8 +69,10 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
       if (!res.ok) throw new Error(body?.error || 'Could not update the guide link.');
       setLink((body?.link as GuideLink) ?? null);
       onChanged?.();
+      return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not update the guide link.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -149,7 +151,12 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
           currentGuideId={link?.guide_id || null}
           onClose={() => setPicking(false)}
           onPick={async (guideId) => { setPicking(false); await attach(guideId); }}
-          onCreated={(guideId, name) => { setPicking(false); void attach(guideId).then(() => setEditGuide({ id: guideId, name })); }}
+          onCreated={async (guideId, name) => {
+            setPicking(false);
+            // Only present the new guide as the task's guide if it actually linked;
+            // a failed attach leaves an (unlinked) library draft + a visible error.
+            if (await attach(guideId)) setEditGuide({ id: guideId, name });
+          }}
         />
       )}
 

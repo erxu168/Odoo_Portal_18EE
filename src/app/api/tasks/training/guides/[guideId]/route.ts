@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError, type PortalUser } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
 import { getGuideScope } from '@/lib/odoo-tasks';
 import { readLibraryGuide } from '@/lib/task-guide';
+import { userCompanyAllowed } from '@/lib/company-scope';
 
 export const dynamic = 'force-dynamic';
 
 /** Staff may open a guide only if it is PUBLISHED and in one of their companies.
- * A draft (or other-company) guide is a 404 for staff — never leaked. */
+ * A draft (or other-company / no-scope) guide is a 404 for staff — never leaked. */
 async function assertStaffScope(user: PortalUser, guideId: number): Promise<void> {
   const scope = await getGuideScope(guideId);
   if (!scope || !scope.published) throw new AuthError('Not found', 404);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (allowed.length && (scope.companyId === null || !allowed.includes(scope.companyId))) {
-    throw new AuthError('Not found', 404);
-  }
+  if (!userCompanyAllowed(user, scope.companyId)) throw new AuthError('Not found', 404);
 }
 
 // GET — a published guide's steps for the staff Training player (no media bytes;

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError, type PortalUser } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
 import { templateLineBelongsToTemplate, getTemplateCompany, getGuideScope } from '@/lib/odoo-tasks';
 import { getTemplateLineGuideLink, attachGuideToTemplateLine } from '@/lib/task-guide';
+import { userCompanyAllowed } from '@/lib/company-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +13,12 @@ function ids(params: { id: string; lineId: string }): { templateId: number; line
   return { templateId, lineId };
 }
 
-/** Line must belong to the template AND the template's company must be allowed. */
+/** Line must belong to the template AND the template's company must be allowed
+ * (admin: any; empty scope for a non-admin denies). Returns the task's company. */
 async function assertScope(user: PortalUser, templateId: number, lineId: number): Promise<number | null> {
   if (!(await templateLineBelongsToTemplate(templateId, lineId))) throw new AuthError('Not found', 404);
   const company = await getTemplateCompany(templateId);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (allowed.length && company !== null && !allowed.includes(company)) throw new AuthError('Forbidden', 403);
+  if (!userCompanyAllowed(user, company)) throw new AuthError('Forbidden', 403);
   return company;
 }
 
@@ -63,8 +63,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
       if (taskCompany !== null && scope.companyId !== taskCompany) {
         return NextResponse.json({ error: 'That guide belongs to a different company.' }, { status: 400 });
       }
-      const allowed = parseCompanyIds(user.allowed_company_ids);
-      if (allowed.length && (scope.companyId === null || !allowed.includes(scope.companyId))) {
+      if (!userCompanyAllowed(user, scope.companyId)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }

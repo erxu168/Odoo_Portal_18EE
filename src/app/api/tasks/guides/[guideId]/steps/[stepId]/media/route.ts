@@ -3,16 +3,14 @@ import { requireRole, AuthError, type PortalUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getGuideScope } from '@/lib/odoo-tasks';
 import { getStepMedia } from '@/lib/task-guide';
+import { userCompanyAllowed } from '@/lib/company-scope';
 
 export const dynamic = 'force-dynamic';
 
 async function assertScope(user: PortalUser, guideId: number): Promise<void> {
   const scope = await getGuideScope(guideId);
   if (!scope) throw new AuthError('Not found', 404);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (allowed.length && (scope.companyId === null || !allowed.includes(scope.companyId))) {
-    throw new AuthError('Forbidden', 403);
-  }
+  if (!userCompanyAllowed(user, scope.companyId)) throw new AuthError('Forbidden', 403);
 }
 
 // GET — a library guide step's photo or PDF bytes for the manager editor.
