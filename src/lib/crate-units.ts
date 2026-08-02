@@ -178,6 +178,33 @@ export function suggestCrateSizeFromName(name: string): number | null {
 }
 
 /**
+ * Container-level counting: a marked quarter of the open container feeds the
+ * EXISTING loose quantity, and the review glyph derives the quarter back.
+ * These two are each other's inverses BY CONSTRUCTION — both sides round with
+ * roundQty, so fractionToLoose → quarterFromLoose always round-trips.
+ */
+export const LEVEL_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
+export type LevelFraction = (typeof LEVEL_FRACTIONS)[number];
+
+/** "¾ of a 10 L bucket" → 7.5 (base units, stored as the loose quantity). */
+export function looseFromFraction(fraction: number, unitsPerCrate: number): number {
+  return roundQty(fraction * unitsPerCrate);
+}
+
+/**
+ * The quarter a stored loose amount represents — or null when it isn't a clean
+ * quarter of this pack size (typed via numpad, or the pack size changed since).
+ * Null means: show the words, skip the glyph, open the picker unset.
+ */
+export function quarterFromLoose(loose: number, unitsPerCrate: number | null | undefined): LevelFraction | null {
+  if (!hasCrate(unitsPerCrate) || !Number.isFinite(loose) || loose < 0) return null;
+  const q = Math.round((loose / unitsPerCrate) * 4) / 4;
+  if (q < 0 || q > 1) return null;
+  if (!LEVEL_FRACTIONS.includes(q as LevelFraction)) return null;
+  return roundQty(q * unitsPerCrate) === roundQty(loose) ? (q as LevelFraction) : null;
+}
+
+/**
  * Kill binary-floating-point dust without touching a quantity anyone meant.
  * Exported because the multi-level packaging engine (src/lib/packaging.ts) must
  * round EXACTLY the same way — two roundings would disagree at the sixth decimal

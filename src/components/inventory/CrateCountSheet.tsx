@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Stepper, leafCategory } from './ui';
 import NumpadModal from './NumpadModal';
-import { crateTotal, pluralizePack, unitWords } from '@/lib/crate-units';
+import ContainerLevelPicker, { type ContainerShape } from '@/components/ui/ContainerLevelPicker';
+import { crateTotal, pluralizePack, unitWords, hasCrate, looseFromFraction, quarterFromLoose } from '@/lib/crate-units';
 
 /**
  * Full-screen count sheet for a product counted in a "pack" unit
@@ -45,15 +46,27 @@ interface CrateCountSheetProps {
   // sets this — Quick Count and, especially, the Waste Tracker ("Bin it") must
   // never bin something just because you tapped Back.
   commitOnDismiss?: boolean;
+  // Container-level counting (measure-base products only): which drawing the
+  // open container's level is marked on. null/undefined = feature off — the
+  // sheet behaves exactly as before, whole packs only.
+  levelShape?: ContainerShape | null;
+  // The Waste Tracker hides the Empty zone — you can't bin nothing.
+  levelAllowEmpty?: boolean;
 }
+
+const ZONE_WORD: Record<number, string> = { 0.25: '¼', 0.5: '½', 0.75: '¾' };
 
 export default function CrateCountSheet({
   open, product, unitsPerCrate, uom, packLabel, looseLabel, initialCrates, initialLoose,
   showSystemQty, systemQty, locationName, onSave, onClose,
   outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange, saveLabel, commitOnDismiss,
+  levelShape, levelAllowEmpty = true,
 }: CrateCountSheetProps) {
   const [crates, setCrates] = useState(0);
   const [loose, setLoose] = useState(0);
+  // "Empty" is a JUDGMENT, not a default: numerically identical to untouched
+  // (loose 0), but only a deliberate tap may show the Empty zone as chosen.
+  const [emptyMarked, setEmptyMarked] = useState(false);
   const [pad, setPad] = useState<null | 'crates' | 'loose'>(null);
   const [noteOpen, setNoteOpen] = useState(false);
 
@@ -72,6 +85,7 @@ export default function CrateCountSheet({
       setCrates(c);
       setLoose(l);
       setPad(null);
+      setEmptyMarked(false);
       openedSeed.current = { crates: c, loose: l, note: note || '' };
     }
     wasOpen.current = open;
@@ -86,8 +100,19 @@ export default function CrateCountSheet({
   const words = unitWords(unit, packLabel, looseLabel);
   const label = words.pack;
   const one = words.loose;
-  const measure = words.measure;                // weight/volume base → count whole packs only
-  const looseVal = measure ? 0 : loose;
+  const measure = words.measure;                // weight/volume base → count whole packs only…
+  // …unless this product has a level diagram: then the marked fraction of the
+  // open container flows through the SAME loose quantity nothing downstream
+  // needs to learn about (spec 2026-08-02).
+  const hasLevel = measure && !!levelShape && hasCrate(unitsPerCrate);
+  // Measure without a level diagram: PRESERVE any loose the line already has
+  // (a level counted before the manager turned the diagram off must not be
+  // silently dropped on re-edit). Products that never had loose stay at 0 —
+  // byte-for-byte the old behaviour.
+  const looseVal = measure ? (hasLevel || loose > 0 ? loose : 0) : loose;
+  const levelFraction = hasLevel
+    ? (loose > 0 ? quarterFromLoose(loose, unitsPerCrate) : (emptyMarked ? 0 : null))
+    : null;
   const total = crateTotal(crates, looseVal, unitsPerCrate);
   const catLeaf = leafCategory(product.categ_id?.[1] || '');
 
@@ -126,6 +151,9 @@ export default function CrateCountSheet({
         </div>
       </div>
 
+      {/* Scroll everything between the header and Save: the level card can push
+          a short phone past its viewport, and clipped controls are unusable. */}
+      <div className="flex-1 overflow-y-auto min-h-0 pb-4">
       {/* Product info */}
       <div className="text-center py-4 px-4">
         <div className="text-[var(--fs-xxl)] font-bold text-gray-900">{product.name}</div>
@@ -152,6 +180,35 @@ export default function CrateCountSheet({
           onMinus={() => step('crates', -1)} onPlus={() => step('crates', 1)} onTap={() => setPad('crates')} />
       </div>
 
+      {/* "And the open one?" — mark the level of the open container by eye.
+          Only for measure-base products a manager opted in (level_shape set). */}
+      {hasLevel && levelShape && (
+        <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3.5 mx-[18px] mt-2.5">
+          <div className="text-[var(--fs-md)] font-bold text-gray-900 mb-2">And the open one?</div>
+          <ContainerLevelPicker
+            shape={levelShape}
+            value={levelFraction}
+            allowEmpty={levelAllowEmpty}
+            onChange={(f) => {
+              if (f == null) { setLoose(0); setEmptyMarked(false); }        // toggled off — back to unset
+              else if (f === 0) { setLoose(0); setEmptyMarked(true); }      // a deliberate "Empty"
+              else { setEmptyMarked(false); setLoose(looseFromFraction(f, unitsPerCrate)); }
+            }}
+          />
+          <div className="text-center text-[var(--fs-sm)] text-gray-600 mt-2">
+            {levelFraction == null
+              ? (loose > 0
+                ? `${loose} ${unit} entered — tap a level to replace it`
+                : 'Tap the level you see')
+              : levelFraction === 0
+                ? (crates === 0 && onNothingHere
+                  ? <>Empty, and no full {pluralizePack(label, 2)} either? Use <b>{nothingHereLabel || 'Nothing here'}</b> below — that records the zero.</>
+                  : `Empty — adds nothing`)
+                : <>{levelFraction === 1 ? 'Full' : `${ZONE_WORD[levelFraction]} of a ${label}`} ≈ <b className="text-gray-900">{looseVal} {unit}</b></>}
+          </div>
+        </div>
+      )}
+
       {/* Loose stepper — only for a countable base unit */}
       {!measure && (
         <div className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3.5 mx-[18px] mt-2.5">
@@ -168,7 +225,7 @@ export default function CrateCountSheet({
       <div className="mx-[18px] mt-4 bg-green-50 border border-green-200 rounded-2xl p-4 text-center">
         <div className="text-[var(--fs-sm)] text-green-700 font-mono font-semibold">
           {measure
-            ? `${crates} × ${unitsPerCrate}`
+            ? (looseVal > 0 ? `(${crates} × ${unitsPerCrate}) + ${looseVal}` : `${crates} × ${unitsPerCrate}`)
             : `(${crates} × ${unitsPerCrate}) + ${loose}`}
         </div>
         <div className="text-[40px] leading-none font-extrabold font-mono text-green-700 mt-1.5">{total}</div>
@@ -180,7 +237,9 @@ export default function CrateCountSheet({
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" className="flex-shrink-0 mt-0.5"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
         <span>
           {measure
-            ? `Count whole ${pluralizePack(label, 2)} — the ${unit} is an average, not weighed.`
+            ? (hasLevel
+              ? `Count the full ${pluralizePack(label, 2)}, then mark the open one’s level by eye — nothing is weighed.`
+              : `Count whole ${pluralizePack(label, 2)} — the ${unit} is an average, not weighed.`)
             : `Count full ${pluralizePack(label, 2)} first, then any loose ${words.looseFor(2)} from opened ones.`}
         </span>
       </div>
@@ -211,6 +270,8 @@ export default function CrateCountSheet({
           </button>
         </div>
       )}
+
+      </div>
 
       {/* Save — only where a deliberate commit is the point (Quick Count, and the
           Waste Tracker's "Bin it"). In the counting session (commitOnDismiss) the

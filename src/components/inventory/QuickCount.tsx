@@ -5,6 +5,7 @@ import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from '
 import { useProductFilters, ProductFilterBar } from './ProductFilters';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
+import { type ContainerShape } from '@/components/ui/ContainerLevelPicker';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import UnknownBarcodeSheet from './UnknownBarcodeSheet';
@@ -37,6 +38,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});
   const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});
+  const [levelShapes, setLevelShapes] = useState<Record<number, ContainerShape>>({});
   const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
 
@@ -134,16 +136,19 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       const crateMap: Record<number, number> = {};
       const labelMap: Record<number, string> = {};
       const looseMap: Record<number, string> = {};
+      const levelMap: Record<number, ContainerShape> = {};
       (flagRes.flags || []).forEach((f: any) => {
         flagMap[f.odoo_product_id] = !!f.requires_photo;
         if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
         if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
+        if (f.level_shape) levelMap[f.odoo_product_id] = f.level_shape;
       });
       setFlags(flagMap);
       setCrateSizes(crateMap);
       setCrateLabels(labelMap);
       setLooseLabels(looseMap);
+      setLevelShapes(levelMap);
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -507,6 +512,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
           showSystemQty={false}
           systemQty={null}
           locationName={locName}
+          levelShape={levelShapes[crateSheet.product.id] || null}
           onSave={(crates, loose) => saveCrateCount(crateSheet.product, crates, loose)}
           onClose={() => setCrateSheet({ open: false, product: null })}
         />

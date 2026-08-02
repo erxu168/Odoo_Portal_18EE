@@ -6,10 +6,11 @@ import OptionGrid from '@/components/ui/OptionGrid';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
+import { type ContainerShape } from '@/components/ui/ContainerLevelPicker';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import WasteSettingsSheet from './WasteSettingsSheet';
 import { useCompany } from '@/lib/company-context';
-import { hasCrate, formatSplit, unitWords } from '@/lib/crate-units';
+import { hasCrate, formatSplit, unitWords, crateTotal } from '@/lib/crate-units';
 
 /**
  * The Waste Tracker — "Something binned". A cook, mid-service, one hand, ten
@@ -68,6 +69,7 @@ export default function WasteTracker({ userRole }: WasteTrackerProps) {
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});
   const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});
+  const [levelShapes, setLevelShapes] = useState<Record<number, ContainerShape>>({});
   const [recent, setRecent] = useState<number[]>([]);
   const [today, setToday] = useState<TodayEntry[]>([]);
   const [photoRequired, setPhotoRequired] = useState(false);
@@ -145,14 +147,17 @@ export default function WasteTracker({ userRole }: WasteTrackerProps) {
       const crateMap: Record<number, number> = {};
       const labelMap: Record<number, string> = {};
       const looseMap: Record<number, string> = {};
+      const levelMap: Record<number, ContainerShape> = {};
       (flagRes.flags || []).forEach((f: any) => {
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
         if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
         if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
+        if (f.level_shape) levelMap[f.odoo_product_id] = f.level_shape;
       });
       setCrateSizes(crateMap);
       setCrateLabels(labelMap);
       setLooseLabels(looseMap);
+      setLevelShapes(levelMap);
       setRecent(wasteRes.recent || []);
       setToday(wasteRes.today || []);
       setPhotoRequired(!!wasteRes.photo_required);
@@ -215,7 +220,7 @@ export default function WasteTracker({ userRole }: WasteTrackerProps) {
   async function handleQuantity(product: any, q: { qty?: number; crate_qty?: number; loose_qty?: number; units_per_crate?: number }) {
     setSheet(null);
     const total = q.units_per_crate
-      ? (q.crate_qty || 0) * q.units_per_crate + (q.loose_qty || 0)
+      ? crateTotal(q.crate_qty || 0, q.loose_qty || 0, q.units_per_crate)
       : (q.qty || 0);
     if (!(total > 0)) return;
 
@@ -530,6 +535,8 @@ export default function WasteTracker({ userRole }: WasteTrackerProps) {
           systemQty={null}
           locationName="Waste"
           saveLabel="Bin it"
+          levelShape={levelShapes[sheet.product.id] || null}
+          levelAllowEmpty={false}
           onSave={(crates, loose) => handleQuantity(sheet.product, { crate_qty: crates, loose_qty: loose, units_per_crate: crateSize })}
           onClose={() => setSheet(null)}
         />

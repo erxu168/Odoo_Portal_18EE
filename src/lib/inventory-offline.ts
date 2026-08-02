@@ -31,6 +31,7 @@ export interface CachedSessionData {
   systemQtys: Record<number, number>;
   flags: Record<number, boolean>;
   crateSizes?: Record<number, number>;   // per-product pack size, for offline pack counting
+  levelShapes?: Record<number, string>;  // per-product container drawing for level marking
   crateLabels?: Record<number, string>;   // whole-unit word: crate / bunch / piece
   looseLabels?: Record<number, string>;   // single-unit word: bottle / piece
   items?: any[];                         // frozen (product, spot) lines of the session

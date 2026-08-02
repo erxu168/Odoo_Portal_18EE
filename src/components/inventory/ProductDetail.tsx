@@ -57,7 +57,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     uom?: [number, string];
     /** true after a photo is saved, false after one is removed. */
     imageAdded?: boolean;
-    flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null };
+    flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null; level_shape?: string | null };
     spots?: number[];
     /**
      * The product was archived (false) or brought back (true). A list that hides
@@ -149,6 +149,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   // so a half-typed "0.2" on its way to "0.28" never rescales the par fields.
   const [savedPackSize, setSavedPackSize] = useState('');
   const [looseLabel, setLooseLabel] = useState('');
+  const [levelShape, setLevelShape] = useState<string>('');   // '' = off
   // The saved packaging chain, reported up by <PackagingLevels> when it loads
   // or saves — read here only to translate a typed par into boxes.
   const [packChain, setPackChain] = useState<{ name: string; to_base: number }[]>([]);
@@ -299,6 +300,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         setPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
         setSavedPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
         setLooseLabel(f.loose_label || '');
+        setLevelShape(f.level_shape || '');
+        levelConfirmed.current = f.level_shape || '';
       }
     })
     .catch(() => {});
@@ -390,6 +393,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           setPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
           setSavedPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
           setLooseLabel(f.loose_label || '');
+          setLevelShape(f.level_shape || '');
+          levelConfirmed.current = f.level_shape || '';
         }
         setUoms(uomRes.uoms || []);
         loadCategories();
@@ -666,6 +671,35 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       onChanged({ flags: { units_per_crate: size, pack_label: nextLabel || null, loose_label: nextLoose.trim() || null } });
     } catch { flash('err', 'Network error — not saved'); }
     finally { setBusy(null); }
+  }
+
+  const levelSeq = useRef(0);
+  const levelChain = useRef<Promise<unknown>>(Promise.resolve());
+  // What the SERVER last confirmed — failures roll back to this, never to a
+  // previous optimistic tap that may itself have failed.
+  const levelConfirmed = useRef('');
+  function saveLevelShape(next: string) {
+    if (readOnly) return;
+    const mySeq = ++levelSeq.current;   // latest tap owns the UI
+    setLevelShape(next);   // instant feedback, reverted if the server says no
+    // CHAIN the writes so they reach the server in tap order — two racing PUTs
+    // could otherwise land reversed and leave the database on the older choice
+    // while the screen shows the newer one.
+    levelChain.current = levelChain.current.then(async () => {
+      try {
+        const res = await fetch(`/api/inventory/product-flags/${product.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ level_shape: next || null }),
+        });
+        if (res.ok) levelConfirmed.current = next;   // server truth moved, even if a newer tap owns the UI
+        if (levelSeq.current !== mySeq) return;      // a newer tap superseded this one
+        if (!res.ok) { setLevelShape(levelConfirmed.current); flash('err', 'Could not save the level diagram'); return; }
+        onChanged({ flags: { level_shape: next || null } });
+      } catch {
+        if (levelSeq.current !== mySeq) return;
+        setLevelShape(levelConfirmed.current); flash('err', 'Network error — not saved');
+      }
+    });
   }
 
   async function togglePhotoRule() {
@@ -1132,6 +1166,35 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               )}
             </p>
           </div>
+
+          {/* Container-level diagram — measure-base + pack size only. Staff mark
+              the open container's level by eye instead of guessing litres. */}
+          {measure && (
+            <>
+              <label className={label}>Level diagram for the open {effPack}</label>
+              <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4">
+                <div className="flex gap-1.5 flex-wrap">
+                  {[['', 'Off'], ['round', 'Round bucket'], ['rect', 'Rect. bucket'], ['barrel', 'Barrel'], ['bottle', 'Bottle']].map(([val, lbl]) => (
+                    <button key={val} type="button" disabled={readOnly || (val !== '' && savedPackSize === '')}
+                      aria-pressed={levelShape === val}
+                      onClick={() => saveLevelShape(val)}
+                      className={`min-h-[40px] px-3 rounded-xl border text-[var(--fs-xs)] font-bold transition-colors disabled:opacity-40 ${
+                        levelShape === val ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
+                      }`}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
+                  {savedPackSize === ''
+                    ? `Needs the pack size above first — the drawing converts a marked level into ${uomName}.`
+                    : levelShape
+                      ? `Staff mark the open ${effPack}’s level by eye — quarter steps — and the count adds that amount in ${uomName}.`
+                      : `Off: staff count whole ${pluralizePack(effPack, 2)} only, as before.`}
+                </p>
+              </div>
+            </>
+          )}
 
           {/* PAR — the least and the most of this you want to hold HERE.
               Directly under the pack settings on purpose: par is typed in base
