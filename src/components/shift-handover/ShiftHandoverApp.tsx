@@ -13,6 +13,7 @@ import { StorageItemDetail } from './StorageItemDetail';
 import { EntryCard, type FeedEntry } from './EntryCard';
 import { AddEntrySheet, type LogTypeChip, type NamedLookup } from './AddEntrySheet';
 import { ManageTypes } from './ManageTypes';
+import { ClearedHistory } from './ClearedHistory';
 
 interface Feed {
   operational_date: string;
@@ -47,7 +48,7 @@ export function ShiftHandoverApp() {
   const router = useRouter();
   const [feed, setFeed] = useState<Feed | null>(null);
   const [date, setDate] = useState<string>('');
-  const [screen, setScreen] = useState<'log' | 'types'>('log');
+  const [screen, setScreen] = useState<'log' | 'types' | 'cleared'>('log');
   const [addOpen, setAddOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<FeedEntry | null>(null);
   const [detailItem, setDetailItem] = useState<StorageRow | null>(null);
@@ -151,6 +152,9 @@ export function ShiftHandoverApp() {
   if (screen === 'types') {
     return <ManageTypes companyPill={pill} onBack={() => { setScreen('log'); load(); }} />;
   }
+  if (screen === 'cleared') {
+    return <ClearedHistory companyPill={pill} onBack={() => setScreen('log')} />;
+  }
 
   const nextDate = shiftDayAdd(feed.operational_date, 1);
   const nextAllowed = !feed.is_today;
@@ -167,6 +171,9 @@ export function ShiftHandoverApp() {
         subtitle={fmtDayShort(feed.operational_date)}
         action={
           <div className="flex items-center gap-1.5">
+            <button onClick={() => setScreen('cleared')} aria-label="Cleared items history" className="w-10 h-10 rounded-xl bg-white/15 text-white grid place-items-center active:bg-white/25">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            </button>
             {feed.me.can_manage && (
               <button onClick={() => setScreen('types')} aria-label="Setup lists" className="w-10 h-10 rounded-xl bg-white/15 text-white grid place-items-center active:bg-white/25">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>

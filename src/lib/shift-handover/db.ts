@@ -193,6 +193,9 @@ function migrateHandoverSchema(): void {
   // Backfill a prepared-on date for rows that predate the field: prefer the
   // linked log entry's operational (Berlin) date, else the added-at day.
   try { getDb().exec("UPDATE handover_storage_items SET prepared_on = COALESCE((SELECT operational_date FROM handover_log_entries WHERE id = handover_storage_items.entry_id), substr(added_at, 1, 10)) WHERE prepared_on IS NULL AND added_at IS NOT NULL"); } catch { /* best effort */ }
+  // Rows cleared before the reason column existed came from the old single
+  // "Used up" button, so give them that reason (keeps the history tally honest).
+  try { getDb().exec("UPDATE handover_storage_items SET cleared_reason = 'used_up' WHERE status = 'used' AND cleared_reason IS NULL"); } catch { /* best effort */ }
 
   // One-time data fix for restaurants seeded before the rename: turn the storage
   // type "Stored" into "Prepped", and retire the default "Cooked" chip (kept
@@ -442,6 +445,14 @@ export function getStorageItemView(id: number, companyId: number): StorageItemVi
      ) AS photo
      FROM handover_storage_items s WHERE s.id = ? AND s.company_id = ?`,
   ).get(id, companyId) as StorageItemView) ?? null;
+}
+/** Items cleared from the tray since `sinceISO` (newest first) — the history view. */
+export function listClearedStorage(companyId: number, sinceISO: string): StorageItem[] {
+  return getDb().prepare(
+    `SELECT * FROM handover_storage_items
+     WHERE company_id = ? AND status = 'used' AND used_at IS NOT NULL AND used_at >= ?
+     ORDER BY used_at DESC, id DESC`,
+  ).all(companyId, sinceISO) as StorageItem[];
 }
 /** Everything currently in storage (persists across days), with a thumbnail from its entry. */
 export function listStorageHere(companyId: number): StorageItemView[] {
