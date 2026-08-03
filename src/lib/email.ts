@@ -83,6 +83,16 @@ function getFrom(companyId?: number): string {
 
 const PORTAL_URL = process.env.PORTAL_URL || 'http://89.167.124.0:3000';
 
+/** Escape text before inserting it into an HTML email body. */
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /** True only when SMTP credentials are configured (per-company, default, or env). */
 export function isEmailConfigured(companyId?: number): boolean {
   const c = getEmailConfig(companyId);
@@ -378,6 +388,66 @@ export async function sendShiftReminderEmail(
         <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">We’ll keep reminding you until you confirm. Can’t make it? Let your manager know as soon as you can.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
         <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${location} &middot; Krawings Staff Portal</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Standalone day-before reminder: a PLAIN heads-up (no confirm link/workflow)
+ * listing every shift the person works tomorrow. Independent of the confirmation
+ * feature. All Odoo-derived text is HTML-escaped.
+ */
+export async function sendDayBeforeShiftReminderEmail(
+  toEmail: string,
+  toName: string,
+  dateLabel: string,
+  shifts: { time: string; roleName: string }[],
+  companyId?: number,
+): Promise<void> {
+  const brand = await getCompanyBrandName(companyId);
+  const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
+  const name = escapeHtml(toName || 'there');
+  const rows = shifts
+    .map(s => `  ${s.time}${s.roleName ? ` (${s.roleName})` : ''}`)
+    .join('\n');
+  const htmlRows = shifts
+    .map(
+      s => `
+        <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px 18px; margin: 10px 0;">
+          <div style="font-size: 16px; font-weight: 700; color: #111827;">${escapeHtml(s.time)}</div>
+          ${s.roleName ? `<div style="font-size: 14px; color: #6B7280; margin-top: 2px;">${escapeHtml(s.roleName)}</div>` : ''}
+        </div>`,
+    )
+    .join('');
+  const plural = shifts.length === 1 ? 'shift' : 'shifts';
+
+  await getTransporter(companyId).sendMail({
+    from: `"${location} Shifts" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: `Your ${plural} tomorrow — ${dateLabel}`,
+    text: [
+      `Hi ${toName || 'there'},`,
+      '',
+      `Just a reminder — you're scheduled at ${location} tomorrow (${dateLabel}):`,
+      rows,
+      '',
+      'See you then! Can’t make it? Let your manager know as soon as you can.',
+      '',
+      `— ${location} Shifts`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
+          <div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px;">${escapeHtml(location)}</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Just a reminder — you're scheduled <b>tomorrow (${escapeHtml(dateLabel)})</b>:</p>
+        ${htmlRows}
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5; margin-top: 18px;">See you then! Can’t make it? Let your manager know as soon as you can.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${escapeHtml(location)} &middot; Krawings Staff Portal</p>
       </div>
     `,
   });
