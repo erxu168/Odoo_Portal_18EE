@@ -129,6 +129,7 @@ being typed into. Two standing rules:
 | Asset | Path | What | users |
 |---|---|---|---|
 | `KeyboardViewportManager` | `ui/KeyboardViewportManager.tsx` | Mounted once in the root layout. Detects the keyboard by GEOMETRY plus a focused text control (focus alone misfires on split-screen and Capacitor `adjustResize`; geometry alone mistakes pinch-zoom for a keyboard). Publishes `--keyboard-inset-bottom`, `--visual-viewport-height`, `html[data-keyboard-open]` | 1 |
+| `scrollNeededFor` | `lib/keyboard-visibility.ts` | The geometry: how far to scroll a focused control into the space it ACTUALLY has. **"Visible" is not "above the keyboard"** — a sheet's action button sits in a footer below its scrolling body, so a field can clear the keyboard and still hide behind "Post to the log". The region is the viewport INTERSECTED with the scroll container's box. Found on a real device, not in review | 1 |
 
 **There is now exactly ONE keypad.** Five had grown independently and each had
 drifted: `ui/Numpad` (Purchase, WoDetail), `inventory/NumpadModal` (counting +
