@@ -88,56 +88,55 @@ test('a fixed overlay gets keyboard room reserved on it, and gets it back', asyn
   expect(result.after).toBe('24px');
 });
 
-test('the batch-size pad opens, cancels cleanly, and commits locally', async ({ page }) => {
+test('a converted number field opens the pad, and Cancel writes nothing', async ({ page }) => {
   await login(page);
-  await page.goto('/recipes');
 
-  // Walk in as far as the fixture allows; skip rather than fail if this
-  // environment has no recipe with a guide.
-  const firstRecipe = page.locator('button, a').filter({ hasText: /\w{3,}/ }).first();
-  if (!(await firstRecipe.count())) test.skip(true, 'no recipes on this environment');
-  await firstRecipe.click();
+  // Shift settings holds two converted percentage fields. Deliberately CANCEL
+  // rather than confirm: committing here would PATCH the real settings, and the
+  // default smoke target is shared staging.
+  await page.goto('/shifts/settings');
 
-  const batchButton = page.locator('button[aria-haspopup="dialog"], button.font-mono').first();
-  if (!(await batchButton.count())) {
-    test.skip(true, 'did not reach a batch-size screen on this environment');
+  const padField = page.locator('input[inputmode="none"]').first();
+  if (!(await padField.count())) {
+    test.skip(true, 'no converted number field on this environment');
   }
-  await expect(batchButton).toBeVisible({ timeout: 20_000 });
-  const original = (await batchButton.textContent())?.trim();
+  await expect(padField).toBeVisible({ timeout: 20_000 });
+  const before = await padField.inputValue();
 
-  await batchButton.tap();
+  await padField.tap();
 
   const pad = page.getByRole('dialog');
   await expect(pad).toBeVisible();
+  // The digit grid is the pad, not a coincidental dialog.
   await expect(pad.getByRole('button', { name: '7', exact: true })).toBeVisible();
 
-  // Cancel leaves the value exactly as it was — the contract that makes it safe
-  // to open the pad by accident.
+  // Type something quite different from whatever was there.
+  await pad.getByRole('button', { name: 'C', exact: true }).click();
+  await pad.getByRole('button', { name: '9', exact: true }).click();
+
+  // Backing out must leave the field exactly as it was — the contract that makes
+  // it safe to open the pad by accident.
   await pad.getByRole('button', { name: /cancel|close/i }).first().click();
   await expect(pad).toBeHidden();
-  expect((await batchButton.textContent())?.trim()).toBe(original);
-
-  // Reopen and commit 4 — local state only, nothing is sent anywhere.
-  await batchButton.tap();
-  const pad2 = page.getByRole('dialog');
-  await pad2.getByRole('button', { name: '4', exact: true }).click();
-  await pad2.getByRole('button', { name: /done|confirm/i }).first().click();
-  await expect(pad2).toBeHidden();
-  await expect(batchButton).toHaveText('4');
+  expect(await padField.inputValue()).toBe(before);
 });
 
 test('every pad-backed field refuses to summon the OS keypad', async ({ page }) => {
   await login(page);
 
   // inputMode="none" is the actual suppression mechanism; if it regresses, the
-  // Android keypad returns and covers the field. Any field using the pad must
-  // also announce that tapping it opens a dialog.
-  for (const path of ['/purchase', '/inventory', '/']) {
+  // Android keypad returns and covers the field.
+  let seen = 0;
+  for (const path of ['/shifts/settings', '/purchase', '/inventory']) {
     await page.goto(path);
+    await page.waitForLoadState('networkidle').catch(() => {});
     const padFields = page.locator('input[inputmode="none"]');
     const n = await padFields.count();
     for (let i = 0; i < n; i++) {
       await expect(padFields.nth(i)).toHaveAttribute('aria-haspopup', 'dialog');
+      seen++;
     }
   }
+  // Without this the loop would pass while checking nothing at all.
+  expect(seen, 'at least one converted number field should be reachable').toBeGreaterThan(0);
 });

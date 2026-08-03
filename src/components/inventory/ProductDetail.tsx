@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import NumberField from '@/components/ui/NumberField';
 import { Spinner, ProductThumb } from './ui';
 import SpotSheet from './SpotSheet';
 import ManagePackLabels from './ManagePackLabels';
@@ -960,17 +961,29 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 <div className="flex gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Sales price</div>
-                    <input value={listPrice} onChange={(e) => setListPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                      inputMode="decimal" placeholder="0.00"
-                      onBlur={() => { if (listPrice !== master0.list_price && listPrice !== '') saveField({ list_price: Number(listPrice) }); }}
-                      className={box} />
+                    <NumberField
+                      value={listPrice === '' ? null : Number(listPrice)}
+                      onValueChange={(v) => setListPrice(v === null ? '' : String(v))}
+                      onCommit={(v) => {
+                        const next = v === null ? '' : String(v);
+                        setListPrice(next);
+                        if (next !== master0.list_price && next !== '') saveField({ list_price: Number(next) });
+                      }}
+                      mode="decimal" allowEmpty min={0} fractionDigits={2} unit="\u20ac"
+                      aria-label="Sales price" placeholder="0.00" inputClassName={box} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Cost</div>
-                    <input value={standardPrice} onChange={(e) => setStandardPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                      inputMode="decimal" placeholder="0.00"
-                      onBlur={() => { if (standardPrice !== master0.standard_price && standardPrice !== '') saveField({ standard_price: Number(standardPrice) }); }}
-                      className={box} />
+                    <NumberField
+                      value={standardPrice === '' ? null : Number(standardPrice)}
+                      onValueChange={(v) => setStandardPrice(v === null ? '' : String(v))}
+                      onCommit={(v) => {
+                        const next = v === null ? '' : String(v);
+                        setStandardPrice(next);
+                        if (next !== master0.standard_price && next !== '') saveField({ standard_price: Number(next) });
+                      }}
+                      mode="decimal" allowEmpty min={0} fractionDigits={2} unit="\u20ac"
+                      aria-label="Cost" placeholder="0.00" inputClassName={box} />
                   </div>
                 </div>
                 <p className="text-[var(--fs-xs)] text-gray-400 mt-2.5">Writes to Odoo {'—'} affects sales &amp; margins.</p>
@@ -1071,9 +1084,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                     </option>
                     {shownVendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
-                  <input value={addPrice} onChange={(e) => setAddPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                    inputMode="decimal" placeholder="Price"
-                    className="w-20 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-center" />
+                  <NumberField
+                    value={addPrice === '' ? null : Number(addPrice)}
+                    onValueChange={(v) => setAddPrice(v === null ? '' : String(v))}
+                    onCommit={(v) => setAddPrice(v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty min={0} fractionDigits={2} unit="\u20ac"
+                    aria-label="Supplier price" placeholder="Price"
+                    inputClassName="w-20 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-center" />
                   <button onClick={addSupplier} disabled={!addVendor || supBusy}
                     className="px-3 h-9 rounded-lg bg-green-600 text-white font-bold text-[var(--fs-sm)] disabled:opacity-40">Add</button>
                 </div>
@@ -1158,12 +1175,18 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 {Array.from(new Set([effPack, ...packUnits])).map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
               <span className="text-[var(--fs-sm)] font-semibold text-gray-500">{measure ? '\u2248' : '='}</span>
-              <input value={packSize} disabled={readOnly}
-                onChange={(e) => setPackSize(e.target.value.replace(/[^0-9.]/g, ''))}
-                onBlur={(e) => savePack(e.target.value, effPack, looseLabel)}
-                inputMode="decimal" placeholder="—"
+              <NumberField
+                value={packSize === '' ? null : Number(packSize)}
+                disabled={readOnly}
+                onValueChange={(v) => setPackSize(v === null ? '' : String(v))}
+                onCommit={(v) => {
+                  const next = v === null ? '' : String(v);
+                  setPackSize(next);
+                  savePack(next, effPack, looseLabel);
+                }}
+                mode="decimal" allowEmpty min={0} placeholder="—"
                 aria-label={`How many ${uomName} in one ${effPack}`}
-                className="w-16 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
+                inputClassName="w-16 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
               {measure ? (
                 <span className="text-[var(--fs-sm)] text-gray-400">{uomName}</span>
               ) : (
@@ -1241,19 +1264,33 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             <div className="flex gap-2 mt-1">
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-xs)] text-gray-500 mb-1">Least (min)</div>
-                <input value={parMin} inputMode="decimal" disabled={readOnly}
-                  onChange={(e) => setParMin(e.target.value.replace(/[^0-9.]/g, ''))}
-                  onBlur={(e) => savePar(e.target.value, parMax)}
+                <NumberField
+                  value={parMin === '' ? null : Number(parMin)}
+                  disabled={readOnly}
+                  onValueChange={(v) => setParMin(v === null ? '' : String(v))}
+                  onCommit={(v) => {
+                    const next = v === null ? '' : String(v);
+                    setParMin(next);
+                    savePar(next, parMax);
+                  }}
+                  mode="decimal" allowEmpty min={0}
                   placeholder="—" aria-label="Least you want to hold"
-                  className={`${box} text-center font-mono`} />
+                  inputClassName={`${box} text-center font-mono`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-xs)] text-gray-500 mb-1">Most (max)</div>
-                <input value={parMax} inputMode="decimal" disabled={readOnly}
-                  onChange={(e) => setParMax(e.target.value.replace(/[^0-9.]/g, ''))}
-                  onBlur={(e) => savePar(parMin, e.target.value)}
+                <NumberField
+                  value={parMax === '' ? null : Number(parMax)}
+                  disabled={readOnly}
+                  onValueChange={(v) => setParMax(v === null ? '' : String(v))}
+                  onCommit={(v) => {
+                    const next = v === null ? '' : String(v);
+                    setParMax(next);
+                    savePar(parMin, next);
+                  }}
+                  mode="decimal" allowEmpty min={0}
                   placeholder="—" aria-label="Most you want to hold"
-                  className={`${box} text-center font-mono`} />
+                  inputClassName={`${box} text-center font-mono`} />
               </div>
             </div>
             {parErr && <p className="text-[var(--fs-xs)] font-semibold text-red-600 mt-1.5">{parErr}</p>}

@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
 import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import BomList from '@/components/manufacturing/BomList';
@@ -549,9 +550,14 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Quantity &amp; unit</div>
             <div className="flex gap-2 items-center">
-              <input type="number" inputMode="decimal" step="0.01" min="0"
-                value={qty} onChange={e => setQty(e.target.value)} placeholder="0"
-                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
+              <NumberField
+                value={qty === '' ? null : Number(qty)}
+                onValueChange={v => setQty(v === null ? '' : String(v))}
+                onCommit={v => setQty(v === null ? '' : String(v))}
+                mode="decimal" allowEmpty min={0}
+                placeholder="0" aria-label="Quantity"
+                className="flex-1"
+                inputClassName="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
               <input type="text" value={uom} onChange={e => setUom(e.target.value)} placeholder="kg"
                 className="w-24 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-bold text-gray-700 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
             </div>
@@ -591,13 +597,18 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
               })}
             </div>
             <div className="mt-3">
-              <input
-                type="number" inputMode="numeric" step="1" min="0" max="3650"
+              <NumberField
+                value={storageDays === '' ? null : Number(storageDays)}
+                onValueChange={v => setStorageDays(v === null ? '' : String(v))}
+                onCommit={v => setStorageDays(v === null ? '' : String(v))}
+                mode="integer"
+                allowEmpty
+                min={0}
+                max={3650}
                 disabled={!storageMode}
-                value={storageDays}
-                onChange={e => setStorageDays(e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder={storageMode ? 'shelf life in days' : 'pick a storage mode first'}
-                className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none disabled:opacity-40 disabled:bg-gray-100"
+                aria-label="Shelf life in days"
+                inputClassName="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none disabled:opacity-40 disabled:bg-gray-100"
               />
             </div>
             <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
@@ -638,10 +649,14 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
                   aria-label="Decrease label count">
                   &minus;
                 </button>
-                <input type="number" inputMode="numeric" step="1" min="1" max="100"
-                  value={labelCount} onChange={e => setLabelCount(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="1"
-                  className="flex-1 min-w-0 h-14 px-2 bg-transparent text-center text-[var(--fs-lg)] font-mono font-bold text-gray-900 outline-none" />
+                <NumberField
+                  value={labelCount === '' ? null : Number(labelCount)}
+                  onValueChange={v => setLabelCount(v === null ? '' : String(v))}
+                  onCommit={v => setLabelCount(v === null ? '' : String(v))}
+                  mode="integer" allowEmpty min={1} max={100}
+                  placeholder="1" aria-label="Number of labels"
+                  className="flex-1 min-w-0"
+                  inputClassName="w-full h-14 px-2 bg-transparent text-center text-[var(--fs-lg)] font-mono font-bold text-gray-900 outline-none" />
                 <button type="button"
                   onClick={() => setLabelCount(String(Math.min(100, (parseInt(labelCount, 10) || 1) + 1)))}
                   disabled={(parseInt(labelCount, 10) || 1) >= 100}

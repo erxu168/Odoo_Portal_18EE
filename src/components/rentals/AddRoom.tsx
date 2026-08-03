@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 
 interface PropertyOption {
   id: number;
@@ -98,17 +99,45 @@ export default function AddRoom() {
 
         <div>
           <label className={labelCls}>Size (m{'\u00b2'}) *</label>
-          <input className={inputCls} value={sizeSqm} onChange={e => setSizeSqm(e.target.value)} placeholder="18" inputMode="decimal" />
+          <NumberField
+            value={sizeSqm === '' ? null : Number(sizeSqm)}
+            onValueChange={v => setSizeSqm(v === null ? '' : String(v))}
+            onCommit={v => setSizeSqm(v === null ? '' : String(v))}
+            mode="decimal"
+            placeholder="18"
+            aria-label="Size"
+            inputClassName={inputCls}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Base Kaltmiete ({'\u20ac'})</label>
-            <input className={inputCls} value={baseKaltmiete} onChange={e => setBaseKaltmiete(e.target.value)} placeholder="450" inputMode="decimal" />
+            <NumberField
+              value={baseKaltmiete === '' ? null : Number(baseKaltmiete)}
+              onValueChange={v => setBaseKaltmiete(v === null ? '' : String(v))}
+              onCommit={v => setBaseKaltmiete(v === null ? '' : String(v))}
+              mode="decimal"
+              allowEmpty
+              fractionDigits={2}
+              placeholder="450"
+              aria-label="Base Kaltmiete"
+              inputClassName={inputCls}
+            />
           </div>
           <div>
             <label className={labelCls}>Utility Share ({'\u20ac'})</label>
-            <input className={inputCls} value={utilityShare} onChange={e => setUtilityShare(e.target.value)} placeholder="150" inputMode="decimal" />
+            <NumberField
+              value={utilityShare === '' ? null : Number(utilityShare)}
+              onValueChange={v => setUtilityShare(v === null ? '' : String(v))}
+              onCommit={v => setUtilityShare(v === null ? '' : String(v))}
+              mode="decimal"
+              allowEmpty
+              fractionDigits={2}
+              placeholder="150"
+              aria-label="Utility Share"
+              inputClassName={inputCls}
+            />
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import InfoButton from '@/components/hr/InfoButton';
 import type { EmployeeData } from '@/types/hr';
 import PhoneInput from '@/components/ui/PhoneInput';
+import NumberField from '@/components/ui/NumberField';
 import { FIELD_EXPLAINERS } from '@/types/hr';
 
 interface Props {
@@ -285,7 +286,18 @@ export default function StepPersonal({ employee, onNext, saving, submitLabel = '
         <div className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 pt-2">Address</div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Postcode" labelDe="PLZ">
-            <input className="form-input font-mono" value={zip} onChange={e => setZip(e.target.value)} placeholder="e.g. 10967" maxLength={5} inputMode="numeric" />
+            {/* digit-string: a German postcode keeps its leading zero (01067 Dresden). */}
+            <NumberField
+              mode="digit-string"
+              allowEmpty
+              maxLength={5}
+              value={zip}
+              onValueChange={v => setZip(v === null ? '' : String(v))}
+              onCommit={v => setZip(v === null ? '' : String(v))}
+              placeholder="e.g. 10967"
+              aria-label="Postcode"
+              inputClassName="form-input font-mono"
+            />
           </Field>
           <Field label="City" labelDe="Stadt">
             <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" />

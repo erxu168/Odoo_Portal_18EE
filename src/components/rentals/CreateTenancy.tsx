@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 
 type Step = 'tenant' | 'terms' | 'review';
 
@@ -81,7 +82,7 @@ export default function CreateTenancy() {
     if (rm) {
       setKaltmiete(String(rm.base_kaltmiete));
       setNebenkosten(String(rm.utility_share));
-      setKaution(String(rm.base_kaltmiete * 3));
+      setKaution(String(Math.round(rm.base_kaltmiete * 3 * 100) / 100))  // 2dp: the field refuses 1350.3000000000002;
     }
   }
 
@@ -268,11 +269,30 @@ export default function CreateTenancy() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Kaltmiete ({'\u20ac'}) *</label>
-                <input className={inputCls} value={kaltmiete} onChange={e => setKaltmiete(e.target.value)} placeholder="450" inputMode="decimal" />
+                <NumberField
+                  value={kaltmiete === '' ? null : Number(kaltmiete)}
+                  onValueChange={v => setKaltmiete(v === null ? '' : String(v))}
+                  onCommit={v => setKaltmiete(v === null ? '' : String(v))}
+                  mode="decimal"
+                  fractionDigits={2}
+                  placeholder="450"
+                  aria-label="Kaltmiete"
+                  inputClassName={inputCls}
+                />
               </div>
               <div>
                 <label className={labelCls}>Nebenkosten ({'\u20ac'})</label>
-                <input className={inputCls} value={nebenkosten} onChange={e => setNebenkosten(e.target.value)} placeholder="150" inputMode="decimal" />
+                <NumberField
+                  value={nebenkosten === '' ? null : Number(nebenkosten)}
+                  onValueChange={v => setNebenkosten(v === null ? '' : String(v))}
+                  onCommit={v => setNebenkosten(v === null ? '' : String(v))}
+                  mode="decimal"
+                  allowEmpty
+                  fractionDigits={2}
+                  placeholder="150"
+                  aria-label="Nebenkosten"
+                  inputClassName={inputCls}
+                />
               </div>
             </div>
 
@@ -283,7 +303,17 @@ export default function CreateTenancy() {
 
             <div>
               <label className={labelCls}>Kaution ({'\u20ac'})</label>
-              <input className={inputCls} value={kaution} onChange={e => setKaution(e.target.value)} placeholder="1350" inputMode="decimal" />
+              <NumberField
+                value={kaution === '' ? null : Number(kaution)}
+                onValueChange={v => setKaution(v === null ? '' : String(v))}
+                onCommit={v => setKaution(v === null ? '' : String(v))}
+                mode="decimal"
+                allowEmpty
+                fractionDigits={2}
+                placeholder="1350"
+                aria-label="Kaution"
+                inputClassName={inputCls}
+              />
             </div>
 
             {/* Staffel steps */}
@@ -314,16 +344,24 @@ export default function CreateTenancy() {
                       />
                     </div>
                     <div className="col-span-1">
-                      <input
-                        className={inputCls}
-                        value={s.new_kaltmiete}
-                        onChange={e => {
+                      <NumberField
+                        value={s.new_kaltmiete === '' ? null : Number(s.new_kaltmiete)}
+                        onValueChange={v => {
                           const updated = [...staffelSteps];
-                          updated[i] = { ...updated[i], new_kaltmiete: e.target.value };
+                          updated[i] = { ...updated[i], new_kaltmiete: v === null ? '' : String(v) };
                           setStaffelSteps(updated);
                         }}
+                        onCommit={v => {
+                          const updated = [...staffelSteps];
+                          updated[i] = { ...updated[i], new_kaltmiete: v === null ? '' : String(v) };
+                          setStaffelSteps(updated);
+                        }}
+                        mode="decimal"
+                        allowEmpty
+                        fractionDigits={2}
                         placeholder={'\u20ac'}
-                        inputMode="decimal"
+                        aria-label="New Kaltmiete"
+                        inputClassName={inputCls}
                       />
                     </div>
                     <button

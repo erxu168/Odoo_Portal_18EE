@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import { useCompany } from '@/lib/company-context';
 
 interface CreateMoProps {
@@ -418,9 +419,15 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                 <div>
                   <label className="text-[12px] font-semibold text-green-800 tracking-wider uppercase mb-1.5 block">How much {drivingComp.product_name} do you have?</label>
                   <div className="flex items-center border border-green-200 rounded-lg bg-white overflow-hidden">
-                    <input type="number" inputMode="decimal" value={drivingCompQty} onChange={(e) => setDrivingCompQty(e.target.value)}
+                    <NumberField
+                      value={drivingCompQty === '' ? null : Number(drivingCompQty)}
+                      onValueChange={(v) => setDrivingCompQty(v === null ? '' : String(v))}
+                      onCommit={(v) => setDrivingCompQty(v === null ? '' : String(v))}
+                      mode="decimal" allowEmpty min={0}
                       placeholder={`e.g. ${drivingComp.required_qty || 0}`}
-                      className="flex-1 px-3 py-2.5 text-lg font-bold border-none bg-transparent focus:outline-none text-green-700 placeholder:text-gray-300" />
+                      aria-label={`How much ${drivingComp.product_name} do you have?`}
+                      className="flex-1"
+                      inputClassName="w-full px-3 py-2.5 text-lg font-bold border-none bg-transparent focus:outline-none text-green-700 placeholder:text-gray-300" />
                     <div className="px-3 py-2.5 text-sm text-gray-500 bg-gray-50 border-l border-gray-200">{drivingComp.uom || 'kg'}</div>
                   </div>
                 </div>
@@ -431,8 +438,17 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
           {/* Quantity input */}
           <label className="text-[12px] font-semibold text-gray-400 tracking-wider uppercase mb-1.5 block">Quantity to produce{sqcEnabled ? ' (calculated)' : ''}</label>
           <div className="flex items-center border border-gray-200 rounded-xl bg-white overflow-hidden mb-1.5">
-            <input type="number" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} readOnly={sqcEnabled}
-              className={`flex-1 px-4 py-3 text-[var(--fs-xxl)] font-bold border-none bg-transparent focus:outline-none ${sqcEnabled ? 'text-green-600' : 'text-gray-900'}`} />
+            {/* readOnly has no NumberField equivalent; disabled carries the same
+                intent (the figure is calculated) and also keeps the pad shut. */}
+            <NumberField
+              value={qty === '' ? null : Number(qty)}
+              onValueChange={(v) => setQty(v === null ? '' : String(v))}
+              onCommit={(v) => setQty(v === null ? '' : String(v))}
+              mode="decimal" allowEmpty min={0}
+              readOnly={sqcEnabled}
+              aria-label="Quantity to produce"
+              className="flex-1"
+              inputClassName={`w-full px-4 py-3 text-[var(--fs-xxl)] font-bold border-none bg-transparent focus:outline-none ${sqcEnabled ? 'text-green-600' : 'text-gray-900'}`} />
             <div className="px-4 py-3 text-sm text-gray-500 bg-gray-50 border-l border-gray-200">{uom}</div>
           </div>
           <div className="text-[var(--fs-xs)] text-gray-400 mb-3 px-1">
@@ -492,12 +508,15 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                           </div>
                           <div className="flex items-center gap-2 mb-2">
                             <div className="flex-1 flex items-center border border-blue-200 rounded-lg bg-white overflow-hidden">
-                              <input
-                                type="number" inputMode="decimal"
-                                value={subMoQty}
-                                onChange={(e) => setSubMoQty(e.target.value)}
+                              <NumberField
+                                value={subMoQty === '' ? null : Number(subMoQty)}
+                                onValueChange={(v) => setSubMoQty(v === null ? '' : String(v))}
+                                onCommit={(v) => setSubMoQty(v === null ? '' : String(v))}
+                                mode="decimal" allowEmpty min={0}
                                 placeholder={String(c.scaled_qty)}
-                                className="flex-1 px-3 py-2 text-[var(--fs-base)] font-bold border-none bg-transparent focus:outline-none text-blue-700 placeholder:text-gray-300"
+                                aria-label={`How much ${c.product_name} to produce`}
+                                className="flex-1"
+                                inputClassName="w-full px-3 py-2 text-[var(--fs-base)] font-bold border-none bg-transparent focus:outline-none text-blue-700 placeholder:text-gray-300"
                               />
                               <div className="px-2 py-2 text-[var(--fs-xs)] text-gray-500 bg-gray-50 border-l border-gray-200">{c.uom}</div>
                             </div>

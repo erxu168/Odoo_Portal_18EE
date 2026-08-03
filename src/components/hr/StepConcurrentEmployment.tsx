@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import NumberField from '@/components/ui/NumberField';
 
 interface Props {
   onNext: () => void;
@@ -101,7 +102,18 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Weekly hours" labelDe="Wochenstunden">
-              <input className="form-input font-mono" type="number" min="0" max="48" value={editing.weeklyHours} onChange={(e) => setEditing({ ...editing, weeklyHours: e.target.value })} placeholder="e.g. 10" />
+              <NumberField
+                mode="decimal"
+                allowEmpty
+                min={0}
+                max={48}
+                value={editing.weeklyHours === "" ? null : Number(editing.weeklyHours)}
+                onValueChange={(v) => setEditing({ ...editing, weeklyHours: v === null ? "" : String(v) })}
+                onCommit={(v) => setEditing({ ...editing, weeklyHours: v === null ? "" : String(v) })}
+                placeholder="e.g. 10"
+                aria-label="Weekly hours"
+                inputClassName="form-input font-mono"
+              />
             </FormField>
             <FormField label="Start date" labelDe="Beginn">
               <input className="form-input font-mono" type="date" value={editing.startDate} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} />

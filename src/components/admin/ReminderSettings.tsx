@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 /**
  * Admin → HR document reminders & expiry alerts. Toggles the two weekly email
@@ -134,11 +135,23 @@ export default function ReminderSettings() {
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Expiry: days before to warn</label>
-              <input value={leadDays} onChange={e => setLeadDays(e.target.value)} inputMode="numeric" placeholder="30" className={inp} />
+              <NumberField
+                value={leadDays === '' ? null : Number(leadDays)}
+                onValueChange={v => setLeadDays(v === null ? '' : String(v))}
+                onCommit={v => setLeadDays(v === null ? '' : String(v))}
+                mode="integer" allowEmpty placeholder="30" unit="days"
+                aria-label="Expiry: days before to warn" inputClassName={inp}
+              />
             </div>
             <div>
               <label className={lbl}>Contract end: days before to warn</label>
-              <input value={contractLeadDays} onChange={e => setContractLeadDays(e.target.value)} inputMode="numeric" placeholder="45" className={inp} />
+              <NumberField
+                value={contractLeadDays === '' ? null : Number(contractLeadDays)}
+                onValueChange={v => setContractLeadDays(v === null ? '' : String(v))}
+                onCommit={v => setContractLeadDays(v === null ? '' : String(v))}
+                mode="integer" allowEmpty placeholder="45" unit="days"
+                aria-label="Contract end: days before to warn" inputClassName={inp}
+              />
             </div>
           </div>
 

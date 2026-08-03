@@ -8,6 +8,7 @@ import { useLocationTypes } from '@/lib/use-location-types';
 import { locationCode, locationDeepLink } from '@/lib/location-code';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { generateLocationZPL } from '@/lib/zpl';
+import NumberField from '@/components/ui/NumberField';
 
 /**
  * Printable location labels — a QR and the place's name, to stick on the shelf.
@@ -322,13 +323,22 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
             </button>
             {sizeId === 'custom' && (
               <span className="flex items-center gap-1.5">
-                <input value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^0-9.]/g, ''))}
-                  inputMode="decimal" aria-label="Label width in mm"
-                  className="w-16 h-9 border border-gray-200 rounded-lg text-center font-mono font-bold" />
+                {/* No min/max here on purpose: `size` already clamps to what a
+                    printer can do, and a second rule that blocks Confirm would
+                    stop the manager mid-type. */}
+                <NumberField
+                  value={customW === '' ? null : Number(customW)}
+                  onValueChange={(v) => setCustomW(v === null ? '' : String(v))}
+                  onCommit={(v) => setCustomW(v === null ? '' : String(v))}
+                  mode="decimal" allowEmpty unit="mm" aria-label="Label width in mm"
+                  inputClassName="w-16 h-9 border border-gray-200 rounded-lg text-center font-mono font-bold" />
                 <span className="text-gray-400 text-[13px]">×</span>
-                <input value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^0-9.]/g, ''))}
-                  inputMode="decimal" aria-label="Label height in mm"
-                  className="w-16 h-9 border border-gray-200 rounded-lg text-center font-mono font-bold" />
+                <NumberField
+                  value={customH === '' ? null : Number(customH)}
+                  onValueChange={(v) => setCustomH(v === null ? '' : String(v))}
+                  onCommit={(v) => setCustomH(v === null ? '' : String(v))}
+                  mode="decimal" allowEmpty unit="mm" aria-label="Label height in mm"
+                  inputClassName="w-16 h-9 border border-gray-200 rounded-lg text-center font-mono font-bold" />
                 <span className="text-gray-400 text-[13px]">mm</span>
               </span>
             )}

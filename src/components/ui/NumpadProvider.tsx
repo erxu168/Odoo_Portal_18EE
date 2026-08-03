@@ -24,9 +24,15 @@ import {
  * Four things here exist because of how staff actually use Android tablets, and
  * each would be a daily annoyance if it were missing:
  *
- *  - **Android Back closes the pad, it does not leave the screen.** Back is how
- *    everyone dismisses a keyboard. Without a history entry to swallow it, Back
- *    would navigate away from a half-filled form.
+ *  - **KNOWN GAP — Android Back does NOT close the pad.** It was built that way
+ *    (a pushed history entry, popped on close) and had to come out: several
+ *    modules run their own popstate routers — `app/shifts/page.tsx` translates
+ *    ANY popstate into "go to the parent screen" — so the pop on every Confirm
+ *    tore the screen out from under the user and threw away the whole edit
+ *    sheet. Losing a Back shortcut is a far smaller cost than losing a
+ *    manager's work on every single save. Restoring it needs those routers to
+ *    agree on a shared, marked history entry; until then Back does whatever the
+ *    surrounding module already did.
  *  - **Hardware keys are captured, not left to the page.** inputMode="none" only
  *    suppresses the on-screen keyboard; a Bluetooth keyboard still types into
  *    the focused input underneath, and its Enter submits the surrounding form —
@@ -113,13 +119,19 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
   /** The element to return focus to when the pad closes. */
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
-  /** Did we push a history entry for this opening? */
-  const pushedHistoryRef = useRef(false);
-  const burstRef = useRef<{ last: number; count: number; burstStart: string | null; tripped: boolean }>({
+  const burstRef = useRef<{
+    last: number;
+    count: number;
+    burstStart: string | null;
+    tripped: boolean;
+    /** Buffer as it stood before the key applied one step ago — the rewind target. */
+    beforeLastKey: string;
+  }>({
     last: 0,
     count: 0,
     burstStart: null,
     tripped: false,
+    beforeLastKey: '',
   });
 
   useEffect(() => setMounted(true), []);
@@ -139,13 +151,6 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
   }, []);
 
   const close = useCallback(() => {
-    if (pushedHistoryRef.current) {
-      // Popping our own entry fires popstate, which closes the pad for us.
-      pushedHistoryRef.current = false;
-      closeInternal();
-      window.history.back();
-      return;
-    }
     closeInternal();
   }, [closeInternal]);
 
@@ -165,15 +170,7 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
     setBuffer(bufferFromValue(next.initialValue, next.rules));
     setError(null);
     setSaving(false);
-    burstRef.current = { last: 0, count: 0, burstStart: null, tripped: false };
-
-    // Android Back should dismiss the pad, not the screen.
-    try {
-      window.history.pushState({ kwNumpad: true }, '', window.location.href);
-      pushedHistoryRef.current = true;
-    } catch {
-      pushedHistoryRef.current = false;
-    }
+    burstRef.current = { last: 0, count: 0, burstStart: null, tripped: false, beforeLastKey: '' };
   }, []);
 
   const doCommit = useCallback(async () => {
@@ -210,18 +207,6 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
     close();
   }, [close]);
 
-  // Android/browser Back while the pad is open closes the pad only.
-  useEffect(() => {
-    if (!request) return;
-    function onPopState() {
-      pushedHistoryRef.current = false;
-      requestRef.current?.onCancel?.();
-      closeInternal();
-    }
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, [request, closeInternal]);
-
   // Hardware keys. Capture phase so nothing reaches the page: an underlying
   // input must not receive the digits, and Enter must not submit its form.
   useEffect(() => {
@@ -241,11 +226,18 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
         e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete' || keyFromChar(e.key) !== null;
       if (!isPadKey) return;
 
-      // Barcode-scanner burst: rewind to the buffer as it was before the FIRST
-      // machine-fast key, and swallow the rest including the scanner's trailing
-      // Enter. Anchoring on the first fast key is the point — anchoring on the
-      // last human-paced key instead would also throw away the digits the user
-      // had already typed before the scan interrupted them.
+      // Barcode-scanner burst: discard the whole scan and swallow the rest,
+      // including the scanner's trailing Enter.
+      //
+      // The rewind target is the buffer from BEFORE the key applied one step
+      // ago, not the buffer at the first machine-fast key. A scan's opening
+      // digit arrives after an idle pause and is therefore indistinguishable
+      // from a human keystroke by timing alone — it gets applied, and only the
+      // NEXT key reveals a burst. Anchoring on the first fast key would leave
+      // that opening digit behind, turning a typed 12 into 124 and calling it a
+      // quantity. Stepping one further back costs at most one genuine keystroke
+      // in the rare case a scan lands within 50ms of the user's own typing —
+      // and a visibly missing digit is far safer than a silently wrong one.
       const now = performance.now();
       const gap = now - burstRef.current.last;
       burstRef.current.last = now;
@@ -255,7 +247,7 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
         burstRef.current.burstStart = null;
       } else {
         burstRef.current.count += 1;
-        if (burstRef.current.count === 1) burstRef.current.burstStart = bufferRef.current;
+        if (burstRef.current.count === 1) burstRef.current.burstStart = burstRef.current.beforeLastKey;
         if (burstRef.current.count >= BURST_TRIP) burstRef.current.tripped = true;
       }
       if (burstRef.current.tripped) {
@@ -265,6 +257,7 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
         if (rewind !== null) setBuffer(rewind);
         return;
       }
+      burstRef.current.beforeLastKey = bufferRef.current;
 
       e.preventDefault();
       e.stopPropagation();
@@ -306,10 +299,12 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
     <NumpadContext.Provider value={ctx}>
       {children}
       {mounted && request && createPortal(
-        // z-[130] and a portal to <body>: the pad is frequently opened from a
-        // field INSIDE a BottomSheet (also fixed, z-[100]). Rendered in place it
-        // would paint behind the very sheet that opened it.
-        <div className="relative z-[130]">
+        // Portalled to <body> and above every app sheet: the pad is usually
+        // opened from a field INSIDE one, and rendered in place it would paint
+        // behind the very sheet that opened it. z-150 clears the highest sheet
+        // in the codebase (baseZ={140}, ProductSettings/TemplateForm) and still
+        // sits under the shared-device PIN gate at z-200.
+        <div className="relative z-[150]">
           <BottomSheet
             title={request.label || 'Enter a number'}
             onClose={cancel}

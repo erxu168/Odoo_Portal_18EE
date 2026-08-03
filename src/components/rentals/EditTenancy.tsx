@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 
 function eur(n: number): string {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
@@ -166,11 +167,30 @@ export default function EditTenancy() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Kaltmiete ({'\u20ac'}) *</label>
-            <input className={inputCls} value={kaltmiete} onChange={e => setKaltmiete(e.target.value)} placeholder="450" inputMode="decimal" />
+            <NumberField
+              value={kaltmiete === '' ? null : Number(kaltmiete)}
+              onValueChange={v => setKaltmiete(v === null ? '' : String(v))}
+              onCommit={v => setKaltmiete(v === null ? '' : String(v))}
+              mode="decimal"
+              fractionDigits={2}
+              placeholder="450"
+              aria-label="Kaltmiete"
+              inputClassName={inputCls}
+            />
           </div>
           <div>
             <label className={labelCls}>Nebenkosten ({'\u20ac'})</label>
-            <input className={inputCls} value={nebenkosten} onChange={e => setNebenkosten(e.target.value)} placeholder="150" inputMode="decimal" />
+            <NumberField
+              value={nebenkosten === '' ? null : Number(nebenkosten)}
+              onValueChange={v => setNebenkosten(v === null ? '' : String(v))}
+              onCommit={v => setNebenkosten(v === null ? '' : String(v))}
+              mode="decimal"
+              allowEmpty
+              fractionDigits={2}
+              placeholder="150"
+              aria-label="Nebenkosten"
+              inputClassName={inputCls}
+            />
           </div>
         </div>
 
@@ -182,11 +202,31 @@ export default function EditTenancy() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Kaution ({'\u20ac'})</label>
-            <input className={inputCls} value={kaution} onChange={e => setKaution(e.target.value)} placeholder="1350" inputMode="decimal" />
+            <NumberField
+              value={kaution === '' ? null : Number(kaution)}
+              onValueChange={v => setKaution(v === null ? '' : String(v))}
+              onCommit={v => setKaution(v === null ? '' : String(v))}
+              mode="decimal"
+              allowEmpty
+              fractionDigits={2}
+              placeholder="1350"
+              aria-label="Kaution"
+              inputClassName={inputCls}
+            />
           </div>
           <div>
             <label className={labelCls}>Kaution Received ({'\u20ac'})</label>
-            <input className={inputCls} value={kautionReceived} onChange={e => setKautionReceived(e.target.value)} placeholder="0" inputMode="decimal" />
+            <NumberField
+              value={kautionReceived === '' ? null : Number(kautionReceived)}
+              onValueChange={v => setKautionReceived(v === null ? '' : String(v))}
+              onCommit={v => setKautionReceived(v === null ? '' : String(v))}
+              mode="decimal"
+              allowEmpty
+              fractionDigits={2}
+              placeholder="0"
+              aria-label="Kaution Received"
+              inputClassName={inputCls}
+            />
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, ProductThumb } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
 import RecordLink from '@/components/ui/RecordLink';
+import NumberField from '@/components/ui/NumberField';
 import PhotoLightbox from './PhotoLightbox';
 import NumpadModal from './NumpadModal';
 import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords, crateTotal, quarterFromLoose, pluralizePack } from '@/lib/crate-units';
@@ -1399,13 +1400,18 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
             <option value="">Select unit of measure…</option>
             {uoms.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={cost}
-            onChange={(e) => setCost(e.target.value)}
+          <NumberField
+            value={cost === '' ? null : Number(cost)}
+            onValueChange={(v) => setCost(v === null ? '' : String(v))}
+            onCommit={(v) => setCost(v === null ? '' : String(v))}
+            mode="decimal"
+            allowEmpty
+            min={0}
+            fractionDigits={2}
+            unit="€"
             placeholder="Cost per unit (optional)"
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-[14px]"
+            aria-label="Cost per unit"
+            inputClassName="w-full px-3 py-2 rounded-lg border border-gray-300 text-[14px]"
           />
           {vendor ? (
             <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-gray-200 text-[14px]">

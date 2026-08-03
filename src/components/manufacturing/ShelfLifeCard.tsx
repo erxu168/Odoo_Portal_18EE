@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 interface ShelfLifeCardProps {
   productTmplId: number;
@@ -99,14 +100,18 @@ export default function ShelfLifeCard({ productTmplId, canEdit }: ShelfLifeCardP
             Chilled
           </label>
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={chilledInput}
-              onChange={e => setChilledInput(e.target.value)}
+            <NumberField
+              value={chilledInput === '' ? null : Number(chilledInput)}
+              onValueChange={v => setChilledInput(v === null ? '' : String(v))}
+              onCommit={v => setChilledInput(v === null ? '' : String(v))}
+              mode="integer"
+              allowEmpty
+              min={0}
+              max={999}
               disabled={!canEdit || saving}
               placeholder="0"
-              className="w-20 h-12 px-3 border-[1.5px] border-gray-200 rounded-lg bg-gray-50 text-center text-base font-semibold focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
+              aria-label="Chilled shelf life in days"
+              inputClassName="w-20 h-12 px-3 border-[1.5px] border-gray-200 rounded-lg bg-gray-50 text-center text-base font-semibold focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
             />
             <span className="text-sm text-gray-500">days</span>
           </div>
@@ -120,14 +125,18 @@ export default function ShelfLifeCard({ productTmplId, canEdit }: ShelfLifeCardP
             Frozen
           </label>
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={frozenInput}
-              onChange={e => setFrozenInput(e.target.value)}
+            <NumberField
+              value={frozenInput === '' ? null : Number(frozenInput)}
+              onValueChange={v => setFrozenInput(v === null ? '' : String(v))}
+              onCommit={v => setFrozenInput(v === null ? '' : String(v))}
+              mode="integer"
+              allowEmpty
+              min={0}
+              max={999}
               disabled={!canEdit || saving}
               placeholder="0"
-              className="w-20 h-12 px-3 border-[1.5px] border-gray-200 rounded-lg bg-gray-50 text-center text-base font-semibold focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
+              aria-label="Frozen shelf life in days"
+              inputClassName="w-20 h-12 px-3 border-[1.5px] border-gray-200 rounded-lg bg-gray-50 text-center text-base font-semibold focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/15 disabled:opacity-60"
             />
             <span className="text-sm text-gray-500">days</span>
           </div>

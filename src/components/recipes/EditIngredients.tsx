@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 
 interface IngRow { pivot_id: number; name: string; qty: number; uom: string; }
 interface ProductResult { id: number; name: string; uom_id: number | null; uom_name: string }
@@ -133,9 +134,13 @@ export default function EditIngredients({ mode, recipeId, recipeName, onBack }: 
               {rows.map(r => (
                 <div key={r.pivot_id} className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-xl px-4 py-3">
                   <div className="flex-1 min-w-0 text-[14px] font-semibold text-gray-800 truncate">{r.name}</div>
-                  <input type="number" inputMode="decimal" value={values[r.pivot_id] ?? ''}
-                    onChange={(e) => setValues(v => ({ ...v, [r.pivot_id]: e.target.value }))}
-                    className="w-20 px-3 py-2 rounded-lg border border-gray-200 text-[15px] font-mono font-semibold text-right text-gray-900 focus:border-green-500 focus:outline-none" />
+                  <NumberField
+                    value={(values[r.pivot_id] ?? '') === '' ? null : Number(values[r.pivot_id])}
+                    onValueChange={(v) => setValues(prev => ({ ...prev, [r.pivot_id]: v === null ? '' : String(v) }))}
+                    onCommit={(v) => setValues(prev => ({ ...prev, [r.pivot_id]: v === null ? '' : String(v) }))}
+                    mode="decimal" allowEmpty unit={r.uom}
+                    aria-label={r.name}
+                    inputClassName="w-20 px-3 py-2 rounded-lg border border-gray-200 text-[15px] font-mono font-semibold text-right text-gray-900 focus:border-green-500 focus:outline-none" />
                   <div className="w-7 text-[12px] text-gray-400 font-mono">{r.uom}</div>
                   <button onClick={() => removeRow(r.pivot_id)} aria-label="Remove"
                     className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0 active:bg-red-100">

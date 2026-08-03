@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import SaveAsVersionModal from './SaveAsVersionModal';
 import EditStepNoteSheet from './EditStepNoteSheet';
 
@@ -452,12 +453,18 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
                   className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200 flex-shrink-0 text-gray-700 font-bold text-lg"
                   aria-label="Subtract amount"
                 >−</button>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={line.planned_qty_str}
-                  onChange={e => updateEditLineQty(line.line_id, e.target.value)}
-                  className="w-20 px-2 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-orange-500"
+                {/* The string may carry a German comma (fmtQtyDe), so parseQty
+                    normalises it before the field reads it — but only when it is
+                    non-empty, since a blank line must stay blank, not become 0. */}
+                <NumberField
+                  value={line.planned_qty_str === '' ? null : parseQty(line.planned_qty_str)}
+                  onValueChange={v => updateEditLineQty(line.line_id, v === null ? '' : String(v))}
+                  onCommit={v => updateEditLineQty(line.line_id, v === null ? '' : String(v))}
+                  mode="decimal"
+                  allowEmpty
+                  min={0}
+                  aria-label={`Quantity of ${line.product_name} in ${line.uom_name}`}
+                  inputClassName="w-20 px-2 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-orange-500"
                 />
                 <button
                   onClick={() => adjustEditLineByDelta(line.line_id, +1)}
