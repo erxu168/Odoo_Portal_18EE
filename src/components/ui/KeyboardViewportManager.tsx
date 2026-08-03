@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { scrollNeededFor } from '@/lib/keyboard-visibility';
 
 /**
  * KeyboardViewportManager — keeps the focused text control visible above the
@@ -33,8 +34,12 @@ const KEYBOARD_MIN_PX = 150;
 /** The focused control must clear the keyboard by this much. Also the occlusion threshold — same number by design, so "should we scroll?" and "is it acceptable?" can never disagree. */
 const SAFE_MARGIN_PX = 16;
 
-/** Chrome does its own scroll-into-view first; correct only the residual, once geometry settles. */
-const SETTLE_MS = 120;
+/**
+ * When to correct, after the keyboard starts opening. Chrome does its own
+ * scroll-into-view first, and a sheet that subtracts the keyboard from its
+ * height re-lays-out during the animation — so one early pass is not enough.
+ */
+const SETTLE_PASSES_MS = [120, 320, 550];
 
 function isTextControl(el: Element | null): el is HTMLElement {
   if (!el || !(el instanceof HTMLElement)) return false;
@@ -88,9 +93,14 @@ export default function KeyboardViewportManager() {
     if (!vv) return; // No visualViewport (old browsers): leave native behaviour alone.
 
     const root = document.documentElement;
-    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let settleTimers: ReturnType<typeof setTimeout>[] = [];
     let rafId: number | null = null;
     let keyboardOpen = false;
+
+    function clearSettleTimers() {
+      for (const t of settleTimers) clearTimeout(t);
+      settleTimers = [];
+    }
 
     /**
      * Keyboard height, derived from GEOMETRY not focus events. Focus alone
@@ -169,26 +179,30 @@ export default function KeyboardViewportManager() {
     }
 
     /**
-     * Scroll the focused control clear of the keyboard — but only as far as its
-     * own top allows, so a tall textarea never has its label pushed off the top.
+     * Scroll the focused control into the space it actually has — but only as far
+     * as its own top allows, so a tall textarea never has its label pushed off.
+     *
+     * THE SPACE IS NOT JUST "ABOVE THE KEYBOARD". A sheet keeps its action button
+     * in a footer BELOW its scrolling body, so a field can clear the keyboard and
+     * still sit behind "Post to the log". Measuring against the viewport alone
+     * left the note box on the Shift Handover sheet showing one line of text.
+     * The region is therefore the visual viewport INTERSECTED with the scroll
+     * container's own box, which already excludes that footer.
      */
     function ensureVisible() {
       if (!vv) return;
       const el = document.activeElement;
       if (!isTextControl(el)) return;
 
-      const rect = el.getBoundingClientRect();
-      const visibleTop = vv.offsetTop;
-      const visibleBottom = vv.offsetTop + vv.height;
-
-      const overflow = rect.bottom - (visibleBottom - SAFE_MARGIN_PX);
-      if (overflow <= 0) return; // Already clear — never jump a field that is fine where it is.
-
-      const headroom = rect.top - (visibleTop + SAFE_MARGIN_PX);
-      const delta = Math.min(overflow, Math.max(headroom, 0));
-      if (delta <= 0) return;
-
       const scroller = nearestScrollable(el);
+      const { delta } = scrollNeededFor(
+        el.getBoundingClientRect(),
+        { top: vv.offsetTop, bottom: vv.offsetTop + vv.height },
+        scroller ? scroller.getBoundingClientRect() : null,
+        SAFE_MARGIN_PX,
+      );
+      if (delta <= 0) return; // Already clear — never jump a field that is fine where it is.
+
       if (scroller) {
         const before = scroller.scrollTop;
         scroller.scrollTop = before + delta;
@@ -209,10 +223,7 @@ export default function KeyboardViewportManager() {
         // Always drop a pending correction first. Android's Back can close the
         // keyboard inside the settle window, and a stale callback would then
         // scroll against whatever is focused by the time it fires.
-        if (settleTimer) {
-          clearTimeout(settleTimer);
-          settleTimer = null;
-        }
+        clearSettleTimers();
         if (inset === 0) {
           releaseOverlay();
           return;
@@ -220,8 +231,13 @@ export default function KeyboardViewportManager() {
         // Reserve first: a fixed overlay must make room before there is anything
         // for the scroll pass to move.
         reserveOverlaySpace(inset);
-        // Let the keyboard animation and Chrome's own scroll finish, then correct.
-        settleTimer = setTimeout(ensureVisible, SETTLE_MS);
+        // Correct more than once. The keyboard animates in, and a sheet that
+        // subtracts the keyboard from its own height re-lays-out as it does, so
+        // a single early pass measures a geometry that no longer applies and
+        // under-scrolls. Each pass returns immediately once the field is clear.
+        for (const delay of SETTLE_PASSES_MS) {
+          settleTimers.push(setTimeout(ensureVisible, delay));
+        }
       });
     }
 
@@ -240,7 +256,7 @@ export default function KeyboardViewportManager() {
       document.removeEventListener('focusin', update);
       document.removeEventListener('focusout', update);
       if (rafId !== null) cancelAnimationFrame(rafId);
-      if (settleTimer) clearTimeout(settleTimer);
+      clearSettleTimers();
       releaseOverlay();
       root.style.removeProperty('--keyboard-inset-bottom');
       root.style.removeProperty('--visual-viewport-height');
