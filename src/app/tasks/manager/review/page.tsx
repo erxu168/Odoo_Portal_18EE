@@ -272,7 +272,7 @@ function ReviewCard({
           <p className="text-sm font-bold text-gray-800 truncate">{item.name}</p>
           <p className="text-[11.5px] text-gray-400">{DAY_PART_LABEL[item.day_part] ?? item.day_part}</p>
           <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
-            <span className="w-[18px] h-[18px] rounded-full bg-orange-500 text-white text-[9px] font-bold flex items-center justify-center">{initials(item.completed_by_name)}</span>
+            <span className="w-[18px] h-[18px] rounded-full bg-green-600 text-white text-[9px] font-bold flex items-center justify-center">{initials(item.completed_by_name)}</span>
             {item.completed_by_name || 'Unknown'}{when ? ` · ${when}` : ''}
           </p>
         </div>

@@ -22,7 +22,7 @@ export default function SubtaskList({ subtasks, onToggle, readOnly = false }: Pr
           }}
           className={`flex items-center gap-2 py-1.5 group ${readOnly ? '' : 'cursor-pointer'}`}>
           <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
-            sub.done ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white group-hover:border-orange-400'
+            sub.done ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white group-hover:border-green-600'
           }`}>
             {sub.done && (
               <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none">

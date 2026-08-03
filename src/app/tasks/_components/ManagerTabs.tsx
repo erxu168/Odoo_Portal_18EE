@@ -31,7 +31,7 @@ export default function ManagerTabs() {
         return (
           <Link key={tab.href} href={tab.href}
             className={`flex-shrink-0 flex items-center gap-1.5 px-4 h-11 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
-              active ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-400 hover:text-gray-700'
+              active ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-400 hover:text-gray-700'
             }`}>
             {tab.label}
           </Link>

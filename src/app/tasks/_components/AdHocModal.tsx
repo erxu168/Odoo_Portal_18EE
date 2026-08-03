@@ -72,26 +72,26 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Task name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Deep clean fryer"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Section</label>
               <select value={dayPart} onChange={e => setDayPart(e.target.value as DayPart)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                 {DAY_PART_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Deadline</label>
               <input type="time" value={deadline} onChange={e => setDeadline(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
             </div>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Module link</label>
             <select value={moduleLink} onChange={e => setModuleLink(e.target.value as ModuleLink)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
               {MODULE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
@@ -107,7 +107,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
                 onChange={e => setPhotoInstr(e.target.value)}
                 placeholder="e.g. Take picture of the toilet bowl showing the connectors/screws"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               />
             </div>
           )}
@@ -116,7 +116,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-white">
           <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleSubmit} disabled={submitting} className="flex-1 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+          <button onClick={handleSubmit} disabled={submitting} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
             {submitting ? 'Adding…' : 'Add task'}
           </button>
         </div>

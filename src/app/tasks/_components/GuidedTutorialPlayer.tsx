@@ -406,9 +406,9 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
               {/* Pins aren't obviously tappable on their own — tell staff to tap
                   them (and pulse the markers, below, to draw the eye). */}
               {step.media_type === 'photo' && step.pins.length > 0 && !imgError.has(step.id) && (
-                <div className="flex items-center justify-center gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-orange-500 text-white text-[11px] font-bold flex items-center justify-center" aria-hidden="true">1</span>
-                  <p className="text-[13px] font-semibold text-orange-800">
+                <div className="flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-600 text-white text-[11px] font-bold flex items-center justify-center" aria-hidden="true">1</span>
+                  <p className="text-[13px] font-semibold text-amber-800">
                     Tap each numbered marker on the photo to read its note
                     {step.pins.length > 1 ? ` (${step.pins.length} of them)` : ''}.
                   </p>
@@ -481,7 +481,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
           >
             <div className="flex items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
-                <span className="w-7 h-7 flex-shrink-0 rounded-full bg-orange-500 text-white text-xs font-bold flex items-center justify-center">
+                <span className="w-7 h-7 flex-shrink-0 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center">
                   {(activePin ?? 0) + 1}
                 </span>
                 <span className="text-sm font-bold text-gray-800">Note</span>

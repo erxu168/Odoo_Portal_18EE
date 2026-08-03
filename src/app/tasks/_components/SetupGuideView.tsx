@@ -68,7 +68,7 @@ export default function SetupGuideView({
         <button
           type="button"
           onClick={() => setCollapsed(c => !c)}
-          className="text-xs font-semibold text-orange-600 hover:text-orange-700 inline-flex items-center gap-1"
+          className="text-xs font-semibold text-green-700 hover:text-amber-800 inline-flex items-center gap-1"
         >
           🧭 {collapsed ? 'Review / adjust setup' : 'Hide setup'}
         </button>
@@ -120,7 +120,7 @@ export default function SetupGuideView({
                 onMouseLeave={() => setActiveIndex(null)}
                 className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg border ${
                   s.done ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
-                } ${activeIndex === i ? 'ring-2 ring-orange-200' : ''}`}
+                } ${activeIndex === i ? 'ring-2 ring-green-200' : ''}`}
               >
                 <button
                   type="button"

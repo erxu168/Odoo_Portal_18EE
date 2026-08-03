@@ -71,7 +71,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
         <select
           value={v.type}
           onChange={e => set({ type: e.target.value as RecurrenceType })}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
         >
           {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -84,7 +84,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
             type="date"
             value={v.one_off_date || ''}
             onChange={e => set({ one_off_date: e.target.value || null })}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
           />
         </div>
       )}
@@ -98,7 +98,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
             onCommit={n => set({ interval: Math.max(1, Number(n) || 1) })}
             mode="integer" min={1}
             aria-label={`Repeat every how many ${UNIT_LABEL[v.type]}s`}
-            inputClassName="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+            inputClassName="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
           />
           <span className="text-sm text-gray-700">{UNIT_LABEL[v.type]}{v.interval !== 1 ? 's' : ''}</span>
         </div>
@@ -113,7 +113,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
                 key={i} type="button"
                 onClick={() => toggleWeekday(i)}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  v.weekdays.includes(i) ? 'bg-orange-500 text-white' : 'bg-white text-gray-400 border border-gray-200'
+                  v.weekdays.includes(i) ? 'bg-green-600 text-white' : 'bg-white text-gray-400 border border-gray-200'
                 }`}
               >
                 {label}
@@ -250,7 +250,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
           <button
             type="button" onClick={addException}
             disabled={!newException}
-            className="px-3 py-1.5 bg-orange-500 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+            className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
           >
             + Add
           </button>

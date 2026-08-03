@@ -215,16 +215,16 @@ function CreateModal({ departments, onClose, onCreated }: {
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Kitchen — Standard Day"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
             <select value={deptId} onChange={e => setDeptId(parseInt(e.target.value, 10))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
               {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
             </select>
           </div>
-          <p className="text-xs text-gray-500 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+          <p className="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             💡 You&apos;ll set the schedule (daily / weekly / monthly / one-off) on each task after creating the template.
           </p>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}

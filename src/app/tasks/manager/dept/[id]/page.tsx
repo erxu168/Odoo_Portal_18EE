@@ -155,12 +155,12 @@ export default function DeptReviewPage({ params }: PageProps) {
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
           />
           {!isToday && (
             <button
               onClick={() => setDate(today)}
-              className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+              className="text-xs font-semibold text-green-700 hover:text-amber-800"
             >
               Today
             </button>
@@ -168,7 +168,7 @@ export default function DeptReviewPage({ params }: PageProps) {
           {!isPast && list && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="ml-auto bg-orange-500 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-orange-600"
+              className="ml-auto bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-700"
             >
               + Add task
             </button>
@@ -200,7 +200,7 @@ export default function DeptReviewPage({ params }: PageProps) {
               <button
                 onClick={handleCreateList}
                 disabled={creating}
-                className="mt-4 bg-orange-500 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {creating ? 'Creating…' : `Create list for ${date}`}
               </button>
