@@ -1289,7 +1289,10 @@ export const MERGED_WALK_ENABLED = process.env.INVENTORY_MERGED_WALK === 'on';
  * Two live sessions covering the same product write the same Odoo location
  * twice. Every path that creates a session consults this, so no combination of
  * merged walks, manual creates and mid-day list changes can produce it.
- * Submitted/approved counts are finished and don't block a deliberate recount.
+ *
+ * SUBMITTED counts do NOT block (Ethan, 2026-08-03): a count waiting for
+ * approval is finished as far as the floor is concerned, and starting a fresh
+ * count of those products is a deliberate act. Only OPEN counts block.
  */
 export function productsAlreadyCountedToday(
   companyId: number | null,
@@ -1336,10 +1339,16 @@ function insertMergedWalkSession(companyId: number, locationId: number, members:
   const db = getDb();
   const walkTemplateId = ensureWalkTemplate(companyId);
   const union = Array.from(new Set(members.flatMap((m) => (m.product_ids as number[]) || [])));
+  // Who it's for: "one team counts everything" (Ethan 2026-08-03), so a merged
+  // walk is normally unassigned — anyone at that restaurant can pick it up. The
+  // one exception is when EVERY source list named the same person: dropping
+  // their name would silently take the count away from them.
+  const assignees = members.map((m) => (m.assign_type === 'person' ? m.assign_id : null));
+  const sharedAssignee = assignees.every((a) => a != null && a === assignees[0]) ? assignees[0] : null;
   const r = db.prepare(`
     INSERT INTO counting_sessions (template_id, scheduled_date, location_id, company_id, assigned_user_id, status, created_at)
-    VALUES (?, ?, ?, ?, NULL, 'pending', ?)
-  `).run(walkTemplateId, scheduledDate, locationId, companyId, now());
+    VALUES (?, ?, ?, ?, ?, 'pending', ?)
+  `).run(walkTemplateId, scheduledDate, locationId, companyId, sharedAssignee, now());
   const sessionId = r.lastInsertRowid as number;
   snapshotSessionFromProducts(sessionId, union, companyId);
   const ins = db.prepare('INSERT INTO session_source_templates (session_id, template_id, name, frequency) VALUES (?, ?, ?, ?)');
@@ -1347,13 +1356,38 @@ function insertMergedWalkSession(companyId: number, locationId: number, members:
   return sessionId;
 }
 
+/**
+ * A list whose product coverage CANNOT be known here: it names categories only,
+ * so its products are resolved from Odoo when someone opens it. Nothing in this
+ * file can tell whether it overlaps another count, so it is never merged, and
+ * its presence blocks merging for that restaurant's day — falling back to the
+ * per-list behaviour, which is exactly what happens without the feature.
+ */
+function hasUnknownCoverage(tmpl: CountingTemplate): boolean {
+  const pids = Array.isArray(tmpl.product_ids) ? (tmpl.product_ids as number[]) : [];
+  return pids.length === 0;
+}
+
 /** A due recurring list that can join the merged walk: it belongs to a company
- *  and names its products explicitly (category lists resolve against Odoo at
- *  count time and cannot be frozen into a union synchronously). */
+ *  and names its products explicitly. */
 function isMergeable(tmpl: CountingTemplate): boolean {
   return tmpl.company_id != null
     && (tmpl.frequency === 'daily' || tmpl.frequency === 'weekly' || tmpl.frequency === 'monthly')
-    && Array.isArray(tmpl.product_ids) && (tmpl.product_ids as number[]).length > 0;
+    && !hasUnknownCoverage(tmpl);
+}
+
+/** Any OPEN session for this company/day whose coverage is unknown (a category
+ *  or legacy list with no frozen product rows). While one exists, no walk may be
+ *  created or rebuilt — it might contain anything. */
+function unknownCoverageSessionToday(companyId: number, day: string, ignoreIds: number[] = []): boolean {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT s.id FROM counting_sessions s
+     WHERE s.company_id = ? AND s.scheduled_date = ?
+       AND s.status IN ('pending','in_progress')
+       AND NOT EXISTS (SELECT 1 FROM session_count_items i WHERE i.session_id = s.id)
+  `).all(companyId, day) as { id: number }[];
+  return rows.some((r) => !ignoreIds.includes(r.id));
 }
 
 export function generateTodaySessions(companyIds?: number[]): { created: number; skipped: number } {
@@ -1467,13 +1501,34 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
         ).get(m.id, today) as { id: number; status: string } | undefined)
         .filter((s): s is { id: number; status: string } => !!s);
 
+      // #1 + #5, checked under the write lock: a walk may only exist if NOTHING
+      // else open that day could hold the same products — neither an unknown-
+      // coverage (category/legacy) session nor any other session sharing a
+      // product with the union. The sessions we are about to absorb are exempt.
+      const absorbIds = [...(existingWalk ? [existingWalk.id] : []), ...memberSolos.map((x) => x.id)];
+      const union = Array.from(new Set(members.flatMap((m) => (m.product_ids as number[]) || [])));
+      const clashes = union.filter((pid) => {
+        const rows = db.prepare(`
+          SELECT s.id FROM counting_sessions s
+            JOIN session_count_items i ON i.session_id = s.id
+           WHERE s.company_id = ? AND s.scheduled_date = ?
+             AND s.status IN ('pending','in_progress')
+             AND i.odoo_product_id = ?
+        `).all(companyId, today, pid) as { id: number }[];
+        return rows.some((r) => !absorbIds.includes(r.id));
+      });
+      const safeToMerge = canMerge
+        && clashes.length === 0
+        && !unknownCoverageSessionToday(companyId, today, absorbIds);
+
       if (existingWalk) {
         const untouched = (x: { id: number; status: string }) => x.status === 'pending' && !sessionHasProgress(x.id);
         // The group no longer merges (a source list was deactivated, deleted or
-        // rescheduled, or the lists now span different Odoo locations). An
-        // UNTOUCHED walk must be dissolved — leaving it would count products of
-        // lists that are no longer due. A started walk is today's count and stays.
-        if (!canMerge) {
+        // rescheduled, the lists now span different Odoo locations, or something
+        // else open that day covers these products). An UNTOUCHED walk must be
+        // dissolved — leaving it would count products of lists that are no
+        // longer due. A started walk is today's count and stays.
+        if (!safeToMerge) {
           if (untouched(existingWalk)) {
             deleteSessionArtifacts(existingWalk.id);
             soloFallback.push(...members);
@@ -1504,7 +1559,7 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
       }
 
       // No walk yet.
-      if (!canMerge) { soloFallback.push(...members); return; }
+      if (!safeToMerge) { soloFallback.push(...members); return; }
       // Absorb existing per-list sessions ONLY while untouched; the moment
       // anyone has entered a count or skipped a stop, today keeps its per-list
       // layout (the merge simply starts tomorrow).
@@ -1543,6 +1598,32 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
     const locationIds = Array.from(new Set(members.map((m) => m.location_id)));
     const canMerge = members.length >= 2 && locationIds.length === 1;
     reconcileGroup(companyId, locationIds[0], members, canMerge);
+  }
+
+  // #6: a company can have TODAY'S WALK but no due mergeable lists left (every
+  // source was deactivated, rescheduled or deleted). Nothing above iterates it,
+  // so an obsolete walk would survive holding products nobody counts today.
+  if (MERGED_WALK_ENABLED) {
+    const orphanWalks = db.prepare(`
+      SELECT s.id, s.status, s.company_id
+        FROM counting_sessions s
+        JOIN counting_templates t ON t.id = s.template_id
+       WHERE t.frequency = 'walk' AND s.scheduled_date = ?
+         AND s.status IN ('pending','in_progress')
+    `).all(today) as { id: number; status: string; company_id: number | null }[];
+    for (const w of orphanWalks) {
+      if (w.company_id == null) continue;
+      if (companyIds && !companyIds.includes(w.company_id)) continue;
+      if (mergeGroups.has(w.company_id)) continue;            // handled above
+      // Untouched and nothing due behind it → dissolve. Anything already counted
+      // in it stays: it IS the day's count, and a manager reviews it.
+      const run = db.transaction(() => {
+        const row = db.prepare('SELECT status FROM counting_sessions WHERE id = ?').get(w.id) as { status: string } | undefined;
+        if (!row || row.status !== 'pending' || sessionHasProgress(w.id)) return;
+        deleteSessionArtifacts(w.id);
+      });
+      run.immediate();
+    }
   }
 
   return { created, skipped };
@@ -1600,6 +1681,68 @@ export function ensureTodaySessionForTemplate(
     }
   }
   return { sessionId: createIfNoWalk ? generateSessionForTemplate(templateId) : null, joinedWalk: false, deferred: false };
+}
+
+/**
+ * Manual create, done atomically against the double-count invariant (#2): the
+ * overlap check and the insert share one write lock, so two managers (or a
+ * manager and the generator) can't both slip a clashing count through.
+ * Returns { id } on success, or { clash } listing the products already covered.
+ */
+export function createSessionGuarded(data: {
+  template_id: number;
+  scheduled_date: string;
+  location_id: number;
+  company_id?: number | null;
+  assigned_user_id?: number | null;
+  product_ids: number[];
+}): { id: number | null; existing: boolean; clash: number[] } {
+  const db = getDb();
+  const run = db.transaction((): { id: number | null; existing: boolean; clash: number[] } => {
+    const already = db.prepare(
+      'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+    ).get(data.template_id, data.scheduled_date) as { id: number } | undefined;
+    if (already) return { id: already.id, existing: true, clash: [] };
+    const clash = productsAlreadyCountedToday(data.company_id ?? null, data.product_ids, { date: data.scheduled_date });
+    if (clash.length > 0) return { id: null, existing: false, clash };
+    return {
+      id: createSession({
+        template_id: data.template_id,
+        scheduled_date: data.scheduled_date,
+        location_id: data.location_id,
+        company_id: data.company_id ?? null,
+        assigned_user_id: data.assigned_user_id ?? null,
+      }),
+      existing: false,
+      clash: [],
+    };
+  });
+  return run.immediate();
+}
+
+/**
+ * Reopen a rejected count for recount, atomically against the invariant (#3):
+ * while it was rejected another count may have picked up its products, and
+ * reopening it would put them in two open counts at once.
+ * Returns 'ok' | 'not-rejected' | 'clash'.
+ */
+export function reopenRejectedSessionGuarded(sessionId: number): { result: 'ok' | 'not-rejected' | 'clash'; clash: number[] } {
+  const db = getDb();
+  const run = db.transaction((): { result: 'ok' | 'not-rejected' | 'clash'; clash: number[] } => {
+    const row = db.prepare('SELECT status, company_id, scheduled_date FROM counting_sessions WHERE id = ?')
+      .get(sessionId) as { status: string; company_id: number | null; scheduled_date: string } | undefined;
+    if (!row || row.status !== 'rejected') return { result: 'not-rejected', clash: [] };
+    const pids = getSessionItems(sessionId).map((i) => i.odoo_product_id);
+    const clash = productsAlreadyCountedToday(row.company_id, pids, {
+      excludeSessionId: sessionId, date: row.scheduled_date,
+    });
+    if (clash.length > 0) return { result: 'clash', clash };
+    const changed = db.prepare(
+      "UPDATE counting_sessions SET status = 'pending' WHERE id = ? AND status = 'rejected'",
+    ).run(sessionId).changes;
+    return changed > 0 ? { result: 'ok', clash: [] } : { result: 'not-rejected', clash: [] };
+  });
+  return run.immediate();
 }
 
 /**
