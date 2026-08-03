@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { downscale } from '@/components/inventory/LocationForm';
 import type { FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
+import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 
 interface SheetProduct { id: number; name: string; category: string | null; hasImage: boolean }
 
@@ -47,8 +48,8 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   const [error, setError] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState<number | null>(null);
   const [imageBust, setImageBust] = useState(0);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const spotPhotoRef = useRef<HTMLInputElement>(null);
+  // Which photo the chooser is for: a product's, or the spot's own picture.
+  const [photoChooser, setPhotoChooser] = useState<null | 'product' | 'spot'>(null);
   const [spotPhotoBusy, setSpotPhotoBusy] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -177,7 +178,6 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
       setError('Could not read that photo');
     } finally {
       setSpotPhotoBusy(false);
-      if (spotPhotoRef.current) spotPhotoRef.current.value = '';
     }
   };
 
@@ -195,7 +195,7 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
 
   const startPhoto = (productId: number) => {
     pendingProductRef.current = productId;
-    fileRef.current?.click();
+    setPhotoChooser('product');
   };
 
   const onFile = async (file: File | null) => {
@@ -220,7 +220,6 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
       setError('Could not read that photo');
     } finally {
       setPhotoBusy(null);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
@@ -229,11 +228,15 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
       title={data ? data.location.name : 'Loading…'}
       onClose={onClose}
     >
-      {/* camera + photo roll + files — no capture attribute, ever */}
-      <input
-        ref={fileRef} type="file" accept="image/*" className="hidden"
-        onChange={e => onFile(e.target.files?.[0] ?? null)}
-      />
+      {/* Camera · Photos · Files — the standard chooser, because a bare
+          accept="image/*" input shows the gallery only on the tablets. */}
+      {photoChooser && (
+        <PhotoSourceSheet
+          title={photoChooser === 'spot' ? 'Photo of this spot' : 'Photo of the product'}
+          onFile={(f: File) => { if (photoChooser === 'spot') void saveSpotPhoto(f); else onFile(f); }}
+          onClose={() => setPhotoChooser(null)}
+        />
+      )}
       {error && (
         <div className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">{error}</div>
       )}
@@ -257,12 +260,11 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
           <div
             onDragOver={canEditSpotPhoto ? e => e.preventDefault() : undefined}
             onDrop={canEditSpotPhoto ? e => { e.preventDefault(); void saveSpotPhoto(e.dataTransfer.files?.[0]); } : undefined}
-            onClick={canEditSpotPhoto ? () => spotPhotoRef.current?.click() : undefined}
+            onClick={canEditSpotPhoto ? () => setPhotoChooser('spot') : undefined}
             role={canEditSpotPhoto ? 'button' : undefined}
             aria-label={canEditSpotPhoto ? `Add a photo of ${data.location.name}` : undefined}
             className={canEditSpotPhoto ? 'cursor-pointer' : undefined}
           >
-            <input ref={spotPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => void saveSpotPhoto(e.target.files?.[0])} />
             {data.location.photo ? (
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import DropZone from "./DropZone";
+import PhotoSourceSheet from "./PhotoSourceSheet";
 
 /**
  * FilePicker — Shared upload widget for the Krawings Portal.
@@ -55,6 +56,24 @@ interface FilePickerProps {
    * nobody wins. Turn it on where the screen is about one file at a time.
    */
   paste?: boolean;
+  /**
+   * Which camera "Take photo" opens for PHOTO-ONLY fields: 'environment'
+   * (rear — shelves, deliveries, proof) or 'user' (front — faces). Default
+   * rear: most portal photos are of things, not people.
+   */
+  facing?: 'environment' | 'user';
+  /**
+   * Force the CAMERA for this picker. Only legitimate when the screen offers
+   * other explicit sources beside it (e.g. a "Choose Files" button) — never on
+   * a lone input, which would remove gallery and files.
+   */
+  cameraOnly?: boolean;
+  /**
+   * Force the source chooser on or off. By default a photo-ONLY field
+   * (accept is images and nothing else) gets it, and a document field does
+   * not — a PDF has no camera.
+   */
+  photoSources?: boolean;
 }
 
 export default function FilePicker({
@@ -69,9 +88,29 @@ export default function FilePicker({
   size = "md",
   children,
   paste = false,
+  facing = 'environment',
+  photoSources,
+  cameraOnly = false,
 }: FilePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const hostRef = useRef<HTMLSpanElement>(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
+
+  /**
+   * A photo-ONLY field must present its sources itself. Handing the choice to
+   * the OS sheet looks compliant but on the kitchen Android tablets that sheet
+   * lists the GALLERY ONLY — staff on a photo-required count could not take
+   * the photo (found live 2026-08-03). Document fields keep the plain chooser:
+   * a PDF has no camera. Skill: .claude/skills/photo-inputs.
+   */
+  // EVERY token must be an image type or an image extension — "image/*,.pdf"
+  // is a document field, and ".jpg,.png" is a photo field.
+  const isPhotoOnly = (() => {
+    const tokens = accept.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+    if (tokens.length === 0) return false;
+    return tokens.every((t) => t.startsWith('image/') || /^\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/.test(t));
+  })();
+  const useSources = (photoSources ?? isPhotoOnly) && !cameraOnly;
 
   /** One path in for every source — picker, drop, paste — so they cannot drift. */
   const acceptFile = useCallback((file: File) => {
@@ -99,8 +138,9 @@ export default function FilePicker({
 
   const handleClick = useCallback(() => {
     if (disabled || loading) return;
+    if (useSources) { setChooserOpen(true); return; }
     inputRef.current?.click();
-  }, [disabled, loading]);
+  }, [disabled, loading, useSources]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -121,7 +161,18 @@ export default function FilePicker({
    * or "icon" variant cannot break an inline layout, and so the paste listener
    * above has an element to scope itself to.
    */
+  // The ONE standard chooser (not a second copy of it).
+  const chooser = useSources && chooserOpen ? (
+    <PhotoSourceSheet
+      facing={facing}
+      disabled={disabled || loading}
+      onFile={(f: File) => acceptFile(f)}
+      onClose={() => setChooserOpen(false)}
+    />
+  ) : null;
+
   const withDrop = (inner: React.ReactNode) => (
+    <>
     <DropZone
       onFiles={(files) => { if (files[0]) acceptFile(files[0]); }}
       accept={accept.startsWith("image") ? "image/" : ""}
@@ -135,6 +186,8 @@ export default function FilePicker({
     >
       <span ref={hostRef} className="contents">{inner}</span>
     </DropZone>
+    {chooser}
+    </>
   );
 
   if (variant === "button") {
@@ -144,6 +197,7 @@ export default function FilePicker({
           ref={inputRef}
           type="file"
           accept={accept}
+          {...(cameraOnly ? { capture: facing } : {})}
           onChange={handleChange}
           className="hidden"
         />
@@ -173,6 +227,7 @@ export default function FilePicker({
           ref={inputRef}
           type="file"
           accept={accept}
+          {...(cameraOnly ? { capture: facing } : {})}
           onChange={handleChange}
           className="hidden"
         />
@@ -202,6 +257,7 @@ export default function FilePicker({
         ref={inputRef}
         type="file"
         accept={accept}
+        {...(cameraOnly ? { capture: facing } : {})}
         onChange={handleChange}
         className="hidden"
       />

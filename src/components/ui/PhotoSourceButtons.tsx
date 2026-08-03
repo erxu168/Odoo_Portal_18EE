@@ -13,8 +13,11 @@ import DropZone from '@/components/ui/DropZone';
  *                     `capture` is ignored, so it falls back to the file dialog.
  *   - Photo library: accept="image/*" (no capture) → phone shows the gallery;
  *                     desktop opens the file browser filtered to images.
- *   - Choose file  : accept="image/*" (no capture) → phone shows the Files app;
- *                     desktop opens the file browser.
+ *   - Choose file  : NO accept at all → the real file browser on both. With
+ *                     accept="image/*" it opened the very same gallery-only
+ *                     sheet as "Photo library" on the kitchen tablets, so it
+ *                     was not a third way in; non-images are rejected in `pick`
+ *                     (with a filename fallback for empty MIME types).
  * On a Mac all three converge on Finder (no OS gallery concept in the browser).
  */
 interface Props {
@@ -44,6 +47,7 @@ export default function PhotoSourceButtons({ onFile, disabled = false, facing = 
   const galleryRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [badFile, setBadFile] = useState<string | null>(null);
 
   function openCamera() {
     // Phone → native camera (higher quality, familiar UI). Desktop → webcam modal.
@@ -53,8 +57,17 @@ export default function PhotoSourceButtons({ onFile, disabled = false, facing = 
 
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) onFile(f);
     e.target.value = ''; // allow re-picking the same file
+    if (!f) return;
+    // The Files input is deliberately UNFILTERED (see below), so validate here:
+    // a general chooser can hand back a PDF or a zip.
+    // Some Android document providers hand back a real .jpg/.heic with an
+    // EMPTY type — fall back to the extension before rejecting.
+    const looksImage = /^image\//.test(f.type)
+      || (!f.type && /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/i.test(f.name));
+    if (!looksImage) { setBadFile(f.type || f.name); return; }
+    setBadFile(null);
+    onFile(f);
   }
 
   const btn =
@@ -94,11 +107,19 @@ export default function PhotoSourceButtons({ onFile, disabled = false, facing = 
         </button>
       </div>
 
-      {/* Hidden inputs */}
+      {/* Hidden inputs. NOTE the Files one has NO `accept`: with accept="image/*"
+          it opened the very same gallery-only sheet as Photos on the tablets, so
+          "Files" was not a third way in at all. Unfiltered = the real file
+          browser; `pick` rejects anything that is not an image. */}
       <input ref={cameraRef} type="file" accept="image/*" capture={facing} className="hidden" onChange={pick} disabled={disabled} />
       <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
+      <input ref={fileRef} type="file" className="hidden" onChange={pick} disabled={disabled} />
 
+      {badFile && (
+        <p className="mt-2 text-[12px] font-semibold text-red-600 [overflow-wrap:anywhere]">
+          {badFile} is not a photo — pick a JPEG, PNG or WebP.
+        </p>
+      )}
       </DropZone>
       {showCamera && (
         <CameraCaptureModal

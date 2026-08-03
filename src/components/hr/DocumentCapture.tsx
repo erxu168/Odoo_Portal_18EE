@@ -494,9 +494,13 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
 
         {/* Source buttons */}
         <div className="flex gap-3 mb-2">
+          {/* cameraOnly: this button said "Take Photo" but opened the same
+              generic chooser as "Choose Files" beside it. Forcing the camera is
+              correct HERE because the other sources have their own buttons. */}
           <FilePicker
             onFile={onFilePicked}
-            accept="image/*,.pdf"
+            accept="image/*"
+            cameraOnly
             className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">

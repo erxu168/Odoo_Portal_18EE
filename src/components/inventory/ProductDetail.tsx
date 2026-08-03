@@ -15,6 +15,7 @@ import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
 import { currentCompanyTax, hasConflictingTax, type TaxOption } from '@/lib/product-tax';
+import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -155,6 +156,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   // The transient top-of-sheet flash scrolls out of view exactly when someone
   // is down at the Stock section flipping this.
   const [storableError, setStorableError] = useState<string | null>(null);
+  const [photoChooser, setPhotoChooser] = useState(false);   // Camera·Photos·Files
   const productIdRef = useRef(product.id);
   productIdRef.current = product.id;
   useEffect(() => { setStorableError(null); }, [product.id]);   // never carry a refusal to another product
@@ -318,7 +320,6 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const loadRef = useRef(0);                                                    // newest-load token
   const [busy, setBusy] = useState<string | null>(null);      // which section is saving
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
 
   useEffect(() => {
@@ -740,11 +741,6 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     } catch { setRequiresPhoto(!next); }
   }
 
-  async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (file) await uploadPhoto(file);
-  }
 
   async function removePhoto() {
     setPhotoMenu(false);
@@ -869,7 +865,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               actually helps someone matching a label on a shelf. Replacing and
               removing live behind the ⋯ in the corner, the way Odoo does it,
               so a mis-tap can no longer overwrite the photo. */}
-          <input ref={fileRef} type="file" accept="image/*" onChange={onPhotoFile} className="hidden" />
+          {photoChooser && (
+            <PhotoSourceSheet
+              title="Product picture"
+              onFile={(f: File) => void uploadPhoto(f)}
+              onClose={() => setPhotoChooser(false)}
+            />
+          )}
           <DropZone onFiles={(fs) => uploadPhoto(fs[0])} disabled={busy === 'photo' || readOnly}
             className="mb-4" hint={img ? 'Drop to replace the photo' : 'Drop the photo here'}>
             {img ? (
@@ -900,7 +902,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 )}
               </div>
             ) : (
-              <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
+              <button onClick={() => setPhotoChooser(true)} disabled={busy === 'photo' || readOnly}
                 className="w-full rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
                 aria-label="Add a product photo">
                 <div className="py-10 text-center text-gray-400">
@@ -1482,7 +1484,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 [overflow-wrap:anywhere]">{product.name}</div>
             </div>
             <div className="px-5 pb-5 pt-2 flex flex-col gap-2">
-              <button onClick={() => { setPhotoMenu(false); fileRef.current?.click(); }}
+              <button onClick={() => { setPhotoMenu(false); setPhotoChooser(true); }}
                 className="w-full h-12 rounded-xl bg-green-600 text-white font-bold active:bg-green-700">
                 Replace photo
               </button>

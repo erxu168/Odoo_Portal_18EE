@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import DropZone from '@/components/ui/DropZone';
 import {
   DndContext,
@@ -26,6 +26,7 @@ import { useTopBar } from '@/components/ui/TopBarContext';
 import { isValidYoutubeUrl, canonicalYoutubeUrl } from '@/lib/youtube-url';
 import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
+import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 
 /*
  * GuidedTutorialEditor — manager/admin editor for a REUSABLE library guide
@@ -1014,6 +1015,7 @@ interface PhotoStepProps {
 }
 
 function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onPickPhoto, onImgError }: PhotoStepProps) {
+  const [chooser, setChooser] = useState(false);   // Camera·Photos·Files (photo-inputs skill)
   const photo = hasPhoto(step);
 
   /**
@@ -1029,12 +1031,6 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
     onPickPhoto(f);
   }
 
-  function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    acceptPhoto(f);
-  }
-
   // Shared place-a-pin path for BOTH tap-to-place (pointer) and the keyboard
   // "Add pin" button. Focus follows the new pin's note input (via onSetActive)
   // so a keyboard user can type its note, then Tab to the pin to nudge it.
@@ -1047,24 +1043,31 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
 
   return (
     <div className="space-y-2">
+      {chooser && (
+        <PhotoSourceSheet
+          title="Step photo"
+          disabled={disabled}
+          onFile={(f: File) => void acceptPhoto(f)}
+          onClose={() => setChooser(false)}
+        />
+      )}
       <DropZone onFiles={(fs) => acceptPhoto(fs[0])} disabled={disabled}
         hint={photo ? 'Drop to replace' : 'Drop the photo here'}>
       {!photo ? (
-        <label className={`flex flex-col items-center justify-center gap-1 px-3 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-[12px] font-semibold text-gray-500 cursor-pointer hover:bg-gray-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <button type="button" onClick={() => setChooser(true)} disabled={disabled}
+          className={`w-full flex flex-col items-center justify-center gap-1 px-3 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-[12px] font-semibold text-gray-500 hover:bg-gray-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
           <span className="text-2xl" aria-hidden="true">📷</span>
           {busy ? 'Processing…' : 'Add a photo'}
-          {/* No `capture` — offer camera, camera roll and files (photo-input rule). */}
-          <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
-        </label>
+        </button>
       ) : imgError ? (
         // Corrupt stored photo — offer a replacement input right here so the step
         // isn't a dead-end (deleting the whole step used to be the only way out).
         <div className="px-3 py-5 bg-white border border-red-200 rounded-lg text-center space-y-2">
           <p className="text-[12px] text-red-600">Couldn&apos;t load this photo. Replace it below.</p>
-          <label className={`min-h-[44px] inline-flex items-center justify-center text-[12px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+          <button type="button" onClick={() => setChooser(true)} disabled={disabled}
+            className={`min-h-[44px] inline-flex items-center justify-center text-[12px] font-semibold text-blue-600 hover:text-blue-700 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
             {busy ? 'Processing…' : 'Choose a new photo'}
-            <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
-          </label>
+          </button>
         </div>
       ) : (
         <div className="flex justify-center bg-gray-50 rounded-lg p-1">
@@ -1099,10 +1102,10 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             >
               + Add pin
             </button>
-            <label className={`min-h-[44px] flex items-center text-[11px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <button type="button" onClick={() => setChooser(true)} disabled={disabled}
+              className={`min-h-[44px] flex items-center text-[11px] font-semibold text-blue-600 hover:text-blue-700 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
               {busy ? 'Processing…' : 'Replace photo'}
-              <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
-            </label>
+            </button>
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import DropZone from '@/components/ui/DropZone';
+import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 import { useCompany } from '@/lib/company-context';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { SearchBar, Spinner, EmptyState, ProductThumb, Stepper } from './ui';
@@ -262,13 +263,13 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
   const one = words.loose;
   const measure = words.measure;
   const [crates, setCrates] = useState(0);
+  const [photoChooser, setPhotoChooser] = useState(false);   // Camera·Photos·Files
   const [loose, setLoose] = useState(0);
   const [qty, setQty] = useState(0);
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
   const [pad, setPad] = useState<null | 'qty' | 'crates' | 'loose'>(null);
   const [saving, setSaving] = useState(false);
-  const fileRef = React.useRef<HTMLInputElement>(null);
 
   const base = isPack ? crateTotal(crates, loose, unitsPerCrate) : qty;
   const canSave = base > 0 && !saving;
@@ -276,13 +277,6 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
   /** ONE path in, so a dropped photo and a picked photo cannot behave differently. */
   async function acceptPhotoFile(file: File) {
     try { setPhoto(await downscale(file)); } catch { /* unreadable file — leave the field as it was */ }
-  }
-
-  async function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    await acceptPhotoFile(file);
   }
 
   async function save() {
@@ -353,7 +347,13 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
           className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-4 bg-gray-50 text-[var(--fs-base)]" />
 
         <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Delivery photo (optional)</label>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
+        {photoChooser && (
+          <PhotoSourceSheet
+            title="Delivery photo"
+            onFile={(f: File) => acceptPhotoFile(f)}
+            onClose={() => setPhotoChooser(false)}
+          />
+        )}
         {/* Drop wraps BOTH states, so a photo can be dragged in and dragged over
             to replace. Routed through the same handler as the picker. */}
         <DropZone onFiles={(fs) => { if (fs[0]) acceptPhotoFile(fs[0]); }} hint="Drop the photo here">
@@ -364,7 +364,7 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
             <button onClick={() => setPhoto(null)} aria-label="Remove photo" className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-8 h-8">{'×'}</button>
           </div>
         ) : (
-          <button onClick={() => fileRef.current?.click()} className="w-full py-3.5 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 font-semibold mb-4 active:bg-gray-50">
+          <button onClick={() => setPhotoChooser(true)} className="w-full py-3.5 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 font-semibold mb-4 active:bg-gray-50">
             {'📷'} Add a photo
           </button>
         )}

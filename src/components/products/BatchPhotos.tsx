@@ -65,6 +65,7 @@ export default function BatchPhotos({ onBack }: { onBack: () => void }) {
   const [ver, setVer] = useState(0);
   const fileFor = useRef<{ id: number; camera: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const filesInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!companyId) return;
@@ -178,6 +179,20 @@ export default function BatchPhotos({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
+      {/* Unfiltered twin of the picker: "Choose a file" must open the real file
+          browser, because accept="image/*" gives the same gallery-only sheet as
+          the camera roll on the tablets. */}
+      <input ref={filesInput} type="file" className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0]; const target = fileFor.current;
+          e.target.value = '';
+          // Unfiltered by design, so validate here: a general chooser hands
+          // back PDFs and zips, and reading + uploading one only for the API
+          // to refuse it is a slow way to say no.
+          const ok = f && (/^image\//.test(f.type)
+            || (!f.type && /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/i.test(f.name)));
+          if (f && target && ok) await acceptFile(target.id, f);
+        }} />
       <input ref={fileInput} type="file" accept="image/*" className="hidden"
         {...(fileFor.current?.camera ? { capture: 'environment' as const } : {})}
         onChange={async (e) => {
@@ -275,8 +290,11 @@ export default function BatchPhotos({ onBack }: { onBack: () => void }) {
                       <button aria-label={`Take a photo of ${p.name}`}
                         onClick={(e) => { e.stopPropagation(); fileFor.current = { id: p.id, camera: true }; fileInput.current?.setAttribute('capture', 'environment'); fileInput.current?.click(); }}
                         className="w-7 h-7 rounded-lg bg-black/55 text-white text-[12px] grid place-items-center active:bg-black/70">📷</button>
-                      <button aria-label={`Choose a file for ${p.name}`}
+                      <button aria-label={`Choose a photo for ${p.name}`}
                         onClick={(e) => { e.stopPropagation(); fileFor.current = { id: p.id, camera: false }; fileInput.current?.removeAttribute('capture'); fileInput.current?.click(); }}
+                        className="w-7 h-7 rounded-lg bg-black/55 text-white text-[12px] grid place-items-center active:bg-black/70">🖼️</button>
+                      <button aria-label={`Choose a file for ${p.name}`}
+                        onClick={(e) => { e.stopPropagation(); fileFor.current = { id: p.id, camera: false }; filesInput.current?.click(); }}
                         className="w-7 h-7 rounded-lg bg-black/55 text-white text-[12px] grid place-items-center active:bg-black/70">📁</button>
                     </span>
                   </div>
