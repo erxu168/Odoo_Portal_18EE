@@ -18,8 +18,9 @@ import { locationPathLabel } from '@/lib/location-tree';
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
   { id: 'weekly', label: 'Weekly' },
-  // 'monthly' hidden: not implemented in shouldGenerateToday() so it never
-  // auto-generates a session. Re-add here once monthly scheduling is built.
+  // Monthly = a FIXED day of the month (schedule_days[0], clamped for short
+  // months by shouldGenerateToday — "the 31st" fires on the 30th in June).
+  { id: 'monthly', label: 'Monthly' },
   { id: 'adhoc', label: 'Ad-hoc' },
 ];
 
@@ -340,11 +341,13 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     if (assignType === 'shift') setAssignId(null);
   }, [companyId, stockLocationId, isEdit, assignType]);
 
-  // Clear schedule_days when frequency changes away from weekly
+  // Clear schedule_days when frequency changes to one that doesn't use them.
+  // Weekly and monthly read schedule_days DIFFERENTLY (weekday set vs a single
+  // day-of-month), so switching between the two must also clear.
+  const prevFrequency = React.useRef(frequency);
   useEffect(() => {
-    if (frequency !== 'weekly') {
-      setScheduleDays([]);
-    }
+    if (prevFrequency.current !== frequency) setScheduleDays([]);
+    prevFrequency.current = frequency;
   }, [frequency]);
 
   function toggleDay(dayId: number) {
@@ -534,7 +537,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   }
 
   const selectedCount = selectedProductIds.size;
-  const needsDays = frequency === 'weekly' && scheduleDays.length === 0;
+  const needsDays = (frequency === 'weekly' || frequency === 'monthly') && scheduleDays.length === 0;
   const needsAdhocDate = frequency === 'adhoc' && !adhocDate;
   const needsAssignee = !!assignType && !assignId;   // typed assignment must name someone
   const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0 && !needsDays && !needsAdhocDate && !needsAssignee && !companyChangedMidEdit;
@@ -551,7 +554,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
       ...(isEdit ? { id: template.id } : {}),
       name: name.trim(),
       frequency,
-      schedule_days: frequency === 'weekly' ? scheduleDays : [],
+      schedule_days: frequency === 'weekly' || frequency === 'monthly' ? scheduleDays : [],
       adhoc_date: frequency === 'adhoc' ? adhocDate : null,
       location_id: locationId,
       // Which restaurant — drives tablet visibility. On edit, preserve the
@@ -663,6 +666,40 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
                   Select at least one day for this list to auto-generate.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Day-of-month picker — only for monthly. One fixed day (Ethan's call:
+              fixed days, not rolling); a 29-31 pick is clamped in short months. */}
+          {frequency === 'monthly' && (
+            <div className="mb-5">
+              <label className="block text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">
+                On which day of the month?
+              </label>
+              <div className="grid grid-cols-7 gap-1.5">
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+                  const isActive = scheduleDays[0] === d;
+                  return (
+                    <button key={d} onClick={() => setScheduleDays([d])}
+                      className={`py-2 rounded-lg text-[var(--fs-sm)] font-semibold border transition-all text-center ${
+                        isActive
+                          ? 'bg-amber-50 border-amber-300 text-amber-800'
+                          : 'bg-white border-gray-200 text-gray-400'
+                      }`}>
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              {scheduleDays.length === 0 ? (
+                <p className="text-[var(--fs-xs)] text-amber-600 mt-1.5 font-medium">
+                  Pick the day of the month this list is counted.
+                </p>
+              ) : scheduleDays[0] >= 29 ? (
+                <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
+                  In shorter months this counts on the last day of the month.
+                </p>
+              ) : null}
             </div>
           )}
 

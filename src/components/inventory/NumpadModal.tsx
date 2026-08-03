@@ -68,7 +68,17 @@ export default function NumpadModal({
   const catLeaf = leafCategory(category);
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-gray-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    // Keyboard handling (the note textarea autofocuses): reserve the keyboard's
+    // height AND allow scrolling. Padding alone would push Save off-screen — this
+    // screen is ~750px tall on a phone; overflow alone would do nothing, because a
+    // fixed element's height never shrinks when the keyboard opens, so there would
+    // be nothing to scroll. Together the padding creates the overflow that the
+    // scroll container (and ui/KeyboardViewportManager) can then move.
+    <div
+      className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-gray-50"
+      data-keyboard-managed=""
+      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--keyboard-inset-bottom, 0px))' }}
+    >
       {/* Header */}
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
         <div className="flex items-center justify-between mb-1">

@@ -199,10 +199,21 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
               <Box key={c.id} poly={c.polygon} color={typeColor(types, c)} big={highlightId === c.id} />
             ))}
           </div>
-          <p className="mt-2 text-[12px] text-gray-500">
-            <b className="text-gray-800">{keptSpots} storage labels</b> and <b className="text-gray-800">{keptRooms} rooms</b> will be
-            created — tap a row to see it on the plan, untick anything that is not a real place.
-          </p>
+          {/* A plan drawn WITHOUT labels — which is how Ethan draws them now —
+              detects nothing, and asking someone to review nothing (under a
+              button reading "Create 0 spots") reads like something went wrong.
+              Say what actually happens next instead. */}
+          {cands.length === 0 ? (
+            <p className="mt-2 text-[12px] text-gray-500">
+              <b className="text-gray-800">No labels on this plan</b> — nothing to review. Publish it and
+              mark your rooms and storage on the map yourself.
+            </p>
+          ) : (
+            <p className="mt-2 text-[12px] text-gray-500">
+              <b className="text-gray-800">{keptSpots} storage labels</b> and <b className="text-gray-800">{keptRooms} rooms</b> will be
+              created — tap a row to see it on the plan, untick anything that is not a real place.
+            </p>
+          )}
         </div>
 
         {duplicates.size > 0 && (
@@ -293,7 +304,11 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
             disabled={busy || duplicates.size > 0}
             className="h-12 w-full rounded-full bg-green-600 text-[15px] font-bold text-white active:scale-[0.98] disabled:opacity-50"
           >
-            {busy ? 'Publishing…' : `Create ${keptSpots} spots on ${data.floor.name}`}
+            {busy
+              ? 'Publishing…'
+              : cands.length === 0
+                ? `Publish ${data.floor.name} — then mark it up`
+                : `Create ${keptSpots} spots on ${data.floor.name}`}
           </button>
         </div>
       )}

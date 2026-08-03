@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
+import { initInventoryTables, todayStr, createSession, listSessions, getSession, getSessionByTemplateAndDate, walkSessionForTemplateToday, ensureTodaySessionForTemplate, createSessionGuarded, reopenRejectedSessionGuarded, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
@@ -96,6 +96,11 @@ export async function POST(request: Request) {
   // can't be pointed at another restaurant's stock location.
   const tmpl = getTemplate(template_id);
   if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+  // The synthetic merged-walk container is not a list anyone may create counts
+  // for — its sessions are made by the generator alone.
+  if (tmpl.frequency === 'walk') {
+    return NextResponse.json({ error: 'That list is managed automatically' }, { status: 400 });
+  }
   const allowed = parseCompanyIds(user.allowed_company_ids);
   const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
   if (!adminUnrestricted) {
@@ -124,22 +129,56 @@ export async function POST(request: Request) {
     }
   }
 
-  // A list has at most one count per day (idx_sessions_template_date). Creating
-  // for a day that already has one returns THAT session instead of tripping the
-  // unique index into a 500 — the manual create is idempotent per (list, day).
-  const existing = getSessionByTemplateAndDate(template_id, scheduled_date);
-  if (existing) {
-    return NextResponse.json({ id: existing.id, message: 'A count for this list and day already exists' });
+  // TODAY goes through the merge-aware path: if this restaurant already has a
+  // combined walk, the list joins it (or waits for tomorrow) instead of getting
+  // a second session whose overlapping products would be counted twice.
+  // Only the MERGE cases divert: if this restaurant has a combined walk today,
+  // the list joins it (or waits for its next scheduled day) rather than getting
+  // a second session whose overlapping products would be counted twice.
+  // Everything else falls through to the ordinary create below, which honours
+  // the requested assigned_user_id exactly as before.
+  if (scheduled_date === todayStr()) {
+    const walkToday = walkSessionForTemplateToday(template_id);
+    if (walkToday) {
+      return NextResponse.json({ id: walkToday.id, message: 'This list is part of today\u2019s combined count' });
+    }
+    // Only DIVERT when a combined walk exists for this restaurant today: then
+    // the list joins it (untouched) or waits (its products are already being
+    // counted). With no walk, fall through to the ordinary create below, which
+    // honours the requested assigned_user_id exactly as before.
+    const gen = ensureTodaySessionForTemplate(template_id, { createIfNoWalk: false });
+    if (gen.joinedWalk && gen.sessionId != null) {
+      return NextResponse.json({ id: gen.sessionId, message: 'This list is part of today\u2019s combined count' });
+    }
+    if (gen.deferred) {
+      return NextResponse.json({
+        error: 'Today\u2019s combined count is already under way and covers some of these products. This list is counted from its next scheduled day.',
+      }, { status: 409 });
+    }
   }
+
+  // Idempotent per (list, day), and guarded by the double-count invariant in
+  // ONE write transaction — the check and the insert can't be split by a
+  // concurrent create (idx_sessions_template_date keeps the day unique).
   let id: number;
   try {
-    id = createSession({
+    const outcome = createSessionGuarded({
       template_id,
       scheduled_date,
       location_id: tmpl.location_id,
       company_id: tmpl.company_id ?? null,
       assigned_user_id,
+      product_ids: (tmpl.product_ids as number[]) || [],
     });
+    if (outcome.clash.length > 0) {
+      return NextResponse.json({
+        error: `${outcome.clash.length} of these products ${outcome.clash.length === 1 ? 'is' : 'are'} already in another count for that day.`,
+      }, { status: 409 });
+    }
+    if (outcome.existing && outcome.id != null) {
+      return NextResponse.json({ id: outcome.id, message: 'A count for this list and day already exists' });
+    }
+    id = outcome.id as number;
   } catch (e) {
     // Lost a create race — the day's session appeared between our check and the
     // insert. ONLY a duplicate-key violation is a race; a snapshot/schema/storage
@@ -334,7 +373,13 @@ export async function PUT(request: Request) {
     if (session.status !== 'rejected') {
       return NextResponse.json({ error: 'Only rejected sessions can be reopened for recount' }, { status: 400 });
     }
-    if (updateSessionStatus(id, 'pending', { fromStatus: 'rejected' }) === 0) {
+    const reopened = reopenRejectedSessionGuarded(id);
+    if (reopened.result === 'clash') {
+      return NextResponse.json({
+        error: `Can’t reopen: ${reopened.clash.length} of these products ${reopened.clash.length === 1 ? 'is' : 'are'} already in another open count. Finish or reject that one first.`,
+      }, { status: 409 });
+    }
+    if (reopened.result !== 'ok') {
       return NextResponse.json({ error: 'This count was just changed by someone else — reload and try again.' }, { status: 409 });
     }
     logAudit({ user_id: user.id, user_name: user.name, action: 'recount', module: 'inventory', target_type: 'session', target_id: id, detail: `Reopened session for recount (was rejected)` });

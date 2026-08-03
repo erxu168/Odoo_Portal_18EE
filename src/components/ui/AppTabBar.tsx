@@ -80,7 +80,9 @@ export default function AppTabBar() {
   return (
     // Touch-tier bottom quick-nav. Hidden on desktop (lg+): navigation there is via
     // the hamburger drawer + the home tiles, so no bottom bar and no side rail.
-    <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 ${isWide ? '' : 'max-w-lg mx-auto'}`}>
+    // kw-tabbar: globals.css hides it while the on-screen keyboard is up, so the
+    // bar never eats a row of space from the field being typed into.
+    <div className={`kw-tabbar lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 ${isWide ? '' : 'max-w-lg mx-auto'}`}>
         <div className={isWide ? 'max-w-lg mx-auto' : ''}>
         <div className="flex h-16">
           {TABS.map(tab => {
