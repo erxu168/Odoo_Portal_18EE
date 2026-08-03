@@ -434,7 +434,15 @@ class KrawingsTaskListLine(models.Model):
             raise UserError('Not allowed for this company.')
         if line.list_id.date and line.list_id.date < fields.Date.context_today(self):
             raise UserError('Past task lists are read-only.')
-        was_flagged = line.review_flagged
+        # Lock the row so the was-flagged read + write is atomic: two managers
+        # flagging the same line at once can't both see False and both alert.
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT review_flagged FROM krawings_task_list_line WHERE id = %s FOR UPDATE',
+            (line.id,),
+        )
+        lockrow = self.env.cr.fetchone()
+        was_flagged = bool(lockrow[0]) if lockrow else False
         if flagged:
             # Only a real submission can be flagged: it must be completed AND carry
             # a proof photo (so the staff push actually corresponds to a photo).

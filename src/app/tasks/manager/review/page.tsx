@@ -128,7 +128,13 @@ export default function PhotoReviewPage() {
         ...prev,
         items: prev.items.map(i => i.line_id === item.line_id ? { ...i, flagged: !!body.flagged, flag_reason: body.reason || '' } : i),
       }));
-      setToast({ message: willFlag ? `Flagged — sent back to ${item.completed_by_name || 'the staff member'}.` : 'Flag cleared.', type: 'success' });
+      // Only claim "sent back" when the server actually alerted (a fresh flag).
+      const msg = !willFlag
+        ? 'Flag cleared.'
+        : body.newly_flagged
+          ? `Flagged — sent back to ${item.completed_by_name || 'the staff member'}.`
+          : 'Already flagged.';
+      setToast({ message: msg, type: 'success' });
     } catch (e: unknown) {
       setToast({ message: e instanceof Error ? e.message : 'Could not update the flag.', type: 'error' });
       load(); // revert the optimistic change from the server
