@@ -28,6 +28,12 @@ export interface NumericRules {
   /** May the field be left empty? false (default) disables Confirm on an empty buffer — it never silently commits 0. */
   allowEmpty?: boolean;
   min?: number;
+  /**
+   * Value must be strictly GREATER than this. `minExclusive: 0` is "must be
+   * positive" — which is not the same as `min: 1`, and the difference is a real
+   * one: a 0.5 kg production batch is valid, a 0 kg batch is not.
+   */
+  minExclusive?: number;
   max?: number;
   /** Value must be a whole multiple of this (offset from min, or from 0 when there is no min). */
   step?: number;
@@ -173,6 +179,11 @@ export function validate(buffer: string, rules: NumericRules): Validity {
 
   if (rules.min !== undefined && num < rules.min) {
     return { canCommit: false, reason: `Must be at least ${formatHint(rules.min)}` };
+  }
+  if (rules.minExclusive !== undefined && num <= rules.minExclusive) {
+    return rules.minExclusive === 0
+      ? { canCommit: false, reason: 'Must be more than zero' }
+      : { canCommit: false, reason: `Must be more than ${formatHint(rules.minExclusive)}` };
   }
   if (rules.max !== undefined && num > rules.max) {
     return { canCommit: false, reason: `Must be at most ${formatHint(rules.max)}` };

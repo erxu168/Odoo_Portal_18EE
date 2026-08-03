@@ -97,3 +97,15 @@ test('an empty buffer displays as 0 without being zero', () => {
   expect(ni.displayText('')).toBe('0');
   expect(ni.commit('', DEC_EMPTY)).toBeNull();
 });
+
+test('minExclusive means "more than", which is not the same as min: 1', () => {
+  // The recipe pads accepted any value > 0. Migrating them to `min: 1` would
+  // have quietly banned a 0.5 kg production batch that used to work.
+  const positive = { mode: 'decimal' as const, allowEmpty: false, minExclusive: 0 };
+  expect(ni.validate('0.5', positive).canCommit).toBe(true);
+  expect(ni.validate('0', positive).canCommit).toBe(false);
+  expect(ni.validate('0.0', positive).canCommit).toBe(false);
+
+  const atLeastOne = { mode: 'decimal' as const, allowEmpty: false, min: 1 };
+  expect(ni.validate('0.5', atLeastOne).canCommit).toBe(false);
+});

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useNumpad } from '@/components/ui/NumpadProvider';
 
 interface StepData {
   id: number;
@@ -46,8 +47,7 @@ export default function RecipeDetail({
   const [steps, setSteps] = useState<StepData[]>([]);
   const [loading, setLoading] = useState(true);
   const [batch, setBatch] = useState(defaultBatch || (mode === 'cooking' ? 1 : 10));
-  const [showNumpad, setShowNumpad] = useState(false);
-  const [numpadVal, setNumpadVal] = useState('');
+  const numpad = useNumpad();
 
   const unit = batchUnit || (mode === 'cooking' ? 'servings' : 'kg');
   const baseBatch = defaultBatch || (mode === 'cooking' ? 1 : 10);
@@ -92,19 +92,20 @@ export default function RecipeDetail({
     }
   }
 
-  function handleNumpadKey(key: string) {
-    if (key === 'clear') { setNumpadVal(''); return; }
-    if (key === 'back') { setNumpadVal(v => v.slice(0, -1)); return; }
-    if (key === 'done') {
-      const val = parseFloat(numpadVal);
-      if (val > 0) setBatch(val);
-      setShowNumpad(false);
-      setNumpadVal('');
-      return;
-    }
-    if (key === '.' && numpadVal.includes('.')) return;
-    if (numpadVal.length >= 6) return;
-    setNumpadVal(v => v + key);
+  function openBatchPad() {
+    numpad?.open({
+      // The old pad quietly ignored anything <= 0 on Done. Same rule, said out
+      // loud: Confirm is disabled rather than appearing to accept the tap.
+      // minExclusive, NOT min: 1 — a 0.5 kg batch is legitimate and used to work.
+      rules: { mode: 'decimal', allowEmpty: false, minExclusive: 0, maxLength: 6 },
+      initialValue: batch,
+      label: `Enter ${unit}`,
+      unit,
+      confirmLabel: 'Done',
+      onCommit: (value) => {
+        if (typeof value === 'number') setBatch(value);
+      },
+    });
   }
 
   return (
@@ -165,7 +166,7 @@ export default function RecipeDetail({
               className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-[20px] font-bold text-gray-600 active:bg-gray-200"
             >-</button>
             <button
-              onClick={() => { setNumpadVal(String(batch)); setShowNumpad(true); }}
+              onClick={openBatchPad}
               className="flex-1 h-12 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-[22px] font-bold text-gray-900 font-mono active:bg-gray-100"
             >{batch}</button>
             <button
@@ -274,38 +275,6 @@ export default function RecipeDetail({
         </button>
       </div>
 
-      {/* Numpad overlay */}
-      {showNumpad && (
-        <div className="fixed inset-0 z-50 flex items-end" onClick={() => setShowNumpad(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full bg-white rounded-t-3xl px-5 pt-5 pb-8 safe-area-bottom" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-4">
-              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Enter {unit}</span>
-              <div className="text-[32px] font-bold text-gray-900 font-mono h-10 mt-1">
-                {numpadVal || '0'}
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {['1','2','3','4','5','6','7','8','9','.','0','back'].map(key => (
-                <button
-                  key={key}
-                  onClick={() => handleNumpadKey(key)}
-                  className="h-14 rounded-xl bg-gray-100 text-[20px] font-bold text-gray-800 active:bg-gray-200 flex items-center justify-center"
-                >
-                  {key === 'back'
-                    ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><path d="M18 9l-6 6M12 9l6 6"/></svg>
-                    : key
-                  }
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => handleNumpadKey('done')}
-              className={`w-full mt-3 py-4 rounded-2xl text-[16px] font-bold text-white ${accentBg} ${accentActive}`}
-            >Done</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

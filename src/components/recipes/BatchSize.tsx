@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useNumpad } from '@/components/ui/NumpadProvider';
 
 /** One driving-ingredient option: an ingredient with its base amount for one base batch. */
 export interface ScaleIngredient {
@@ -26,8 +27,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, ingredients, on
   const unit = mode === 'cooking' ? 'servings' : 'kg';
   const presets = mode === 'cooking' ? [1, 2, 10, 20] : [5, 10, 20, 50];
   const [batch, setBatch] = useState(mode === 'cooking' ? 1 : 10);
-  const [showNumpad, setShowNumpad] = useState(false);
-  const [numpadVal, setNumpadVal] = useState('');
+  const numpad = useNumpad();
 
   // "Set by ingredient" state
   const scaleIngredients = useMemo(
@@ -56,17 +56,20 @@ export default function BatchSize({ mode, recipeName, baseBatch, ingredients, on
   const derivedBatch = Math.max(1, Math.round(baseBatch * effectiveMultiplier));
   const effectiveBatch = sqcMultiplier != null ? derivedBatch : batch;
 
-  function handleNumpadKey(key: string) {
-    if (key === 'C') { setNumpadVal(''); return; }
-    if (key === 'del') { setNumpadVal(v => v.slice(0, -1)); return; }
-    if (key === 'done') {
-      const val = parseFloat(numpadVal);
-      if (val > 0) setBatch(val);
-      setShowNumpad(false); setNumpadVal(''); return;
-    }
-    if (key === '.' && numpadVal.includes('.')) return;
-    if (numpadVal.length >= 6) return;
-    setNumpadVal(v => v + key);
+  function openBatchPad() {
+    numpad?.open({
+      // The old pad quietly ignored anything <= 0 on Done. Same rule, said out
+      // loud: Confirm is disabled rather than appearing to accept the tap.
+      // minExclusive, NOT min: 1 — a 0.5 kg batch is legitimate and used to work.
+      rules: { mode: 'decimal', allowEmpty: false, minExclusive: 0, maxLength: 6 },
+      initialValue: batch,
+      label: `Enter ${unit}`,
+      unit,
+      confirmLabel: 'Done',
+      onCommit: (value) => {
+        if (typeof value === 'number') setBatch(value);
+      },
+    });
   }
 
   return (
@@ -130,7 +133,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, ingredients, on
             <div className="flex items-center justify-center gap-4 mb-4">
               <button onClick={() => setBatch(Math.max(1, batch - (mode === 'cooking' ? 1 : 5)))}
                 className="w-14 h-14 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-[24px] font-bold text-gray-600 active:bg-gray-100 shadow-sm">-</button>
-              <button onClick={() => { setNumpadVal(String(batch)); setShowNumpad(true); }}
+              <button onClick={openBatchPad}
                 className="w-24 h-14 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-[28px] font-bold text-gray-900 font-mono active:bg-gray-50 shadow-sm">{batch}</button>
               <button onClick={() => setBatch(batch + (mode === 'cooking' ? 1 : 5))}
                 className="w-14 h-14 rounded-2xl bg-white border border-gray-200 flex items-center justify-center text-[24px] font-bold text-gray-600 active:bg-gray-100 shadow-sm">+</button>
@@ -157,26 +160,6 @@ export default function BatchSize({ mode, recipeName, baseBatch, ingredients, on
           Confirm {'→'} Ingredients
         </button>
       </div>
-      {showNumpad && (
-        <div className="fixed inset-0 z-50 flex items-end" onClick={() => setShowNumpad(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full bg-white rounded-t-3xl px-5 pt-5 pb-8" onClick={e => e.stopPropagation()}>
-            <div className="text-center mb-4">
-              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Enter {unit}</span>
-              <div className="text-[32px] font-bold text-gray-900 font-mono h-10 mt-1">{numpadVal || '0'}</div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {['1','2','3','4','5','6','7','8','9','.','0','del'].map(key => (
-                <button key={key} onClick={() => handleNumpadKey(key)}
-                  className="h-14 rounded-xl bg-gray-100 text-[20px] font-bold text-gray-800 active:bg-gray-200 flex items-center justify-center">
-                  {key === 'del' ? '⌫' : key}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => handleNumpadKey('done')} className={`w-full mt-3 py-4 rounded-2xl text-[16px] font-bold text-white ${accentBg} ${accentActive}`}>Done</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
