@@ -1279,8 +1279,12 @@ function deleteSessionArtifacts(sessionId: number): void {
  * behaves EXACTLY as it did before this feature.
  *
  * Enable with INVENTORY_MERGED_WALK=on once the remaining paths are covered.
+ * Read at CALL time, not module load, so the setting is honoured on restart
+ * without a rebuild (and so tests can exercise both configurations).
  */
-export const MERGED_WALK_ENABLED = process.env.INVENTORY_MERGED_WALK === 'on';
+export function mergedWalkEnabled(): boolean {
+  return process.env.INVENTORY_MERGED_WALK === 'on';
+}
 
 /**
  * THE double-count invariant, in one place: which of these products are ALREADY
@@ -1299,7 +1303,7 @@ export function productsAlreadyCountedToday(
   productIds: number[],
   opts: { excludeSessionId?: number; date?: string } = {},
 ): number[] {
-  if (!MERGED_WALK_ENABLED) return [];   // pre-merge behaviour: no such rule
+  if (!mergedWalkEnabled()) return [];   // pre-merge behaviour: no such rule
   if (companyId == null || productIds.length === 0) return [];
   const db = getDb();
   const day = opts.date ?? todayStr();
@@ -1457,7 +1461,7 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
       skipped++;
       continue;
     }
-    if (MERGED_WALK_ENABLED && isMergeable(tmpl)) {
+    if (mergedWalkEnabled() && isMergeable(tmpl)) {
       const arr = mergeGroups.get(tmpl.company_id!) || [];
       arr.push(tmpl);
       mergeGroups.set(tmpl.company_id!, arr);
@@ -1603,7 +1607,7 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
   // #6: a company can have TODAY'S WALK but no due mergeable lists left (every
   // source was deactivated, rescheduled or deleted). Nothing above iterates it,
   // so an obsolete walk would survive holding products nobody counts today.
-  if (MERGED_WALK_ENABLED) {
+  if (mergedWalkEnabled()) {
     const orphanWalks = db.prepare(`
       SELECT s.id, s.status, s.company_id
         FROM counting_sessions s
@@ -1655,7 +1659,7 @@ export function ensureTodaySessionForTemplate(
   const already = walkSessionForTemplateToday(templateId);
   if (already) return { sessionId: already.id, joinedWalk: true, deferred: false };
 
-  if (MERGED_WALK_ENABLED && isMergeable(tmpl) && tmpl.company_id != null) {
+  if (mergedWalkEnabled() && isMergeable(tmpl) && tmpl.company_id != null) {
     const companyId = tmpl.company_id;
     const walkTemplateId = ensureWalkTemplate(companyId);
     const walk = db.prepare(
@@ -2031,11 +2035,79 @@ function sessionHasProgress(sessionId: number): boolean {
   ).get(sessionId);
 }
 
+/**
+ * Which of today's open counts may be WALKED together (they are never merged in
+ * the database — see src/lib/combined-walk.ts). A group must be safe on all four:
+ *
+ *  - same restaurant, and same Odoo stock location (approval writes there);
+ *  - every count has frozen product rows (a category list's contents are only
+ *    known when it is opened, so it can't be reasoned about here);
+ *  - and no PRODUCT appears in more than one of them. Not "product+spot":
+ *    approval writes one quantity per product per Odoo location, so the same
+ *    product counted in two counts collides there even at different spots.
+ *
+ * That last rule is what makes the whole thing safe: every line then has exactly
+ * ONE owning count, so walking them together is purely a matter of order — each
+ * number is written exactly where it would have been anyway.
+ *
+ * Anything that doesn't qualify is simply returned on its own, which is the
+ * per-list behaviour staff have today.
+ */
+export function walkableGroupsToday(sessionIds: number[]): number[][] {
+  const db = getDb();
+  if (sessionIds.length === 0) return [];
+  const rows = sessionIds.map((id) => db.prepare(
+    'SELECT id, company_id, location_id FROM counting_sessions WHERE id = ?',
+  ).get(id) as { id: number; company_id: number | null; location_id: number } | undefined)
+    .filter((r): r is { id: number; company_id: number | null; location_id: number } => !!r);
+
+  // Lines per count; a count with none (category/legacy) can never share a walk.
+  const linesOf = new Map<number, Set<string>>();
+  for (const r of rows) {
+    const items = getSessionItems(r.id);
+    if (items.length > 0) {
+      linesOf.set(r.id, new Set(items.map((i) => String(i.odoo_product_id))));
+    }
+  }
+
+  const byPlace = new Map<string, number[]>();
+  const solo: number[][] = [];
+  for (const r of rows) {
+    if (!linesOf.has(r.id) || r.company_id == null) { solo.push([r.id]); continue; }
+    const key = `${r.company_id}:${r.location_id}`;
+    byPlace.set(key, [...(byPlace.get(key) || []), r.id]);
+  }
+
+  const groups: number[][] = [];
+  for (const candidates of Array.from(byPlace.values())) {
+    // Greedily grow a group, only admitting a count that shares no line with it.
+    const taken = new Set<number>();
+    for (const id of candidates) {
+      if (taken.has(id)) continue;
+      const group = [id];
+      const covered = new Set(linesOf.get(id)!);
+      taken.add(id);
+      for (const other of candidates) {
+        if (taken.has(other)) continue;
+        const theirs = linesOf.get(other)!;
+        let overlaps = false;
+        for (const k of Array.from(theirs)) { if (covered.has(k)) { overlaps = true; break; } }
+        if (overlaps) continue;
+        theirs.forEach((k) => covered.add(k));
+        group.push(other);
+        taken.add(other);
+      }
+      groups.push(group);
+    }
+  }
+  return [...groups, ...solo];
+}
+
 /** The merged walk session (today) that this real list was folded into, if any. */
 export function walkSessionForTemplateToday(templateId: number): { id: number; status: string; company_id: number | null } | null {
   // Flag off = full rollback: walks are neither created NOR consulted, so
   // turning the feature off restores the per-list behaviour completely.
-  if (!MERGED_WALK_ENABLED) return null;
+  if (!mergedWalkEnabled()) return null;
   const db = getDb();
   const row = db.prepare(`
     SELECT s.id, s.status, s.company_id

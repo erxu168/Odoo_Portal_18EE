@@ -40,6 +40,9 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
   // A failed load must NEVER read as "all caught up" — staff would skip a real
   // count. Only a successful sessions response may show the empty state.
   const [dueLoadFailed, setDueLoadFailed] = useState(false);
+  // Which counts may be WALKED together (server-decided: same restaurant + stock
+  // location, frozen lines, no product in common). Each group is one card.
+  const [walkGroups, setWalkGroups] = useState<number[][]>([]);
 
   const router = useRouter();
   const canManage = userRole === 'manager' || userRole === 'admin';
@@ -80,6 +83,7 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
       const open = sessions.filter((s: any) => s.status === 'pending' || s.status === 'in_progress');
       const todays = open.filter((s: any) => s.scheduled_date === today);
       setDueToday(todays);
+      setWalkGroups(Array.isArray(sessData.walk_groups) ? sessData.walk_groups : []);
       // Products, not counts. Yesterday's shelf cannot be counted today, so
       // older counts are NOT added in — that is how this reached "281 waiting".
       // A list built from CATEGORIES freezes no line rows, so lines_total is 0
@@ -179,14 +183,53 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
             </p>
             {dueToday.length > 0 ? (
               <div className="flex flex-col gap-3">
-                {/* One card per due count, as today. Combining several into ONE
-                    walk is built (CountingSession takes sessionIds) but stays
-                    unreachable until the safe grouping lands: only counts of the
-                    SAME restaurant + stock location, with frozen product rows,
-                    and with no product in common, may share a walk. */}
-                {dueToday.map((sess: any) => (
-                  <DueCountCard key={sess.id} session={sess} onOpen={(id) => onOpenSession([id])} />
-                ))}
+                {/* One card per WALKABLE GROUP. Several counts that can safely
+                    share a route (same restaurant + stock location, no product
+                    in common) open as ONE walk, so each place is visited once —
+                    while every line still saves to its own count. Anything that
+                    can't share gets its own card, exactly as before. */}
+                {(() => {
+                  // Groups the server gave us, keeping only counts we can see —
+                  // then EVERY remaining due count on its own, so a count can
+                  // never vanish because a group didn't mention it.
+                  const visible = (id: number) => dueToday.some((s: any) => s.id === id);
+                  const seen = new Set<number>();
+                  const groups: number[][] = [];
+                  for (const g of Array.isArray(walkGroups) ? walkGroups : []) {
+                    const clean: number[] = [];
+                    for (const id of (Array.isArray(g) ? g : [])) {
+                      if (typeof id !== 'number' || !visible(id) || seen.has(id) || clean.includes(id)) continue;
+                      clean.push(id);
+                    }
+                    if (clean.length === 0) continue;
+                    clean.forEach((id) => seen.add(id));
+                    groups.push(clean);
+                  }
+                  for (const s of dueToday) if (!seen.has(s.id)) { seen.add(s.id); groups.push([s.id]); }
+                  return groups;
+                })().map((group: number[]) => {
+                  const members = group.map((id) => dueToday.find((s: any) => s.id === id)).filter(Boolean) as any[];
+                  if (members.length === 0) return null;
+                  if (members.length === 1) {
+                    return <DueCountCard key={members[0].id} session={members[0]} onOpen={(id) => onOpenSession([id])} />;
+                  }
+                  return (
+                    <DueCountCard
+                      key={group.join('-')}
+                      session={{
+                        id: members[0].id,
+                        template_name: 'Today\u2019s Count',
+                        status: members.some((m) => m.status === 'in_progress') ? 'in_progress' : 'pending',
+                        lines_total: members.reduce((n, m) => n + (m.lines_total || 0), 0),
+                        lines_done: members.reduce((n, m) => n + (m.lines_done || 0), 0),
+                        source_templates_json: JSON.stringify(
+                          members.map((m) => ({ template_id: m.template_id, name: m.template_name, frequency: m.template_frequency })),
+                        ),
+                      }}
+                      onOpen={() => onOpenSession(group)}
+                    />
+                  );
+                })}
               </div>
             ) : dueLoadFailed ? (
               <button type="button" onClick={fetchStats}

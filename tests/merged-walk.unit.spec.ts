@@ -71,7 +71,7 @@ function assertNoProductCountedTwice(companyId = CO) {
   }
 }
 
-test.beforeAll(() => { db.initInventoryTables(); });
+test.beforeAll(() => { process.env.INVENTORY_MERGED_WALK = 'on'; db.initInventoryTables(); });
 
 test('two due lists become ONE walk that covers both, each product once', () => {
   const co = CO + 1;

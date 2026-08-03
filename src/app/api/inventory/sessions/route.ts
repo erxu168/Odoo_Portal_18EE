@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, todayStr, createSession, listSessions, getSession, getSessionByTemplateAndDate, walkSessionForTemplateToday, ensureTodaySessionForTemplate, createSessionGuarded, reopenRejectedSessionGuarded, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
+import { initInventoryTables, todayStr, createSession, listSessions, getSession, getSessionByTemplateAndDate, walkSessionForTemplateToday, ensureTodaySessionForTemplate, createSessionGuarded, reopenRejectedSessionGuarded, walkableGroupsToday, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
@@ -58,7 +58,15 @@ export async function GET(request: Request) {
       : (scope ? { company_ids: scope } : {})),
   });
 
-  return NextResponse.json({ sessions });
+  // Which of TODAY's open counts may be walked together (one route, each place
+  // visited once) — decided on the server, where the frozen lines live. Counts
+  // that can't safely share a walk come back on their own.
+  const openToday = sessions.filter(
+    (x) => x.scheduled_date === todayStr() && (x.status === 'pending' || x.status === 'in_progress'),
+  );
+  const walkGroups = openToday.length > 1 ? walkableGroupsToday(openToday.map((x) => x.id)) : openToday.map((x) => [x.id]);
+
+  return NextResponse.json({ sessions, walk_groups: walkGroups });
 }
 
 export async function POST(request: Request) {
