@@ -45,6 +45,42 @@ interface Props {
 // Fallback until the managed list loads (same defaults seeded server-side).
 const DEFAULT_REASONS = ['Location was locked', 'Ran out of time', 'Nothing stored here today', 'Already counted earlier'];
 
+type UnitInfo = { id: number; name: string; kind: string };
+type Grp = { key: string; unit: UnitInfo | null; between: string[]; own: Stop | null; stops: Stop[] };
+
+/**
+ * Group an area's stops the way a person walks them: consecutive stops sharing
+ * the same immediate parent (the fridge they live in) become ONE unit group, so
+ * the fridge is named once and its drawers hang beneath it.
+ *
+ * A unit holding exactly ONE stop and nothing of its own is folded back to a
+ * plain stop — there the heading costs a whole band to repeat what the stop's
+ * own trail already says.
+ */
+function buildGroups(stops: Stop[]): Grp[] {
+  const grps: Grp[] = [];
+  stops.forEach((s) => {
+    const anc = s.ancestors || [];
+    if (anc.length >= 2) {
+      const unit = anc[anc.length - 1];
+      const prev = grps[grps.length - 1];
+      if (prev?.unit && prev.unit.id === unit.id) { prev.stops.push(s); return; }
+      // Products placed ON the unit itself: DFS emits the unit's own stop right
+      // before its children — fold it in so the unit is never named twice.
+      if (prev && !prev.unit && prev.stops.length === 1 && prev.stops[0].bucket_id === unit.id) {
+        grps[grps.length - 1] = { key: `unit-${unit.id}-${prev.stops[0].bucket_id}`, unit, between: anc.slice(1, -1).map((a) => a.name), own: prev.stops[0], stops: [s] };
+        return;
+      }
+      grps.push({ key: `unit-${unit.id}-${s.bucket_id}`, unit, between: anc.slice(1, -1).map((a) => a.name), own: null, stops: [s] });
+    } else {
+      grps.push({ key: `plain-${s.bucket_id}`, unit: null, between: [], own: null, stops: [s] });
+    }
+  });
+  return grps.map((g) => (g.unit && !g.own && g.stops.length === 1
+    ? { key: `plain-${g.stops[0].bucket_id}`, unit: null, between: [], own: null, stops: g.stops }
+    : g));
+}
+
 /** A stop's walking address: the room it's in, then the shelf, with types spelled out. */
 function addressOf(s: Stop): { room: string; roomId: number | null; roomKind: string; shelf: string; rest: string[] } {
   const anc = s.ancestors || [];
@@ -189,6 +225,24 @@ export default function GuidedCountingFlow({
         const areaName = st.room || (soloLoc
           ? (nameIncludesType(soloLoc.name, typeLabel(soloLoc.kind)) ? soloLoc.name : `${typeLabel(soloLoc.kind)} ${soloLoc.name}`)
           : 'Not in a place yet');
+        // When a room holds exactly ONE container, the room band and the
+        // container band say one thing between them — so they become one
+        // breadcrumb line: "① WAJ Kitchen › 🧊 Countertop fridge". A room with
+        // several containers keeps them separate; there the grouping earns its
+        // space (Ethan, 2026-08-03).
+        const groups = buildGroups(st.stops);
+        const loneUnit = !solo && groups.length === 1 && groups[0].unit ? groups[0] : null;
+        // The merged header must CARRY the container's affordances, not drop
+        // them: its own progress, its fold, and its map button.
+        const luMembers = loneUnit ? (loneUnit.own ? [loneUnit.own, ...loneUnit.stops] : loneUnit.stops) : [];
+        const luDone = luMembers.filter((m) => {
+          const pr = stopProgress(m.bucket_id, m.product_ids);
+          return effStatus(m) === 'skipped' || (pr.total > 0 && pr.counted >= pr.total);
+        }).length;
+        const luAllDone = luMembers.length > 0 && luDone === luMembers.length;
+        const luFolded = !!loneUnit && luAllDone && !openUnits.has(loneUnit.key);
+        const luLabel = loneUnit ? typeLabel(loneUnit.unit!.kind) : '';
+        const luShowLabel = !!loneUnit && !!luLabel && !nameIncludesType(loneUnit.unit!.name, luLabel);
         const soloS = st.stops[0];
         const soloProg = stopProgress(soloS.bucket_id, soloS.product_ids);
         const soloSkipped = effStatus(soloS) === 'skipped';
@@ -200,28 +254,51 @@ export default function GuidedCountingFlow({
                 by the gap between containers; no rail threads through the content. */}
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
               {/* Area header = the container's title bar. Solo done areas fold here. */}
-              <button
-                type="button"
-                disabled={!(solo && done)}
-                onClick={() => toggleReopen(soloBucket)}
-                aria-expanded={solo && done ? soloOpen : undefined}
-                className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left border-b border-gray-100 disabled:opacity-100 enabled:active:bg-gray-50"
-              >
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
-                  done ? 'bg-green-600 text-white'
-                    : isNow ? 'bg-blue-600 text-white'
-                    : 'bg-white border-2 border-blue-600 text-blue-700'
-                }`} aria-hidden="true">
-                  {done ? '✓' : i + 1}
-                </span>
-                <span className="min-w-0 flex-1 text-[var(--fs-lg)] font-extrabold leading-tight truncate">
-                  {areaName}
-                  {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
-                </span>
+              <div className="w-full flex items-center gap-2.5 px-3.5 py-3 border-b border-gray-100">
+                <button
+                  type="button"
+                  disabled={!((solo && done) || (loneUnit && luAllDone))}
+                  onClick={() => (solo ? toggleReopen(soloBucket) : loneUnit && toggleUnit(loneUnit.key))}
+                  aria-expanded={solo && done ? soloOpen : (loneUnit && luAllDone ? !luFolded : undefined)}
+                  className="min-w-0 flex-1 flex items-center gap-2.5 text-left disabled:opacity-100 enabled:active:opacity-70"
+                >
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                    done ? 'bg-green-600 text-white'
+                      : isNow ? 'bg-blue-600 text-white'
+                      : 'bg-white border-2 border-blue-600 text-blue-700'
+                  }`} aria-hidden="true">
+                    {done ? '✓' : i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 leading-tight">
+                    <span className="block text-[var(--fs-lg)] font-extrabold truncate">
+                      {areaName}
+                      {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
+                    </span>
+                    {loneUnit && (
+                      <span className="block text-[var(--fs-sm)] font-bold text-gray-600 truncate">
+                        <span aria-hidden="true">{typeIcon(loneUnit.unit!.kind)} </span>
+                        {loneUnit.between.length > 0 && <span className="font-semibold text-gray-400">{loneUnit.between.join(' › ')} › </span>}
+                        {/* the type word matters for a cryptic name — "Fridge F1", not "F1" */}
+                        {luShowLabel && <span className="font-semibold text-gray-500">{luLabel} </span>}
+                        {loneUnit.unit!.name}
+                        {luAllDone && <span className="text-green-700"> {luFolded ? '▸ Tap to view' : '▾ Hide'}</span>}
+                      </span>
+                    )}
+                  </span>
+                </button>
                 <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums">
-                  {done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
+                  {loneUnit
+                    ? `${luDone} of ${luMembers.length} done`
+                    : done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
                 </span>
-              </button>
+                {loneUnit && (
+                  <button onClick={() => setMapSpotId(loneUnit.unit!.id)}
+                    aria-label={`Show ${loneUnit.unit!.name} on the floorplan`}
+                    className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
+                    🗺️
+                  </button>
+                )}
+              </div>
 
               {solo ? (
                 (!done || soloOpen) && (
@@ -234,54 +311,7 @@ export default function GuidedCountingFlow({
                 )
               ) : (
                 (() => {
-                  // SAY IT ONCE: consecutive stops sharing the same immediate
-                  // parent (the fridge/freezer they live in) form a UNIT GROUP.
-                  // The unit is named once as a sub-heading; its drawers render
-                  // beneath it as short indented rows with NO repeated trail.
-                  // Pre-order DFS guarantees a parent's children arrive
-                  // consecutively, so grouping on the parent id cannot mislabel
-                  // a run. Stops directly under the room (ancestors.length===1)
-                  // render exactly as before — simple rooms gain no chrome.
-                  type UnitInfo = { id: number; name: string; kind: string };
-                  type Grp = { key: string; unit: UnitInfo | null; between: string[]; own: Stop | null; stops: Stop[] };
-                  const grps: Grp[] = [];
-                  st.stops.forEach((s) => {
-                    const anc = s.ancestors || [];
-                    if (anc.length >= 2) {
-                      const unit = anc[anc.length - 1];
-                      const prev = grps[grps.length - 1];
-                      if (prev?.unit && prev.unit.id === unit.id) { prev.stops.push(s); return; }
-                      // Products placed ON the unit itself: DFS emits the unit's
-                      // own stop right before its children — fold it into the
-                      // group so the unit is never named twice.
-                      if (prev && !prev.unit && prev.stops.length === 1 && prev.stops[0].bucket_id === unit.id) {
-                        grps[grps.length - 1] = { key: `unit-${unit.id}-${prev.stops[0].bucket_id}`, unit, between: anc.slice(1, -1).map((a) => a.name), own: prev.stops[0], stops: [s] };
-                        return;
-                      }
-                      // Key includes the run's first stop: the same unit can be
-                      // split into two runs by a deeper sub-location between its
-                      // children, and each run needs its own key + fold state.
-                      grps.push({ key: `unit-${unit.id}-${s.bucket_id}`, unit, between: anc.slice(1, -1).map((a) => a.name), own: null, stops: [s] });
-                    } else {
-                      grps.push({ key: `plain-${s.bucket_id}`, unit: null, between: [], own: null, stops: [s] });
-                    }
-                  });
-
-                  // A "unit" that turns out to hold ONE drawer is pure overhead:
-                  // the fridge gets a whole heading band of its own, then the
-                  // drawer gets another band under it, for a single stop. Fold
-                  // it back to a plain stop — the stop then prints the fridge as
-                  // the small grey trail above its own bold name, which is the
-                  // same information in one block instead of two.
-                  // (A unit with SEVERAL drawers keeps its heading: naming the
-                  // fridge once above four drawers saves more than it costs.)
-                  for (let gi = 0; gi < grps.length; gi++) {
-                    const g = grps[gi];
-                    if (g.unit && !g.own && g.stops.length === 1) {
-                      grps[gi] = { key: `plain-${g.stops[0].bucket_id}`, unit: null, between: [], own: null, stops: g.stops };
-                    }
-                  }
-
+                  const grps = groups;
                   const stopBits = (s: Stop) => {
                     const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
                     const skipped = effStatus(s) === 'skipped';
@@ -366,6 +396,31 @@ export default function GuidedCountingFlow({
 
                   return grps.map((g, gi) => {
                     if (!g.unit) return renderStop(g.stops[0], false, gi > 0);
+
+                    // The area header ALREADY names this container (a room with
+                    // exactly one of them merges the two lines), so drawing the
+                    // heading again would be the very stack we removed.
+                    if (loneUnit && g.key === loneUnit.key) {
+                      if (luFolded) return null;   // header says "Tap to view"
+                      const members2 = g.own ? [g.own, ...g.stops] : g.stops;
+                      const ob = g.own ? stopBits(g.own) : null;
+                      return (
+                        <div key={g.key}>
+                          {g.own && ob && (
+                            <>
+                              <div className="px-3">
+                                {g.own.product_ids.map((id) => productsById[id] && (
+                                  <div key={id}>{renderRow(productsById[id], g.own!.bucket_id)}</div>
+                                ))}
+                              </div>
+                              {drawerFooter(g.own, ob.full, ob.skipped)}
+                            </>
+                          )}
+                          {g.stops.map((st2, si) => renderStop(st2, true, si > 0 || !!g.own))}
+                          {members2.length === 0 && null}
+                        </div>
+                      );
+                    }
 
                     const members = g.own ? [g.own, ...g.stops] : g.stops;
                     const bits = members.map(stopBits);
