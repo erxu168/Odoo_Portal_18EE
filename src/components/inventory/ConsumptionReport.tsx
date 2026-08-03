@@ -144,8 +144,13 @@ export default function ConsumptionReport({ onBack }: ConsumptionReportProps) {
                       <span className="text-[var(--fs-xs)] text-gray-400 ml-1">used</span>
                     </>
                   ) : (
+                    // WHY there is no number, in the words a manager can act on.
+                    // "a shelf was skipped" sends someone back to that shelf;
+                    // "not counted at closing" sent them nowhere.
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                      not counted at {r.missing}
+                      {r.spot_skipped_at ? 'a shelf was skipped'
+                        : r.not_found_at ? 'couldn’t be found'
+                        : `not counted at the ${r.missing === 'opening' ? 'start' : 'end'}`}
                     </span>
                   )}
                 </div>

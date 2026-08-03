@@ -14,7 +14,8 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, getSession, getSessionEntries, sumReceiptsByProduct, sumWasteByProduct } from '@/lib/inventory-db';
+import { initInventoryTables, getSession, sumReceiptsByProduct, sumWasteByProduct } from '@/lib/inventory-db';
+import { sessionTotals } from '@/lib/usage-totals';
 import { canAccessSession } from '@/lib/inventory-access';
 import { berlinMidnightMs } from '@/lib/waj-sales-time';
 import { isCanonicalDay } from '@/lib/berlin-date';
@@ -65,26 +66,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'The opening count must be on or before the closing count' }, { status: 400 });
   }
 
-  /**
-   * Each product's base-unit total in a session (summed across spots).
-   *
-   * A product answered "couldn't find it" ANYWHERE has no total: its quantity is
-   * unknown, which is why approval leaves its stock alone. Summing the spots
-   * where it WAS found would turn "at least 5" into a closing figure of 5 and
-   * silently invent consumption. Such products are reported separately instead.
-   */
-  function totals(sessionId: number): { qty: Record<number, number>; unknown: Set<number> } {
-    const qty: Record<number, number> = {};
-    const unknown = new Set<number>();
-    for (const e of getSessionEntries(sessionId)) {
-      if ((e as any).not_found) unknown.add(e.product_id);
-      qty[e.product_id] = (qty[e.product_id] || 0) + (Number(e.counted_qty) || 0);
-    }
-    Array.from(unknown).forEach((pid) => { delete qty[pid]; });
-    return { qty, unknown };
-  }
-  const openTotals = totals(openingId);
-  const closeTotals = totals(closingId);
+  // The rule itself lives in src/lib/usage-totals.ts so the tests exercise the
+  // REAL logic rather than a copy of it that can drift.
+  const openTotals = sessionTotals(openingId);
+  const closeTotals = sessionTotals(closingId);
 
   // Received window = strictly AFTER the opening count, up to the closing count,
   // so a delivery already reflected in the opening stock isn't counted twice.
@@ -122,8 +107,11 @@ export async function GET(request: Request) {
     ...Object.keys(received).map(Number),
     ...Object.keys(wasted).map(Number),
     // Products whose quantity is unknown still belong in the report — as a
-    // stated gap, not as a silent omission.
+    // stated gap, not as a silent omission. Same for one whose spot was skipped:
+    // dropping it from the list entirely would hide the very thing a manager
+    // needs to see (go back to that shelf).
     ...Array.from(openTotals.unknown), ...Array.from(closeTotals.unknown),
+    ...Array.from(openTotals.skipped), ...Array.from(closeTotals.skipped),
   ]));
 
   const rows = productIds.map((pid) => {
@@ -139,6 +127,10 @@ export async function GET(request: Request) {
     // the product, the other means the count was not done.
     const notFoundAt = openTotals.unknown.has(pid) ? 'opening'
       : closeTotals.unknown.has(pid) ? 'closing' : null;
+    // "A shelf was skipped" is a THIRD kind of gap, and the most actionable one:
+    // the manager knows exactly where to send someone back to.
+    const spotSkippedAt = openTotals.skipped.has(pid) ? 'opening'
+      : closeTotals.skipped.has(pid) ? 'closing' : null;
     return {
       product_id: pid,
       opening_qty,
@@ -150,8 +142,9 @@ export async function GET(request: Request) {
       // it is evidence of a timing or counting problem, not noise to clamp.
       consumption: complete ? opening_qty + received_qty - wasted_qty - closing_qty : null,
       complete,
-      missing: complete ? null : (notFoundAt || (!inOpen ? 'opening' : 'closing')),
+      missing: complete ? null : (notFoundAt || spotSkippedAt || (!inOpen ? 'opening' : 'closing')),
       not_found_at: notFoundAt,
+      spot_skipped_at: spotSkippedAt,
     };
   });
 
