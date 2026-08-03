@@ -432,8 +432,8 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                         }
                       />
                       <SettingRow
-                        title="Email reminders"
-                        hint="Also email the reminder with a one-tap confirm link (on top of the app nudges)"
+                        title="Email confirmation requests"
+                        hint="Also email a one-tap confirm link (on top of the app nudges). Separate from the plain day-before reminder below."
                         divider
                         control={
                           <ToggleSwitch
