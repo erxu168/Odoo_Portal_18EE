@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 import AppHeader from '@/components/ui/AppHeader';
 import { SectionTitle, Spinner, ToggleSwitch } from '@/components/shifts/ui';
 import RolesDeptManager from '@/components/shifts/RolesDeptManager';
@@ -449,17 +450,16 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                 divider={false}
                 control={
                   <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      max={100}
-                      step={0.5}
+                    {/* Saves on COMMIT, not on blur. Opening the pad blurs this
+                        field, so a blur-save would write the old value the moment
+                        the pad appeared — before the user had typed anything. */}
+                    <NumberField
+                      value={agMiniStr === '' ? null : Number(agMiniStr)}
+                      onValueChange={v => setAgMiniStr(v === null ? '' : String(v))}
+                      onCommit={v => commitAg('agCostMinijob', v === null ? '' : String(v), form.agCostMinijob, setAgMiniStr)}
+                      mode="decimal" allowEmpty min={0} max={100} step={0.5}
                       aria-label="Employer on-cost percentage for Minijob staff"
-                      className={pctInputClass}
-                      value={agMiniStr}
-                      onChange={e => setAgMiniStr(e.target.value)}
-                      onBlur={e => commitAg('agCostMinijob', e.target.value, form.agCostMinijob, setAgMiniStr)}
+                      inputClassName={pctInputClass}
                     />
                     <span className="text-[var(--fs-md)] font-bold text-gray-500">%</span>
                   </div>
@@ -471,17 +471,16 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                 divider
                 control={
                   <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      max={100}
-                      step={0.5}
+                    {/* Saves on COMMIT, not on blur. Opening the pad blurs this
+                        field, so a blur-save would write the old value the moment
+                        the pad appeared — before the user had typed anything. */}
+                    <NumberField
+                      value={agRegStr === '' ? null : Number(agRegStr)}
+                      onValueChange={v => setAgRegStr(v === null ? '' : String(v))}
+                      onCommit={v => commitAg('agCostRegular', v === null ? '' : String(v), form.agCostRegular, setAgRegStr)}
+                      mode="decimal" allowEmpty min={0} max={100} step={0.5}
                       aria-label="Employer on-cost percentage for regular staff"
-                      className={pctInputClass}
-                      value={agRegStr}
-                      onChange={e => setAgRegStr(e.target.value)}
-                      onBlur={e => commitAg('agCostRegular', e.target.value, form.agCostRegular, setAgRegStr)}
+                      inputClassName={pctInputClass}
                     />
                     <span className="text-[var(--fs-md)] font-bold text-gray-500">%</span>
                   </div>

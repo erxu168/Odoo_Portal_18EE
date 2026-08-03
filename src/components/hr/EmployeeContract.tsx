@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import DocumentUploadWidget from '@/components/ui/DocumentUploadWidget';
@@ -351,12 +352,20 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
           <Card title="Working hours">
             <div className="flex gap-3">
               <Field label="Hours / week" className="flex-1">
-                <input type="number" inputMode="decimal" step="0.5" min="0" value={weeklyHours}
-                  onChange={e => setWeeklyHours(e.target.value)} placeholder="e.g. 20" className="form-inp" />
+                <NumberField
+                  value={weeklyHours === '' ? null : Number(weeklyHours)}
+                  onValueChange={v => setWeeklyHours(v === null ? '' : String(v))}
+                  onCommit={v => setWeeklyHours(v === null ? '' : String(v))}
+                  mode="decimal" allowEmpty min={0} step={0.5}
+                  aria-label="Hours per week" placeholder="e.g. 20" inputClassName="form-inp" />
               </Field>
               <Field label="Days / week" className="flex-1">
-                <input type="number" inputMode="numeric" step="1" min="0" max="7" value={daysPerWeek}
-                  onChange={e => setDaysPerWeek(e.target.value)} placeholder="e.g. 5" className="form-inp" />
+                <NumberField
+                  value={daysPerWeek === '' ? null : Number(daysPerWeek)}
+                  onValueChange={v => setDaysPerWeek(v === null ? '' : String(v))}
+                  onCommit={v => setDaysPerWeek(v === null ? '' : String(v))}
+                  mode="integer" allowEmpty min={0} max={7}
+                  aria-label="Days per week" placeholder="e.g. 5" inputClassName="form-inp" />
               </Field>
             </div>
             <Field label="Working schedule (optional)">
@@ -378,13 +387,21 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
               </Field>
               {wageType === 'hourly' ? (
                 <Field label="Hourly rate (€)">
-                  <input type="number" inputMode="decimal" step="0.01" min="0" value={hourlyWage}
-                    onChange={e => setHourlyWage(e.target.value)} placeholder="e.g. 13.90" className="form-inp" />
+                  <NumberField
+                    value={hourlyWage === '' ? null : Number(hourlyWage)}
+                    onValueChange={v => setHourlyWage(v === null ? '' : String(v))}
+                    onCommit={v => setHourlyWage(v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty min={0} fractionDigits={2} unit="€"
+                    aria-label="Hourly rate" placeholder="e.g. 13.90" inputClassName="form-inp" />
                 </Field>
               ) : (
                 <Field label="Monthly wage (€)">
-                  <input type="number" inputMode="decimal" step="0.01" min="0" value={monthlyWage}
-                    onChange={e => setMonthlyWage(e.target.value)} placeholder="e.g. 2500.00" className="form-inp" />
+                  <NumberField
+                    value={monthlyWage === '' ? null : Number(monthlyWage)}
+                    onValueChange={v => setMonthlyWage(v === null ? '' : String(v))}
+                    onCommit={v => setMonthlyWage(v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty min={0} fractionDigits={2} unit="€"
+                    aria-label="Monthly wage" placeholder="e.g. 2500.00" inputClassName="form-inp" />
                 </Field>
               )}
               {(() => {
