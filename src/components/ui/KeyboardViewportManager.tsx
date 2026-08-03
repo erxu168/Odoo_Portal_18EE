@@ -86,7 +86,19 @@ export default function KeyboardViewportManager() {
     function keyboardInset(): number {
       if (!vv) return 0;
       const inset = window.innerHeight - vv.height - vv.offsetTop;
-      return inset > KEYBOARD_MIN_PX ? Math.round(inset) : 0;
+      if (inset <= KEYBOARD_MIN_PX) return 0;
+
+      // Geometry alone is not enough to call it a keyboard: pinch-zoom and
+      // accessibility zoom shrink the visual viewport too, and treating that as
+      // a keyboard would hide the tab bar and squash every open sheet while the
+      // user was only zooming in to read something.
+      //
+      // So a keyboard must have STARTED with a text control focused. Once it is
+      // up it stays up on geometry alone, because tapping a button inside a form
+      // moves focus off the field without dismissing the keyboard.
+      if (!keyboardOpen && !isTextControl(document.activeElement)) return 0;
+
+      return Math.round(inset);
     }
 
     function publish(inset: number) {
@@ -139,9 +151,15 @@ export default function KeyboardViewportManager() {
         rafId = null;
         const inset = keyboardInset();
         publish(inset);
+        // Always drop a pending correction first. Android's Back can close the
+        // keyboard inside the settle window, and a stale callback would then
+        // scroll against whatever is focused by the time it fires.
+        if (settleTimer) {
+          clearTimeout(settleTimer);
+          settleTimer = null;
+        }
         if (inset === 0) return;
         // Let the keyboard animation and Chrome's own scroll finish, then correct.
-        if (settleTimer) clearTimeout(settleTimer);
         settleTimer = setTimeout(ensureVisible, SETTLE_MS);
       });
     }
