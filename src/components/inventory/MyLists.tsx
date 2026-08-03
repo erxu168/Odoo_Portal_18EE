@@ -162,11 +162,33 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
           <div className="flex flex-col gap-3">
             {sessions.map((sess: any) => {
               const freqLabel = FREQ_LABELS[sess.template_frequency] || '';
+              // A MERGED walk carries its source lists; it has no user-facing
+              // template of its own, so it shows those chips and no list link.
+              let sources: { name: string; frequency: string }[] = [];
+              try {
+                const parsed = JSON.parse(sess.source_templates_json || '[]');
+                if (Array.isArray(parsed)) sources = parsed.filter((x: any) => x && typeof x.name === 'string');
+              } catch { /* malformed — fall back to the plain chip */ }
+              const isWalk = sources.length > 0 || sess.template_frequency === 'walk';
               return (
                 <div key={sess.id} className="bg-white border border-gray-200 rounded-2xl flex items-start">
                   <button onClick={() => onOpenSession(sess.id)}
                     className="flex-1 min-w-0 p-4 text-left active:scale-[0.98] transition-all">
-                    {freqLabel && (
+                    {sources.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {sources.map((src, i) => (
+                          <span key={`${src.name}#${i}`}
+                            className={`inline-block text-[var(--fs-xs)] font-semibold px-2 py-0.5 rounded-md ${
+                              src.frequency === 'daily' ? 'bg-blue-50 text-blue-600'
+                                : src.frequency === 'weekly' ? 'bg-purple-50 text-purple-600'
+                                : src.frequency === 'monthly' ? 'bg-amber-50 text-amber-700'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}>
+                            {i > 0 ? '+ ' : ''}{FREQ_LABELS[src.frequency] || src.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : freqLabel ? (
                       <span className={`inline-block text-[var(--fs-xs)] font-semibold px-2 py-0.5 rounded-md mb-1.5 ${
                         sess.template_frequency === 'daily'
                           ? 'bg-blue-50 text-blue-600'
@@ -176,9 +198,9 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
                       }`}>
                         {freqLabel}
                       </span>
-                    )}
+                    ) : null}
                     <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight truncate">
-                      {sess.template_name || `Session #${sess.id}`}
+                      {isWalk ? 'Today\u2019s Count' : (sess.template_name || `Session #${sess.id}`)}
                     </div>
                     {sess.location_name && (
                       <div className="mt-2">
@@ -191,7 +213,9 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
                   {/* Status + drill-down to the list — SIBLINGS of the open-session button */}
                   <div className="flex flex-col items-end gap-1.5 p-3 flex-shrink-0">
                     <StatusBadge status={sess.status} />
-                    {sess.template_id && <RecordLink type="list" id={sess.template_id} label={sess.template_name} />}
+                    {/* No list link for a merged walk: its template is the internal
+                        container, not a list anyone manages. */}
+                    {!isWalk && sess.template_id && <RecordLink type="list" id={sess.template_id} label={sess.template_name} />}
                   </div>
                 </div>
               );

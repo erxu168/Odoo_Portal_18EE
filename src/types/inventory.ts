@@ -45,7 +45,9 @@ export interface OdooPlanningRole {
 
 // ── Portal-side data (SQLite) ──
 
-export type Frequency = 'daily' | 'weekly' | 'monthly' | 'adhoc';
+/** 'walk' is INTERNAL: the synthetic per-company container for a merged daily
+ *  walk. Never selectable by a user; rejected by the templates API. */
+export type Frequency = 'daily' | 'weekly' | 'monthly' | 'adhoc' | 'walk';
 export type AssignType = 'person' | 'department' | 'shift' | null;
 /**
  * 'missed' = the day passed and nobody counted a single line. Closed
@@ -85,6 +87,9 @@ export interface CountingSession {
   /** How many lines this count covers, and how many have been answered. */
   lines_total?: number;
   lines_done?: number;
+  /** Merged walk sessions only: the source lists (frozen name+frequency at
+   *  creation), as a JSON array string — [{template_id, name, frequency}]. */
+  source_templates_json?: string | null;
   location_id: number;
   company_id?: number | null;  // restaurant of the template (for staff visibility)
   location_name?: string;

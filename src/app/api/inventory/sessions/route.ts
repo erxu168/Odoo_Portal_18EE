@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
+import { initInventoryTables, todayStr, createSession, listSessions, getSession, getSessionByTemplateAndDate, walkSessionForTemplateToday, ensureTodaySessionForTemplate, productsAlreadyCountedToday, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
@@ -96,6 +96,11 @@ export async function POST(request: Request) {
   // can't be pointed at another restaurant's stock location.
   const tmpl = getTemplate(template_id);
   if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+  // The synthetic merged-walk container is not a list anyone may create counts
+  // for — its sessions are made by the generator alone.
+  if (tmpl.frequency === 'walk') {
+    return NextResponse.json({ error: 'That list is managed automatically' }, { status: 400 });
+  }
   const allowed = parseCompanyIds(user.allowed_company_ids);
   const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
   if (!adminUnrestricted) {
@@ -121,6 +126,45 @@ export async function POST(request: Request) {
       if (!assigneeUnrestricted && !ac.includes(tmpl.company_id)) {
         return NextResponse.json({ error: 'That person is not in this restaurant' }, { status: 400 });
       }
+    }
+  }
+
+  // TODAY goes through the merge-aware path: if this restaurant already has a
+  // combined walk, the list joins it (or waits for tomorrow) instead of getting
+  // a second session whose overlapping products would be counted twice.
+  // Only the MERGE cases divert: if this restaurant has a combined walk today,
+  // the list joins it (or waits for its next scheduled day) rather than getting
+  // a second session whose overlapping products would be counted twice.
+  // Everything else falls through to the ordinary create below, which honours
+  // the requested assigned_user_id exactly as before.
+  if (scheduled_date === todayStr()) {
+    const walkToday = walkSessionForTemplateToday(template_id);
+    if (walkToday) {
+      return NextResponse.json({ id: walkToday.id, message: 'This list is part of today\u2019s combined count' });
+    }
+    // Only DIVERT when a combined walk exists for this restaurant today: then
+    // the list joins it (untouched) or waits (its products are already being
+    // counted). With no walk, fall through to the ordinary create below, which
+    // honours the requested assigned_user_id exactly as before.
+    const gen = ensureTodaySessionForTemplate(template_id, { createIfNoWalk: false });
+    if (gen.joinedWalk && gen.sessionId != null) {
+      return NextResponse.json({ id: gen.sessionId, message: 'This list is part of today\u2019s combined count' });
+    }
+    if (gen.deferred) {
+      return NextResponse.json({
+        error: 'Today\u2019s combined count is already under way and covers some of these products. This list is counted from its next scheduled day.',
+      }, { status: 409 });
+    }
+  }
+
+  // The one invariant: never open a count for products another open count of
+  // this restaurant already covers today (they would be written to Odoo twice).
+  if (tmpl.company_id != null) {
+    const clash = productsAlreadyCountedToday(tmpl.company_id, (tmpl.product_ids as number[]) || [], { date: scheduled_date });
+    if (clash.length > 0 && !getSessionByTemplateAndDate(template_id, scheduled_date)) {
+      return NextResponse.json({
+        error: `${clash.length} of these products ${clash.length === 1 ? 'is' : 'are'} already in another count for that day.`,
+      }, { status: 409 });
     }
   }
 

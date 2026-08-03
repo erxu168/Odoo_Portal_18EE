@@ -11,7 +11,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate, templateHasRealSessions } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, ensureTodaySessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate, templateHasRealSessions } from '@/lib/inventory-db';
 import { listShiftTemplates } from '@/lib/shifts-db';
 
 /** A real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
@@ -145,6 +145,26 @@ export async function POST(request: Request) {
   // Ad-hoc lists generate a single count on a chosen, non-past date. Other
   // frequencies never carry a date.
   const freq = frequency || 'adhoc';
+  // 'walk' is the system's internal merged-walk container — never creatable or
+  // settable through the API. Reject anything outside the public set.
+  if (!['daily', 'weekly', 'monthly', 'adhoc'].includes(freq)) {
+    return NextResponse.json({ error: 'Unknown frequency' }, { status: 400 });
+  }
+  // Weekly needs weekday numbers (0-6); monthly needs ONE day of month (1-31).
+  // Validated here so a stale or hand-made client can't store a schedule that
+  // silently never fires (or fires on the wrong day).
+  if (freq === 'weekly') {
+    const days: unknown[] = Array.isArray(schedule_days) ? schedule_days : [];
+    if (days.length === 0 || !days.every((d) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6)) {
+      return NextResponse.json({ error: 'Pick at least one weekday for a weekly list.' }, { status: 400 });
+    }
+  }
+  if (freq === 'monthly') {
+    const days: unknown[] = Array.isArray(schedule_days) ? schedule_days : [];
+    if (days.length !== 1 || !Number.isInteger(days[0]) || (days[0] as number) < 1 || (days[0] as number) > 31) {
+      return NextResponse.json({ error: 'Pick the day of the month for a monthly list.' }, { status: 400 });
+    }
+  }
   let adhocDate: string | null = null;
   if (freq === 'adhoc') {
     if (!isValidYmd(adhoc_date)) {
@@ -171,15 +191,22 @@ export async function POST(request: Request) {
     created_by: user.id,
   });
 
-  // Auto-generate a counting session for today (respects frequency + schedule_days)
-  const sessionId = generateSessionForTemplate(id);
+  // Auto-generate today's count (respects frequency + schedule_days) — and if
+  // this restaurant already has a combined walk today, JOIN it rather than
+  // creating a second session whose overlapping products would be counted twice.
+  const gen = ensureTodaySessionForTemplate(id);
 
   return NextResponse.json({
     id,
-    session_id: sessionId,
-    message: sessionId
-      ? 'Template created + session generated for today'
-      : 'Template created (not scheduled for today)',
+    session_id: gen.sessionId,
+    joined_walk: gen.joinedWalk,
+    message: gen.joinedWalk
+      ? 'List created and added to today\u2019s count'
+      : gen.deferred
+        ? 'List created. Today\u2019s combined count is already under way, so this list is counted from its next scheduled day.'
+        : gen.sessionId
+          ? 'Template created + session generated for today'
+          : 'Template created (not scheduled for today)',
   }, { status: 201 });
 }
 
@@ -245,6 +272,27 @@ export async function PUT(request: Request) {
   // — the editor always re-sends the stored date, and a legacy past-dated list
   // must stay editable (rename it, deactivate it) without being forced forward.
   const effFreq = 'frequency' in updates ? updates.frequency : existing.frequency;
+  // 'walk' is the internal merged-walk container: it can never be set through
+  // the API, and an existing walk row can never be edited into something else
+  // (either would break the one-walk-per-company invariant).
+  if (existing.frequency === 'walk') {
+    return NextResponse.json({ error: 'That list is managed automatically' }, { status: 400 });
+  }
+  if (!['daily', 'weekly', 'monthly', 'adhoc'].includes(effFreq)) {
+    return NextResponse.json({ error: 'Unknown frequency' }, { status: 400 });
+  }
+  // Same schedule shape rules as create, on the EFFECTIVE values.
+  const effDays: unknown[] = 'schedule_days' in updates
+    ? (Array.isArray(updates.schedule_days) ? updates.schedule_days : [])
+    : (Array.isArray(existing.schedule_days) ? existing.schedule_days : []);
+  if (effFreq === 'weekly'
+    && (effDays.length === 0 || !effDays.every((d) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6))) {
+    return NextResponse.json({ error: 'Pick at least one weekday for a weekly list.' }, { status: 400 });
+  }
+  if (effFreq === 'monthly'
+    && (effDays.length !== 1 || !Number.isInteger(effDays[0]) || (effDays[0] as number) < 1 || (effDays[0] as number) > 31)) {
+    return NextResponse.json({ error: 'Pick the day of the month for a monthly list.' }, { status: 400 });
+  }
   if (effFreq === 'adhoc') {
     const effDate = 'adhoc_date' in updates ? updates.adhoc_date : existing.adhoc_date;
     if (!isValidYmd(effDate)) {
@@ -344,7 +392,7 @@ export async function PUT(request: Request) {
   if (effFreq === 'adhoc') {
     if ('adhoc_date' in updates && updates.adhoc_date !== (existing.adhoc_date ?? null)) {
       deleteStalePendingSessions(id, updates.adhoc_date as string);
-      generateSessionForTemplate(id);
+      ensureTodaySessionForTemplate(id);
     }
   } else if ('frequency' in updates && existing.frequency === 'adhoc') {
     // No longer ad-hoc: future-dated untouched leftovers are removed; today's
@@ -397,6 +445,12 @@ export async function DELETE(request: Request) {
   // (active:false) instead. ANY admin may permanently erase it — company scope
   // (not the "unrestricted" flag) already governs WHICH lists they can reach, so
   // an admin restricted to their own restaurant can still purge that list.
+  // The synthetic merged-walk container is infrastructure — deleting it would
+  // orphan today's combined count and break the one-walk-per-company invariant.
+  if (tmpl.frequency === 'walk') {
+    return NextResponse.json({ error: 'That list is managed automatically' }, { status: 400 });
+  }
+
   if (templateHasRealSessions(id) && !isAdmin) {
     return NextResponse.json({
       error: 'This list has counts recorded. Deactivate it instead, or ask an admin to permanently delete it.',
