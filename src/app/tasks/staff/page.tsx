@@ -6,7 +6,8 @@ import type { TaskList, EmployeeContext } from '@/lib/odoo-tasks';
 import ChecklistCard from '../_components/ChecklistCard';
 import BottomNav from '../_components/BottomNav';
 import AdHocModal, { type AdHocSubmitVals } from '../_components/AdHocModal';
-import { uploadTaskPhoto } from '../_components/photoUpload';
+import { uploadTaskPhotoFile, PhotoCancelled } from '../_components/photoUpload';
+import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 import NotificationsToggle from '../_components/NotificationsToggle';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../_components/useToast';
@@ -128,8 +129,13 @@ export default function StaffPage() {
     return { is_setup_guide: !!body.is_setup_guide, line_completed: !!body.line_completed };
   }
 
+  // The proof photo goes through the STANDARD chooser (Camera·Photos·Files).
+  // The old helper built a detached <input accept="image/*">, which on the
+  // kitchen Android tablets offers the gallery only — no camera.
+  const [photoFor, setPhotoFor] = useState<{ lineId: number; resolve: () => void; reject: (e: unknown) => void } | null>(null);
+
   async function handlePhotoUpload(lineId: number) {
-    return uploadTaskPhoto(lineId, () => load(true));   // quiet: no scroll jump
+    return new Promise<void>((resolve, reject) => setPhotoFor({ lineId, resolve, reject }));
   }
 
   async function handleNoteSave(lineId: number, note: string) {
@@ -329,6 +335,19 @@ export default function StaffPage() {
         <AdHocModal date={date} onClose={() => setShowAdd(false)} onSubmit={handleAdd} />
       )}
       {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
+      {photoFor && (
+        <PhotoSourceSheet
+          title="Proof photo"
+          onFile={async (f: File) => {
+            const t = photoFor;
+            setPhotoFor(null);
+            try { await uploadTaskPhotoFile(t.lineId, f, () => load(true)); t.resolve(); }
+            catch (e) { t.reject(e); }
+          }}
+          onClose={() => setPhotoFor(null)}
+          onDismiss={() => { const t = photoFor; t?.reject(new PhotoCancelled()); }}
+        />
+      )}
     </div>
   );
 }

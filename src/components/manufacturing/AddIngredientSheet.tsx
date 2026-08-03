@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 interface AddIngredientSheetProps {
   moId: number;
@@ -182,13 +183,17 @@ export default function AddIngredientSheet({
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Quantity ({picked.uom_name})
             </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-3 text-lg font-mono focus:border-orange-500 focus:outline-none"
-              autoFocus
+            {/* No autoFocus any more: focusing this field on a tablet is exactly
+                what raised Android's keypad. The pad opens on tap instead. */}
+            <NumberField
+              value={qty === '' ? null : Number(qty)}
+              onValueChange={(v) => setQty(v === null ? '' : String(v))}
+              onCommit={(v) => setQty(v === null ? '' : String(v))}
+              mode="decimal"
+              allowEmpty
+              min={0}
+              aria-label={`Quantity (${picked.uom_name})`}
+              inputClassName="w-full rounded-lg border border-gray-300 px-3 py-3 text-lg font-mono focus:border-orange-500 focus:outline-none"
             />
           </>
         )}

@@ -9,6 +9,7 @@ import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import OfflineBanner from './OfflineBanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { combineLines, combineStops, mergeByProduct, walkTitle, type SessionPayload } from '@/lib/combined-walk';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { patchCachedSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
@@ -21,6 +22,10 @@ import { plainFromOdooHtml } from '@/lib/odoo-html';
 
 interface CountingSessionProps {
   sessionId: number;
+  /** Several counts walked as ONE route (today's combined walk). Each line still
+   *  belongs to its own count and saves to its own ledger row — nothing is
+   *  merged in the database. Omitted/length-1 = an ordinary single count. */
+  sessionIds?: number[];
   userRole: string;
   onBack: () => void;
   onSubmit: () => void;
@@ -41,7 +46,40 @@ function composeSpotPaths(stops: any[]): Record<number, string> {
   return m;
 }
 
-export default function CountingSession({ sessionId, userRole, onBack, onSubmit }: CountingSessionProps) {
+/** One row per (product, spot) across the walk's counts — a product two lists
+ *  both want is ONE line here, asked once. */
+function dedupeItems(items: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const it of items) {
+    const k = `${it.odoo_product_id}:${it.count_location_id}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(it);
+  }
+  return out;
+}
+
+/** Spot metadata from every count in the walk, deduped by spot. */
+function dedupeSpots(spots: any[]): any[] {
+  const seen = new Set<number>();
+  const out: any[] = [];
+  for (const sp of spots) {
+    if (seen.has(sp.count_location_id)) continue;
+    seen.add(sp.count_location_id);
+    out.push(sp);
+  }
+  return out;
+}
+
+export default function CountingSession({ sessionId, sessionIds, userRole, onBack, onSubmit }: CountingSessionProps) {
+  // The counts this screen covers. One is the ordinary case and behaves exactly
+  // as it always did (the merge helpers are identity for a single count).
+  const ids = React.useMemo(
+    () => (sessionIds && sessionIds.length > 0 ? sessionIds : [sessionId]),
+    [sessionIds, sessionId],
+  );
+  const combined = ids.length > 1;
   // Full-focus counting: hide the global top bar + bottom tab bar for the whole
   // count flow (same pattern the cook timer / KDS use) so the count screen isn't
   // crowded by app chrome. Restored on unmount (back to the inventory dashboard).
@@ -108,6 +146,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // A refusal the server sent back. Shown until dismissed — a count that did
   // not save is not something to flash for three seconds and hide.
   const [saveError, setSaveError] = useState<string | null>(null);   // in-flight count saves/deletes
+  // Which count(s) own each line ("pid:loc" -> session ids). THIS is what keeps
+  // the books straight: a number entered here is written back to the count it
+  // came from, never to a merged one (there is no merged one).
+  const [owners, setOwners] = useState<Record<string, number[]>>({});
+  // The counts this walk covers, for the title and for submitting each of them.
+  const [walkSessions, setWalkSessions] = useState<any[]>([]);
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -171,12 +215,34 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }
 
     try {
-      const [sessRes, countRes] = await Promise.all([
+      const [sessRes, ...countResults] = await Promise.all([
         fetch('/api/inventory/sessions').then((r) => r.json()),
-        fetch(`/api/inventory/counts?session_id=${sessionId}`).then((r) => r.json()),
+        ...ids.map((id) => fetch(`/api/inventory/counts?session_id=${id}`).then((r) => r.json())),
       ]);
 
-      const sess = (sessRes.sessions || []).find((s: any) => s.id === sessionId);
+      const sessionRows = ids.map((id) => (sessRes.sessions || []).find((s: any) => s.id === id)).filter(Boolean);
+      setWalkSessions(sessionRows);
+      // The primary count carries the screen-level facts (restaurant, status).
+      const sess = sessionRows[0];
+      // Line ownership across every count in the walk.
+      const payloads: SessionPayload[] = ids.map((id, i) => ({
+        sessionId: id,
+        session: sessionRows[i] ?? null,
+        items: (countResults[i]?.items || []).map((it: any) => ({
+          odoo_product_id: it.odoo_product_id, count_location_id: it.count_location_id,
+        })),
+      }));
+      const ownerMap: Record<string, number[]> = {};
+      combineLines(payloads).forEach((l) => { ownerMap[`${l.pid}:${l.loc}`] = l.sids; });
+      setOwners(ownerMap);
+      // Everything below reads as ONE count's worth of data — merged, deduped.
+      const countRes = {
+        items: dedupeItems(countResults.flatMap((r: any) => r?.items || [])),
+        entries: countResults.flatMap((r: any) => r?.entries || []),
+        packaging: mergeByProduct<any>(countResults.map((r: any) => r?.packaging)),
+        spots: dedupeSpots(countResults.flatMap((r: any) => r?.spots || [])),
+        system_qtys: mergeByProduct<number>(countResults.map((r: any) => r?.system_qtys)),
+      };
 
       // MODERN sessions: the FROZEN snapshot decides what to count — template
       // edits after creation must not add/hide lines. Legacy: template as before.
@@ -264,7 +330,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, ids]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -327,8 +393,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
   // Guided route: the session's locations + each stop's counted/skipped status.
   useEffect(() => {
-    fetch(`/api/inventory/sessions/${sessionId}/route`).then(r => r.ok ? r.json() : null).then((d) => {
-      if (!d) return;
+    Promise.all(ids.map((id) =>
+      fetch(`/api/inventory/sessions/${id}/route`).then(r => r.ok ? r.json() : null).catch(() => null),
+    )).then((results) => {
+      const got = results.filter(Boolean) as any[];
+      if (got.length === 0) return;
+      // ONE route across the counts: a spot two counts both visit becomes a
+      // single stop holding both counts' products, so each place is walked once.
+      const d = got.length === 1 ? got[0] : combineStops(
+        got.map((r, i) => ({ sessionId: ids[i], session: null, items: [], stops: r.stops || [], guided: !!r.guided })),
+      );
       setRoute(d);
       // Cache only the STATIC path labels (not the route's dynamic statuses) so
       // full-path labels survive an offline reload without going stale.
@@ -339,7 +413,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       });
       setGuidedStatuses(st);
     }).catch(() => {});
-  }, [sessionId]);
+  }, [sessionId, ids]);
 
   // Mark a location counted / skipped. Offline-safe: queues + drains on reconnect
   // (submit is blocked until the queue is empty, so the server sees these first).
@@ -348,12 +422,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     setGuidedStatuses((p) => ({ ...p, [bucketId]: { status, skip_reason: skipReason } }));
     setStatusPending((n) => n + 1);
     try {
-      const res = await offlineSafeMutate({
-        url: `/api/inventory/sessions/${sessionId}/location-status`,
-        method: 'POST',
-        body: { count_location_id: bucketId, status, skip_reason: skipReason },
-        dedupKey: `locstatus:${sessionId}:${bucketId}`,
-      });
+      // Every count that walks this spot records the same decision — skipping a
+      // fridge skips it for the whole walk, and each count keeps its own note of
+      // it so its own submit gate is satisfied.
+      let res = { ok: true, queued: false } as { ok: boolean; queued: boolean };
+      for (const id of ids) {
+        const r = await offlineSafeMutate({
+          url: `/api/inventory/sessions/${id}/location-status`,
+          method: 'POST',
+          body: { count_location_id: bucketId, status, skip_reason: skipReason },
+          dedupKey: `locstatus:${id}:${bucketId}`,
+        });
+        res = { ok: res.ok && r.ok, queued: res.queued || !!r.queued };
+      }
       if (res.queued) { await sync.refresh(); }
       else if (!res.ok) {
         // Server rejected it (4xx) — roll back the optimistic mark.
@@ -526,6 +607,41 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }
   }
 
+  /** Which counts own this line — a number entered here goes to each of them.
+   *  A product that only one list wants has exactly one owner (the normal case);
+   *  a product two lists both want is asked ONCE and recorded in both, so
+   *  neither list is left unanswerable and both hold the same observation. */
+  const ownersFor = (pid: number, loc: number): number[] => owners[`${pid}:${loc}`] ?? [ids[0]];
+
+  /** POST the same line to every count that owns it. */
+  async function postLine(pid: number, loc: number, body: Record<string, unknown>, onFail?: () => void) {
+    let queued = false;
+    for (const sid of ownersFor(pid, loc)) {
+      const res = await trackedMutate({
+        url: '/api/inventory/counts',
+        method: 'POST',
+        body: { ...body, session_id: sid, product_id: pid, count_location_id: loc },
+        dedupKey: `save:${sid}:${pid}:${loc}`,
+      }, onFail);
+      queued = queued || !!res.queued;
+    }
+    return { queued };
+  }
+
+  /** Clear the line from every count that owns it. */
+  async function deleteLine(pid: number, loc: number, onFail?: () => void) {
+    let queued = false;
+    for (const sid of ownersFor(pid, loc)) {
+      const res = await trackedMutate({
+        url: `/api/inventory/counts?session_id=${sid}&product_id=${pid}&count_location_id=${loc}`,
+        method: 'DELETE',
+        dedupKey: `delete:${sid}:${pid}:${loc}`,
+      }, onFail);
+      queued = queued || !!res.queued;
+    }
+    return { queued };
+  }
+
   async function saveCount(productId: number, loc: number, qty: number | null, uom: string, note?: string) {
     const k = K(productId, loc);
     // A real count (or a clear) overrides an out-of-stock mark for this line.
@@ -537,11 +653,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     if (qty === null || qty === undefined) {
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
       void updateCachedEntry(sessionId, productId, { counted_qty: null }, loc);
-      const res = await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${productId}&count_location_id=${loc}`,
-        method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${productId}:${loc}`,
-      });
+      const res = await deleteLine(productId, loc);
       if (res.queued) void sync.refresh();
     } else {
       const wasQty = entries[k];
@@ -552,13 +664,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
       void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
-      const res = await trackedMutate({
-        url: '/api/inventory/counts',
-        method: 'POST',
-        body: { session_id: sessionId, product_id: productId, count_location_id: loc, counted_qty: qty, uom,
-          ...(note !== undefined ? { notes: note } : {}) },
-        dedupKey: `save:${sessionId}:${productId}:${loc}`,
-      }, () => {
+      const res = await postLine(productId, loc, { counted_qty: qty, uom,
+          ...(note !== undefined ? { notes: note } : {}) }, () => {
         setEntries((prev) => {
           const n = { ...prev };
           if (wasQty === undefined) delete n[k]; else n[k] = wasQty;
@@ -591,12 +698,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setNotFound((prev) => { const n = new Set(prev); n.add(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
       void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, not_found: true }, loc);
-      await trackedMutate({
-        url: '/api/inventory/counts',
-        method: 'POST',
-        body: { session_id: sessionId, product_id: product.id, count_location_id: loc, not_found: true, counted_qty: 0, uom },
-        dedupKey: `save:${sessionId}:${product.id}:${loc}`,
-      }, () => {
+      await postLine(product.id, loc, { not_found: true, counted_qty: 0, uom }, () => {
         setNotFound((prev) => { const n = new Set(prev); if (!wasNf) n.delete(k); return n; });
         setEntries((prev) => { const n = { ...prev }; if (wasQty === undefined) delete n[k]; else n[k] = wasQty; return n; });
       });
@@ -604,11 +706,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setNotFound((prev) => { const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
       void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
-      await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}&count_location_id=${loc}`,
-        method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${product.id}:${loc}`,
-      }, () => {
+      await deleteLine(product.id, loc, () => {
         setNotFound((prev) => { const n = new Set(prev); if (wasNf) n.add(k); return n; });
       });
     }
@@ -626,22 +724,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setEntries((prev) => ({ ...prev, [k]: 0 }));
       if (note !== undefined) setRowNotes((p) => ({ ...p, [k]: note }));
       void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note, out_of_stock: true }, loc);
-      const res = await trackedMutate({
-        url: '/api/inventory/counts',
-        method: 'POST',
-        body: { session_id: sessionId, product_id: product.id, count_location_id: loc, out_of_stock: true, counted_qty: 0, uom, ...(note !== undefined ? { notes: note } : {}) },
-        dedupKey: `save:${sessionId}:${product.id}:${loc}`,
-      });
+      const res = await postLine(product.id, loc, { out_of_stock: true, counted_qty: 0, uom, ...(note !== undefined ? { notes: note } : {}) });
       if (res.queued) void sync.refresh();
     } else {
       setOos((prev) => { const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
       void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
-      const res = await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}&count_location_id=${loc}`,
-        method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${product.id}:${loc}`,
-      });
+      const res = await deleteLine(product.id, loc);
       if (res.queued) void sync.refresh();
     }
   }
@@ -675,11 +764,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
       setCrateSplits((prev) => { const next = { ...prev }; delete next[k]; return next; });
       void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
-      const res = await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}&count_location_id=${loc}`,
-        method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${product.id}:${loc}`,
-      });
+      const res = await deleteLine(product.id, loc);
       if (res.queued) void sync.refresh();
       return;
     }
@@ -690,12 +775,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     void updateCachedEntry(sessionId, product.id, {
       counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
     }, loc);
-    const res = await trackedMutate({
-      url: '/api/inventory/counts',
-      method: 'POST',
-      body: { session_id: sessionId, product_id: product.id, count_location_id: loc, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
-        ...(note !== undefined ? { notes: note } : {}) },
-      dedupKey: `save:${sessionId}:${product.id}:${loc}`,
+    const res = await postLine(product.id, loc, {
+      counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
+      ...(note !== undefined ? { notes: note } : {}),
     });
     if (res.queued) void sync.refresh();
   }
@@ -741,12 +823,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const uom = product.uom_id?.[1] || 'Units';
     setRowPhotos((prev) => ({ ...prev, [k]: next }));
     void updateCachedEntry(sessionId, product.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
-    const res = await trackedMutate({
-      url: '/api/inventory/counts',
-      method: 'POST',
-      body: { session_id: sessionId, product_id: product.id, count_location_id: loc, counted_qty: val, uom, photos: next },
-      dedupKey: `save:${sessionId}:${product.id}:${loc}`,
-    });
+    const res = await postLine(product.id, loc, { counted_qty: val, uom, photos: next });
     if (res.queued) void sync.refresh();
   }
 
@@ -768,15 +845,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
     const uom = product.uom_id?.[1] || 'Units';
     void updateCachedEntry(sessionId, product.id, { counted_qty: total, uom }, loc);
-    const res = await trackedMutate({
-      url: '/api/inventory/counts',
-      method: 'POST',
-      body: {
-        session_id: sessionId, product_id: product.id, count_location_id: loc,
-        pack_counts: byLevel, loose_qty: loose, uom,
-        ...(note !== undefined ? { notes: note } : {}),
-      },
-      dedupKey: `save:${sessionId}:${product.id}:${loc}`,
+    const res = await postLine(product.id, loc, {
+      pack_counts: byLevel, loose_qty: loose, uom,
+      ...(note !== undefined ? { notes: note } : {}),
     }, () => {
       // Refused: put the line back exactly as it was, so the row cannot show a
       // total the count does not contain.
@@ -841,15 +912,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await fetch('/api/inventory/sessions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sessionId, status: 'submitted', staff_note: staffNote }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSubmitError(data.error || 'Submit failed.');
-        return;
+      // Each count is submitted on its own — they were never merged, so each
+      // passes its own completeness check and reaches the manager as itself.
+      for (const id of ids) {
+        const res = await fetch('/api/inventory/sessions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, status: 'submitted', staff_note: staffNote }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setSubmitError(data.error || 'Submit failed.');
+          return;
+        }
       }
       // Success → a clear confirmation (the count is now with the manager); the
       // "Done" button on it navigates away.
@@ -1381,8 +1456,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <BackHeader onBack={onBack}
-        title={session?.template_name || `Session #${sessionId}`}
-        subtitle={`${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} ${hasSpots ? 'count lines' : 'products'}`}
+        title={combined ? walkTitle(walkSessions.map((x) => ({ sessionId: x.id, session: x, items: [] }))).title
+          : (session?.template_name || `Session #${sessionId}`)}
+        subtitle={combined
+          ? `${walkSessions.map((x) => x.template_name).filter(Boolean).join(' + ')} \u00B7 ${totalCount} ${hasSpots ? 'count lines' : 'products'}`
+          : `${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} ${hasSpots ? 'count lines' : 'products'}`}
         right={scanButton}
       />
 

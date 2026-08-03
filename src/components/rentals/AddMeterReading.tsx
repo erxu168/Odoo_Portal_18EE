@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import DropZone from '@/components/ui/DropZone';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
+import NumberField from '@/components/ui/NumberField';
 
 interface MeterInfo {
   id: number;
@@ -48,9 +50,9 @@ export default function AddMeterReading() {
   const params = useParams();
   const meterId = params?.id as string;
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
+  const [photoChooser, setPhotoChooser] = useState(false);   // Camera·Photos·Files
   const [saving, setSaving] = useState(false);
   const [meter, setMeter] = useState<MeterInfo | null>(null);
 
@@ -94,9 +96,6 @@ export default function AddMeterReading() {
     if (photoPreview) {
       URL.revokeObjectURL(photoPreview);
       setPhotoPreview(null);
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
     }
   }
 
@@ -185,12 +184,14 @@ export default function AddMeterReading() {
         {/* Reading Value */}
         <div>
           <label className={labelCls}>Reading Value *</label>
-          <input
-            className={inputCls}
-            value={readingValue}
-            onChange={e => setReadingValue(e.target.value)}
+          <NumberField
+            value={readingValue === '' ? null : Number(readingValue)}
+            onValueChange={v => setReadingValue(v === null ? '' : String(v))}
+            onCommit={v => setReadingValue(v === null ? '' : String(v))}
+            mode="decimal"
             placeholder="12345.67"
-            inputMode="decimal"
+            aria-label="Reading Value"
+            inputClassName={inputCls}
           />
         </div>
 
@@ -249,7 +250,7 @@ export default function AddMeterReading() {
             </div>
           ) : (
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setPhotoChooser(true)}
               className="w-full bg-white border-2 border-dashed border-gray-300 rounded-xl py-6 flex flex-col items-center gap-2 active:bg-gray-50 transition-colors"
             >
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5">
@@ -260,13 +261,13 @@ export default function AddMeterReading() {
               <span className="text-[13px] text-gray-500">Tap to take or select photo</span>
             </button>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={(e) => { acceptPhoto(e.target.files?.[0] || null); e.target.value = ''; }}
-            className="hidden"
-          />
+          {photoChooser && (
+            <PhotoSourceSheet
+              title="Meter photo"
+              onFile={(f: File) => acceptPhoto(f)}
+              onClose={() => setPhotoChooser(false)}
+            />
+          )}
           </DropZone>
         </div>
 

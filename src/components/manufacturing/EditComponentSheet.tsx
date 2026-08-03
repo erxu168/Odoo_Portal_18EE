@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 interface Component {
   move_id: number;
@@ -89,13 +90,19 @@ export default function EditComponentSheet({
         <h2 className="mb-4 text-lg font-bold">{component.product_id[1]}</h2>
 
         <label className="mb-1 block text-sm font-medium text-gray-700">Quantity</label>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-3 text-lg font-mono focus:border-orange-500 focus:outline-none"
-          autoFocus
+        {/* qty starts life German-formatted ("0,0835"), so it is normalised to a
+            dot before the field reads it — otherwise Number() gives NaN and the
+            field would open blank. autoFocus is gone: focusing on a tablet is
+            what raised Android's keypad. */}
+        <NumberField
+          value={qty === '' ? null : Number(qty.replace(',', '.'))}
+          onValueChange={(v) => setQty(v === null ? '' : String(v))}
+          onCommit={(v) => setQty(v === null ? '' : String(v))}
+          mode="decimal"
+          allowEmpty
+          min={0}
+          aria-label="Quantity"
+          inputClassName="w-full rounded-lg border border-gray-300 px-3 py-3 text-lg font-mono focus:border-orange-500 focus:outline-none"
         />
 
         {error && (

@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 /* ───── Types ───── */
 
@@ -404,6 +405,7 @@ export default function BarcodeScanner({
       >
         <div className="w-full max-w-sm">
           <label className="text-white/60 text-[13px] font-semibold mb-2 block">Enter barcode number</label>
+          {/* keyboard-exempt: scan target — the pad discards scanner bursts by design. */}
           <input
             ref={manualInputRef}
             type="text"
@@ -474,17 +476,16 @@ export default function BarcodeScanner({
               className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none">
               &minus;
             </button>
-            <input
-              type="text"
-              inputMode="decimal"
+            {/* A human counting, not the scanner — so this one DOES take the pad.
+                A file-level guard exemption for the scan-target field above used
+                to hide it, and the sweep quietly skipped it. */}
+            <NumberField
               value={qty}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^0-9.]/g, '');
-                if (v === '' || v === '.') { setQty(0); return; }
-                const n = parseFloat(v);
-                if (!isNaN(n)) setQty(n);
-              }}
-              className="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-green-500"
+              onValueChange={(v) => setQty(v === null ? 0 : Number(v))}
+              onCommit={(v) => setQty(v === null ? 0 : Number(v))}
+              mode="decimal" min={0}
+              aria-label="Quantity counted"
+              inputClassName="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-green-500"
             />
             <button onClick={() => setQty((q) => q + 1)}
               className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none">
@@ -623,18 +624,15 @@ function UnknownBarcodeSheet({ barcode, onCancel, onCreated }: UnknownBarcodeShe
           className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none"
           disabled={submitting}
         >&minus;</button>
-        <input
-          type="text"
-          inputMode="decimal"
+        {/* Also a human counting — see the note on the other quantity field. */}
+        <NumberField
           value={qtyValue}
-          onChange={(e) => {
-            const v = e.target.value.replace(/[^0-9.]/g, '');
-            if (v === '' || v === '.') { setQtyValue(0); return; }
-            const n = parseFloat(v);
-            if (!isNaN(n)) setQtyValue(n);
-          }}
-          className="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#F5800A]"
+          onValueChange={(v) => setQtyValue(v === null ? 0 : Number(v))}
+          onCommit={(v) => setQtyValue(v === null ? 0 : Number(v))}
+          mode="decimal" min={0}
           disabled={submitting}
+          aria-label="Quantity counted"
+          inputClassName="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#F5800A]"
         />
         <button
           onClick={() => setQtyValue((q) => q + 1)}

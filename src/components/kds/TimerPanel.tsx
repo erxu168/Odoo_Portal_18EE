@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTimers, formatDuration as fmt } from '@/lib/kds/timers';
+import NumberField from '@/components/ui/NumberField';
 import type { KitchenTimer } from '@/lib/kds/timers';
 
 const PRESETS = [1, 3, 5, 10];
@@ -66,13 +67,19 @@ export default function TimerPanel() {
                 value={label}
                 onChange={e => setLabel(e.target.value)}
               />
-              <input
-                className="kds-timer-input kds-timer-min"
-                type="number"
-                min="1"
+              {/* The row's flex sizing lives on kds-timer-min, so it moves to the
+                  wrapper and the input fills it. */}
+              <NumberField
+                className="kds-timer-min"
+                inputClassName="kds-timer-input w-full"
+                value={customMin === '' ? null : Number(customMin)}
+                onValueChange={v => setCustomMin(v === null ? '' : String(v))}
+                onCommit={v => setCustomMin(v === null ? '' : String(v))}
+                mode="integer"
+                allowEmpty
+                min={1}
                 placeholder="min"
-                value={customMin}
-                onChange={e => setCustomMin(e.target.value)}
+                aria-label="Minutes"
               />
               <button className="kds-timer-start" onClick={() => handleAdd(Number(customMin))}>Start</button>
             </div>

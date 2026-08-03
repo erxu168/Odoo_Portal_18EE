@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { TERMINATION_TYPE_LABELS, type TerminationType } from '@/types/termination';
 import { useCompany } from '@/lib/company-context';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import PdfViewer from '@/components/ui/PdfViewer';
 
 interface Employee {
@@ -292,7 +293,14 @@ export default function TermWizard({ onBack, onCreated, onHome, preselectEmploye
             <label className="flex items-center gap-3"><input type="checkbox" checked={gardenLeave} onChange={e => setGardenLeave(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[var(--fs-sm)]">Garden leave (Freistellung)</span></label>
             <label className="flex items-center gap-3"><input type="checkbox" checked={includeSeverance} onChange={e => setIncludeSeverance(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[var(--fs-sm)]">Severance payment (Abfindung)</span></label>
             {includeSeverance && (<label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Severance amount (EUR)</span>
-              <input type="number" step="0.01" value={severanceAmount} onChange={e => setSeveranceAmount(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}</>)}
+              {/* step="0.01" was only ever "cents allowed" — fractionDigits says that without
+                  making every amount pass a floating-point multiple-of-0.01 test. */}
+              <NumberField mode="decimal" allowEmpty fractionDigits={2} unit="€"
+                value={severanceAmount === '' ? null : Number(severanceAmount)}
+                onValueChange={v => setSeveranceAmount(v === null ? '' : String(v))}
+                onCommit={v => setSeveranceAmount(v === null ? '' : String(v))}
+                aria-label="Severance amount (EUR)"
+                inputClassName="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}</>)}
           {termType === 'bestaetigung' && (<label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Resignation received on</span>
             <input type="date" value={resignationDate} onChange={e => setResignationDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}
         </div>

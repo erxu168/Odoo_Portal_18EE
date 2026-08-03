@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 
 type Category = 'electricity' | 'gas' | 'water' | 'internet' | 'insurance' | 'recycling' | 'other';
 type Frequency = 'monthly' | 'quarterly' | 'annual' | 'one_time';
@@ -177,7 +178,16 @@ export default function EditUtility() {
         {/* Amount */}
         <div>
           <label className={labelCls}>Amount ({'\u20ac'}) *</label>
-          <input className={inputCls} value={amount} onChange={e => setAmount(e.target.value)} placeholder="120.00" inputMode="decimal" />
+          <NumberField
+            value={amount === '' ? null : Number(amount)}
+            onValueChange={v => setAmount(v === null ? '' : String(v))}
+            onCommit={v => setAmount(v === null ? '' : String(v))}
+            mode="decimal"
+            fractionDigits={2}
+            placeholder="120.00"
+            aria-label="Amount"
+            inputClassName={inputCls}
+          />
         </div>
 
         {/* Frequency */}

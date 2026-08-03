@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 export interface CookPlanItem {
   prep_item_id: number;
@@ -189,13 +190,17 @@ function ItemCard({ item, date, companyId, onAckChange }: { item: CookPlanItem; 
             className="w-10 h-10 rounded-lg border border-gray-200 bg-white text-[18px] font-bold active:bg-gray-50"
             aria-label="Decrease"
           >−</button>
-          <input
-            type="number"
-            inputMode="decimal"
-            value={qtyDraft}
-            onChange={e => setQtyDraft(e.target.value)}
-            className="flex-1 h-10 rounded-lg border border-gray-200 bg-white text-center text-[16px] font-bold"
-            autoFocus
+          <NumberField
+              autoFocus
+            className="flex-1"
+            value={qtyDraft === '' ? null : Number(qtyDraft)}
+            onValueChange={v => setQtyDraft(v === null ? '' : String(v))}
+            onCommit={v => setQtyDraft(v === null ? '' : String(v))}
+            mode="decimal"
+            allowEmpty
+            unit={item.unit}
+            aria-label={item.name}
+            inputClassName="w-full h-10 rounded-lg border border-gray-200 bg-white text-center text-[16px] font-bold"
           />
           <button
             onClick={() => setQtyDraft(String((parseFloat(qtyDraft) || 0) + (item.batch_size || 1)))}

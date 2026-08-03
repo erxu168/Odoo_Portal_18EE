@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import EmailSettings from '@/components/admin/EmailSettings';
 import ReminderSettings from '@/components/admin/ReminderSettings';
 
@@ -181,12 +182,13 @@ export default function AdminSettingsPage() {
                   -
                 </button>
                 <div className="flex-1 relative">
-                  <input
-                    type="number"
-                    value={globalTolerance}
-                    onChange={(e) => setGlobalTolerance(e.target.value)}
-                    min="0" max="100" step="0.5"
-                    className="w-full h-10 px-3 pr-8 rounded-xl bg-gray-50 border border-gray-200 text-center text-[16px] font-mono font-bold text-gray-900 focus:outline-none focus:border-green-500"
+                  <NumberField
+                    value={globalTolerance === '' ? null : Number(globalTolerance)}
+                    onValueChange={(v) => setGlobalTolerance(v === null ? '' : String(v))}
+                    onCommit={(v) => setGlobalTolerance(v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty min={0} max={100} unit="%"
+                    aria-label="Global default tolerance"
+                    inputClassName="w-full h-10 px-3 pr-8 rounded-xl bg-gray-50 border border-gray-200 text-center text-[16px] font-mono font-bold text-gray-900 focus:outline-none focus:border-green-500"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-gray-400 font-bold">%</span>
                 </div>
@@ -308,12 +310,13 @@ export default function AdminSettingsPage() {
                 -
               </button>
               <div className="flex-1 relative">
-                <input
-                  type="number"
-                  value={editingBom.pct}
-                  onChange={(e) => setEditingBom({ ...editingBom, pct: e.target.value })}
-                  min="0" max="100" step="0.5"
-                  className="w-full h-12 px-3 pr-8 rounded-xl bg-gray-50 border border-gray-200 text-center text-[24px] font-mono font-bold text-gray-900 focus:outline-none focus:border-green-500"
+                <NumberField
+                  value={editingBom.pct === '' ? null : Number(editingBom.pct)}
+                  onValueChange={(v) => setEditingBom({ ...editingBom, pct: v === null ? '' : String(v) })}
+                  onCommit={(v) => setEditingBom({ ...editingBom, pct: v === null ? '' : String(v) })}
+                  mode="decimal" allowEmpty min={0} max={100} unit="%"
+                  aria-label="Tolerance"
+                  inputClassName="w-full h-12 px-3 pr-8 rounded-xl bg-gray-50 border border-gray-200 text-center text-[24px] font-mono font-bold text-gray-900 focus:outline-none focus:border-green-500"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[16px] text-gray-400 font-bold">%</span>
               </div>

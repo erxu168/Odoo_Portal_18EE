@@ -12,8 +12,9 @@ interface InventoryDashboardProps {
   userRole: string;
   capabilities: string[];   // single source: the parent page's (seeded with staff defaults)
   onNavigate: (screen: string) => void;
-  /** Open a specific count session (today's due card → straight into the walk). */
-  onOpenSession: (sessionId: number) => void;
+  /** Open today's count. Several due counts open as ONE walk — each location
+   *  visited once — while each line still saves to its own count. */
+  onOpenSession: (sessionIds: number[]) => void;
   onHome: () => void;
 }
 
@@ -178,8 +179,13 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
             </p>
             {dueToday.length > 0 ? (
               <div className="flex flex-col gap-3">
+                {/* One card per due count, as today. Combining several into ONE
+                    walk is built (CountingSession takes sessionIds) but stays
+                    unreachable until the safe grouping lands: only counts of the
+                    SAME restaurant + stock location, with frozen product rows,
+                    and with no product in common, may share a walk. */}
                 {dueToday.map((sess: any) => (
-                  <DueCountCard key={sess.id} session={sess} onOpen={onOpenSession} />
+                  <DueCountCard key={sess.id} session={sess} onOpen={(id) => onOpenSession([id])} />
                 ))}
               </div>
             ) : dueLoadFailed ? (

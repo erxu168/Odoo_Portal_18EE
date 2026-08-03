@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 /**
  * SupplierForm — the ONE form for a supplier's fields, used everywhere a
@@ -135,7 +136,19 @@ export default function SupplierForm({ mode, initial, onSave, onCancel, onDelete
         </div>
         <div className="flex-1">
           <label className={lbl}>Min order (€)</label>
-          <input value={minOrder} onChange={(e) => setMinOrder(e.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" placeholder="0" className={inp} />
+          {/* Blank is a real answer here — it saves as 0, "no minimum". */}
+          <NumberField
+            value={minOrder === '' ? null : Number(minOrder)}
+            onValueChange={(v) => setMinOrder(v === null ? '' : String(v))}
+            onCommit={(v) => setMinOrder(v === null ? '' : String(v))}
+            mode="decimal"
+            allowEmpty
+            min={0}
+            unit="€"
+            aria-label="Minimum order value"
+            placeholder="0"
+            inputClassName={inp}
+          />
         </div>
       </div>
 

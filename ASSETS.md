@@ -31,8 +31,9 @@ gallery only, no camera (found live 2026-08-03, photo-required counts).
 | Asset | Path | What | users |
 |---|---|---|---|
 | `DropZone` | `ui/DropZone.tsx` | Wraps any target to accept a dragged-in file (handles enter/leave counting so nested elements don't flicker) | 3 |
-| `FilePicker` | `ui/FilePicker.tsx` | SINGLE OS-chooser input + **drag** + optional paste. Fine for document-first fields (PDFs); **not sufficient for photo-first fields** — the Android OS sheet may omit the camera. Use `PhotoSourceButtons`/the strip's chooser there | 7 |
-| `PhotoSourceButtons` | `ui/PhotoSourceButtons.tsx` | Take photo / library / file, mobile UA detection, **+ drag**. `facing` picks front/rear camera | 2 |
+| `FilePicker` | `ui/FilePicker.tsx` | The general picker + **drag** + optional paste. **Photo-only `accept` (every token an image) auto-opens `PhotoSourceSheet`** — so a photo field gets Camera·Photos·Files with no call-site change; document/mixed fields keep the OS chooser. `facing` picks the lens; `cameraOnly` forces the camera where other sources have their own buttons | 8 |
+| `PhotoSourceSheet` | `ui/PhotoSourceSheet.tsx` | **THE standard chooser**: Camera · Photos · Files in a bottom sheet. Use wherever a screen keeps its own trigger button. `facing` picks the lens | 4 |
+| `PhotoSourceButtons` | `ui/PhotoSourceButtons.tsx` | The three source buttons + drag; `facing` picks front/rear. **"Files" is deliberately unfiltered** — with `accept="image/*"` it opened the same gallery-only sheet as Photos, so it was not a third way in; non-images are rejected with a message | 2 |
 | `CameraCaptureModal` | `ui/CameraCaptureModal.tsx` | In-browser webcam capture for desktop | 1 |
 | `DocumentUploadWidget` | `ui/DocumentUploadWidget.tsx` | Document card: preview, replace, drag **in both states** | 2 |
 | `UploadWidget` | `ui/UploadWidget.tsx` | Simple file box, **+ drag** | 1 |
@@ -44,9 +45,41 @@ gallery only, no camera (found live 2026-08-03, photo-required counts).
 ### Conformance — audited 2026-07-30, 24 photo fields, ALL PASS
 **CORRECTION 2026-08-03:** that audit accepted bare `accept="image/*"` inputs
 as conformant. On the kitchen Android tablets they open the GALLERY ONLY — the
-camera never appears (staff hit this on photo-required counts). PhotoCaptureStrip's
-[+] now opens an explicit chooser (PhotoSourceButtons, rear camera). Fields
-still on FilePicker for photo-first use need the same treatment when touched.
+camera never appears (staff hit this on photo-required counts).
+
+**Portal-wide sweep, 2026-08-03.** Every photo-first field now presents its
+sources explicitly:
+- `FilePicker` opens `PhotoSourceSheet` automatically when `accept` is
+  images-only — that standardised **7 call sites at once** (purchase receive
+  check + issue, recipes ActiveRecording + EditStep, HR StepDocuments,
+  LocationForm, DocumentCapture's image slots). Document fields (PDF) keep the
+  plain OS chooser: a PDF has no camera.
+- `PhotoCaptureStrip`'s [+] (counting, waste, quick count, handover, unknown
+  barcode) opens the chooser.
+- Converted from raw inputs: `GoodsReceived`, `ProductDetail` (both triggers),
+  `FloorplanSpotSheet` (product photo AND spot photo), `AddMeterReading`.
+- `BatchPhotos`: its "Choose a file" button reused the image-filtered input
+  (same gallery-only sheet) — it now has a genuinely unfiltered Files input
+  beside the camera one.
+- Task PROOF photos (`tasks/staff`, `tasks/manager/dept/[id]`) went through a
+  detached `accept="image/*"` input built in `photoUpload.ts` — the exact
+  pattern this sweep exists to kill. Both pages now open `PhotoSourceSheet`
+  and call the existing `uploadTaskPhotoFile`.
+- `DocumentCapture`'s "Take Photo" opened the same generic chooser as the
+  "Choose Files" button next to it; it now forces the camera (`cameraOnly`),
+  which is legitimate precisely because the other sources have their own
+  buttons.
+- `GuidedTutorialEditor` (3 label-wrapped inputs: add, replace, replace-on-error)
+  converted to the chooser too.
+- Genuinely document-first and correctly left alone: `FloorplanManage` (PDF
+  plan), `BomDetail` (PDF), `PdfDocumentCard`, `PaymentsDashboard` (XML/CSV),
+  `KuendigungDocWidget`, and `DocumentCapture`'s mixed image+PDF slots (the
+  "Add" tile and the per-document grid).
+- `capture` now appears in exactly three sanctioned places, each ONE OF several
+  explicit buttons: `PhotoSourceButtons`' camera, `BatchPhotos`' camera, and
+  `FilePicker`'s `cameraOnly` (used only by DocumentCapture's "Take Photo").
+  `UploadWidget` also carries `capture` and is imported by `hr/RoteKarteInfo`
+  only — review it when that screen is next touched.
 
 Every photo field in the portal offers camera + gallery + file upload + drag.
 Two were worse than missing drag and are the reason to re-audit rather than trust
@@ -59,9 +92,8 @@ a rule:
 - **`purchase/page.tsx.bak`** also forced capture. Dead file, never compiled —
   deleted.
 
-`capture` now appears in exactly one place: `PhotoSourceButtons`' "Take photo"
-button, which is correct — it is one of three explicit buttons, so the other two
-still give gallery and files.
+(Superseded by the 2026-08-03 sweep below: `capture` now appears in three
+sanctioned places, each ONE OF several explicit buttons.)
 
 Fixed to reach conformance: `FilePicker` (7 screens at once, via `DropZone`),
 `PhotoSourceButtons`, `UploadWidget`, `DocumentUploadWidget` (its replace state

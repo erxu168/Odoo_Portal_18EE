@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import NumberField from '@/components/ui/NumberField';
 import { LABEL_SIZE_PRESETS } from '@/types/labeling';
 import type { SavedCustomSize, LabelSizePreference } from '@/types/labeling';
 
@@ -241,15 +242,21 @@ export default function LabelSizeSelector({ companyId, onSizeChange }: LabelSize
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-[var(--fs-xs)] text-gray-400 font-semibold mb-1 block">Width (mm)</label>
-              <input type="number" inputMode="decimal" min="20" max="108"
-                value={customWidth} onChange={e => setCustomWidth(e.target.value)}
-                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
+              <NumberField
+                value={customWidth === '' ? null : Number(customWidth)}
+                onValueChange={v => setCustomWidth(v === null ? '' : String(v))}
+                onCommit={v => setCustomWidth(v === null ? '' : String(v))}
+                mode="decimal" min={20} max={108} aria-label="Width (mm)"
+                inputClassName="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
             </div>
             <div className="flex-1">
               <label className="text-[var(--fs-xs)] text-gray-400 font-semibold mb-1 block">Height (mm)</label>
-              <input type="number" inputMode="decimal" min="25" max="300"
-                value={customHeight} onChange={e => setCustomHeight(e.target.value)}
-                className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
+              <NumberField
+                value={customHeight === '' ? null : Number(customHeight)}
+                onValueChange={v => setCustomHeight(v === null ? '' : String(v))}
+                onCommit={v => setCustomHeight(v === null ? '' : String(v))}
+                mode="decimal" min={25} max={300} aria-label="Height (mm)"
+                inputClassName="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
             </div>
           </div>
           {!showSaveDialog ? (

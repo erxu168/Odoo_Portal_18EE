@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 import { Sheet, PrimaryButton, parseAmount } from './common';
 import type { StorageRow } from './StorageTray';
 
@@ -72,8 +73,16 @@ export function ClearSheet({ item, onClose, onSubmit }: {
           {mode === 'some' && (
             <>
               <div className="flex items-center gap-2 mt-1">
-                <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" autoFocus placeholder="Amount"
-                  className={`flex-1 bg-gray-50 border rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none ${overMax ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-green-600'}`} />
+                {/* flex-1 moves to the wrapper: the input is no longer a direct flex child. */}
+                <NumberField
+              autoFocus
+                  className="flex-1"
+                  value={amount === '' ? null : Number(amount)}
+                  onValueChange={(v) => setAmount(v === null ? '' : String(v))}
+                  onCommit={(v) => setAmount(v === null ? '' : String(v))}
+                  mode="decimal" allowEmpty placeholder="Amount" unit={item.unit || undefined}
+                  aria-label="How much?"
+                  inputClassName={`w-full bg-gray-50 border rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none ${overMax ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-green-600'}`} />
                 <span className="text-[var(--fs-sm)] font-semibold text-gray-700">{item.unit}</span>
                 <span className="text-[var(--fs-xs)] text-gray-400">of {item.amount}</span>
               </div>

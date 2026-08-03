@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { pluralizePack } from '@/lib/crate-units';
+import NumberField from '@/components/ui/NumberField';
 
 /**
  * The packaging CHAIN for one product: box -> pack -> piece.
@@ -167,11 +168,15 @@ export default function PackagingLevels({ productId, baseWord, readOnly = false,
                 aria-label={`Level ${i + 1} name`}
                 className="w-28 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold" />
               <span className="text-[var(--fs-sm)] font-semibold text-gray-500">=</span>
-              <input value={String(r.to_base)} disabled={locked}
-                onChange={(e) => edit(i, { to_base: e.target.value })}
-                inputMode="decimal" placeholder="30"
+              <NumberField
+                value={String(r.to_base) === '' ? null : Number(r.to_base)}
+                disabled={locked}
+                // onValueChange only: an identical onCommit would fire on every
+                // blur and mark the editor dirty when nothing had been edited.
+                onValueChange={(v) => edit(i, { to_base: v === null ? '' : String(v) })}
+                mode="decimal" allowEmpty placeholder="30"
                 aria-label={`How many ${baseWord || 'units'} in one ${(r.name || `level ${i + 1}`)}`}
-                className="w-20 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
+                inputClassName="w-20 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
               <span className="text-[var(--fs-sm)] text-gray-400">{baseWord || 'units'}</span>
               {!readOnly && (
                 <button onClick={() => removeRow(i)} disabled={locked} aria-label={`Remove ${r.name || 'this level'}`}

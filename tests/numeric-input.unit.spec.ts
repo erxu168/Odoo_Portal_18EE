@@ -109,3 +109,27 @@ test('minExclusive means "more than", which is not the same as min: 1', () => {
   const atLeastOne = { mode: 'decimal' as const, allowEmpty: false, min: 1 };
   expect(ni.validate('0.5', atLeastOne).canCommit).toBe(false);
 });
+
+test('an in-progress draft survives the parent echoing the value back', () => {
+  // The field reports a parsed number on every keystroke and the caller echoes
+  // it straight back as the `value` prop. That echo must NOT read as an outside
+  // change, or the draft is wiped mid-typing and the decimal point is lost.
+  //
+  // Codex's counterexample, which the first fix missed: select the contents and
+  // type "." — that reports null, the echo lands, and without the check below
+  // the next digit turns an intended 0.5 into 5.
+  expect(ni.keepDraft({ draft: '.', prevValue: 2, value: null, reported: null })).toBe(true);
+
+  // The ordinary case: "2." reports 2, the prop does not move at all.
+  expect(ni.keepDraft({ draft: '2.', prevValue: 2, value: 2, reported: 2 })).toBe(true);
+
+  // A value from OUTSIDE — an async price/par load landing mid-typing — wins.
+  expect(ni.keepDraft({ draft: '2.', prevValue: 2, value: 7, reported: 2 })).toBe(false);
+
+  // Nothing being typed: there is no draft to keep.
+  expect(ni.keepDraft({ draft: null, prevValue: 2, value: 7, reported: undefined })).toBe(false);
+
+  // A stable NaN prop must not read as "changed" on every render and eat every
+  // keystroke — hence Object.is rather than !==.
+  expect(ni.keepDraft({ draft: '1.', prevValue: NaN, value: NaN, reported: undefined })).toBe(true);
+});

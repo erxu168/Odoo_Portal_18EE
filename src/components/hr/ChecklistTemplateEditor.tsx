@@ -7,6 +7,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import { LEVEL_LABEL } from './ChecklistSetup';
 import type { TemplateRow, TemplateTaskRow, Audience, ResponsibleType, UpsertTemplateTaskInput } from '@/types/staffing';
 
@@ -214,8 +215,11 @@ function TaskForm({ templateId, existing, assignees, onClose, onSaved }: {
         </div>
         {hasDeadline && (
           <div className="mt-3 flex items-center gap-3">
-            <input type="number" min={0} value={days} onChange={e => setDays(Math.max(0, Number(e.target.value)))}
-              className="w-20 rounded-xl border border-gray-300 bg-gray-50 px-3 py-2.5 text-[14px] text-center font-bold" />
+            <NumberField mode="integer" min={0} value={days}
+              onValueChange={v => setDays(Math.max(0, Number(v)))}
+              onCommit={v => setDays(Math.max(0, Number(v)))}
+              aria-label="Days after the start / change date" unit="days"
+              inputClassName="w-20 rounded-xl border border-gray-300 bg-gray-50 px-3 py-2.5 text-[14px] text-center font-bold" />
             <span className="text-[13px] text-gray-500">days</span>
             <div className="ml-auto flex items-center gap-2">
               <span className="text-[13px] text-gray-700">🔔 Remind</span>

@@ -16,8 +16,8 @@ const BURST_GAP_MS = 50;
 const BURST_TRIP = 4;
 
 function feed(keys: Array<{ ch: string; gap: number }>, rules: any) {
-  const burst: { last: number; count: number; burstStart: string | null; tripped: boolean } =
-    { last: 0, count: 0, burstStart: null, tripped: false };
+  const burst: { last: number; count: number; burstStart: string | null; tripped: boolean; beforeLastKey: string } =
+    { last: 0, count: 0, burstStart: null, tripped: false, beforeLastKey: '' };
   let buffer = '';
   let now = 0;
   for (const k of keys) {
@@ -30,13 +30,14 @@ function feed(keys: Array<{ ch: string; gap: number }>, rules: any) {
       burst.burstStart = null;
     } else {
       burst.count += 1;
-      if (burst.count === 1) burst.burstStart = buffer;
+      if (burst.count === 1) burst.burstStart = burst.beforeLastKey;
       if (burst.count >= BURST_TRIP) burst.tripped = true;
     }
     if (burst.tripped) {
       if (burst.burstStart !== null) buffer = burst.burstStart;
       continue;
     }
+    burst.beforeLastKey = buffer;
     buffer = ni.applyChar(buffer, k.ch, rules);
   }
   return buffer;
@@ -45,15 +46,17 @@ function feed(keys: Array<{ ch: string; gap: number }>, rules: any) {
 const DEC = { mode: 'decimal' as const, allowEmpty: false, min: 0 };
 
 test('a barcode scan into an open pad leaves the quantity untouched', () => {
-  // A ZQ310-class HID scanner fires a 13-digit EAN at ~10ms per key.
-  const scan = '4006381333931'.split('').map((ch) => ({ ch, gap: 10 }));
+  // A ZQ310-class HID scanner fires a 13-digit EAN at ~10ms per key. Note the
+  // FIRST digit arrives after an idle pause — timing alone cannot tell it from a
+  // human keystroke, and modelling it as fast is what hid a real bug here.
+  const scan = '4006381333931'.split('').map((ch, i) => ({ ch, gap: i === 0 ? 900 : 10 }));
   expect(feed(scan, DEC)).toBe('');
 
   // ...and a scan arriving after a human typed 12 rewinds to that 12, not to 12 + EAN.
   const typedThenScanned = [
     { ch: '1', gap: 300 },
     { ch: '2', gap: 300 },
-    ...'4006381333931'.split('').map((ch) => ({ ch, gap: 10 })),
+    ...'4006381333931'.split('').map((ch, i) => ({ ch, gap: i === 0 ? 900 : 10 })),
   ];
   expect(feed(typedThenScanned, DEC)).toBe('12');
 });
@@ -95,4 +98,38 @@ test("Manufacturing's tolerance keeps its deliberate zero exemption", () => {
 test('a purchase quantity of zero is committable — it is how a line is removed', () => {
   expect(ni.validate('0', DEC).canCommit).toBe(true);
   expect(ni.commit('0', DEC)).toBe(0);
+});
+
+test('a typed decimal point survives long enough to become a decimal', () => {
+  // THE REGRESSION THIS GUARDS: NumberField is controlled off a PARSED number.
+  // Without a local draft buffer, typing "2." parses to 2, the parent's state
+  // does not change, and React restores the input to "2" — eating the dot. The
+  // next key appends, so a typed 2.5 is stored as 25. On a wage, a price or a
+  // rent that is a silent 10x error.
+  //
+  // This models what the component must do: hold the raw text while typing, and
+  // only parse when reporting the value.
+  const rules = { mode: 'decimal' as const, allowEmpty: true };
+  let draft: string | null = null;
+  let reported: unknown = null;
+
+  function type(ch: string) {
+    const raw = ((draft ?? '') + ch).replace(',', '.');
+    draft = raw;                                  // the fix: keep what was typed
+    reported = raw === '' ? null : parseFloat(raw);
+  }
+
+  for (const ch of '2.5') type(ch);
+  expect(draft).toBe('2.5');
+  expect(reported).toBe(2.5);
+
+  // A German comma reaches the same place.
+  draft = null;
+  for (const ch of '0,5') type(ch);
+  expect(draft).toBe('0.5');
+  expect(reported).toBe(0.5);
+
+  // And the committed value round-trips through the shared rules unchanged.
+  expect(ni.commit('2.5', rules)).toBe(2.5);
+  expect(ni.commit('0.5', rules)).toBe(0.5);
 });

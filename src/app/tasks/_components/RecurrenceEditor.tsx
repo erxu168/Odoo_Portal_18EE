@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 import type { RecurrenceRule, RecurrenceType, RecurrenceEndType, MonthlyMode } from '@/lib/odoo-tasks';
 
 interface Props {
@@ -91,10 +92,13 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
       {v.type !== 'once' && (
         <div className="flex items-center gap-2">
           <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Every</label>
-          <input
-            type="number" min={1} value={v.interval}
-            onChange={e => set({ interval: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-            className="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+          <NumberField
+            value={v.interval}
+            onValueChange={n => set({ interval: Math.max(1, Number(n) || 1) })}
+            onCommit={n => set({ interval: Math.max(1, Number(n) || 1) })}
+            mode="integer" min={1}
+            aria-label={`Repeat every how many ${UNIT_LABEL[v.type]}s`}
+            inputClassName="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
           />
           <span className="text-sm text-gray-700">{UNIT_LABEL[v.type]}{v.interval !== 1 ? 's' : ''}</span>
         </div>
@@ -131,6 +135,8 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
                   onChange={() => set({ monthly_mode: 'day_of_month' as MonthlyMode })}
                 />
                 On day
+                {/* keyboard-exempt: the in-app pad has no minus key,
+                    and -1 (last day of the month) has to stay typeable. */}
                 <input
                   type="number" min={-1} max={31} value={v.day_of_month}
                   onChange={e => set({ day_of_month: parseInt(e.target.value, 10) || 1 })}
@@ -207,10 +213,15 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
             <label className="flex items-center gap-2 text-sm">
               <input type="radio" checked={v.end_type === 'after_count'} onChange={() => set({ end_type: 'after_count' as RecurrenceEndType })} />
               After
-              <input
-                type="number" min={1} value={v.count || 1}
-                onChange={e => set({ count: Math.max(1, parseInt(e.target.value, 10) || 1), end_type: 'after_count' })}
-                className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+              <NumberField
+                value={v.count || 1}
+                // onValueChange only. Passing this as onCommit too would fire it
+                // on blur, so tabbing past the box would silently switch the
+                // schedule's end condition without anyone typing a thing.
+                onValueChange={n => set({ count: Math.max(1, Number(n) || 1), end_type: 'after_count' })}
+                mode="integer" min={1}
+                aria-label="How many times"
+                inputClassName="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
               />
               times
             </label>

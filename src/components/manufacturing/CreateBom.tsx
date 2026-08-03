@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 
 interface CreateBomProps {
   onBack: () => void;
@@ -218,14 +219,18 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                     <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{line.product_name}</div>
                     <div className="text-[var(--fs-xs)] text-gray-400">{line.uom_name}</div>
                   </div>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.0001"
-                    min="0"
-                    value={line.product_qty || ''}
-                    onChange={e => updateLineQty(line.id, e.target.value)}
-                    className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-green-600"
+                  {/* step="0.0001" becomes fractionDigits — the pad's step rule
+                      is a multiple check that float dust can fail on a legal
+                      4-decimal quantity. */}
+                  <NumberField
+                    value={line.product_qty || null}
+                    onValueChange={v => updateLineQty(line.id, v === null ? '' : String(v))}
+                    onCommit={v => updateLineQty(line.id, v === null ? '' : String(v))}
+                    mode="decimal"
+                    allowEmpty
+                    min={0}
+                    aria-label={`Quantity of ${line.product_name} in ${line.uom_name}`}
+                    inputClassName="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-green-600"
                   />
                   <button onClick={() => removeLine(line.id)}
                     className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0">
@@ -319,8 +324,12 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                 </div>
                 <div className="mb-3">
                   <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Duration (minutes)</label>
-                  <input type="number" inputMode="decimal" value={newOpDuration} onChange={e => setNewOpDuration(e.target.value)} placeholder="e.g. 30"
-                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
+                  <NumberField
+                    value={newOpDuration === '' ? null : Number(newOpDuration)}
+                    onValueChange={v => setNewOpDuration(v === null ? '' : String(v))}
+                    onCommit={v => setNewOpDuration(v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty min={0} placeholder="e.g. 30" aria-label="Duration (minutes)"
+                    inputClassName="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
                 </div>
                 <div className="mb-3">
                   <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Instructions (optional)</label>

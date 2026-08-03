@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 import { Sheet, Field, Select, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync, fmtDayShort, parseAmount } from './common';
 import { LocationPickerSheet, LocationPathButton, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import type { StorageRow } from './StorageTray';
@@ -101,8 +102,13 @@ export function StorageItemDetail({ item, preppedItems, units, canEdit, onClose,
           )}
           <Field label="How much?">
             <div className="grid grid-cols-2 gap-2">
-              <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 outline-none focus:border-green-600" />
+              <NumberField
+                value={amount === '' ? null : Number(amount)}
+                onValueChange={(v) => setAmount(v === null ? '' : String(v))}
+                onCommit={(v) => setAmount(v === null ? '' : String(v))}
+                mode="decimal" allowEmpty placeholder="Amount" unit={unit || undefined}
+                aria-label="How much?"
+                inputClassName="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 outline-none focus:border-green-600" />
               <Select value={unit} onChange={setUnit} options={unitOptions} placeholder="Unit" />
             </div>
           </Field>

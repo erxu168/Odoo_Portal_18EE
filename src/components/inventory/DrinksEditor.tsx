@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 
 type Drink = { id: number; name: string; barcode: string | null; price: number };
 type Option = { id: number; name: string };
@@ -176,12 +177,18 @@ export default function DrinksEditor({ onBack }: { onBack: () => void }) {
                 <span className="text-[var(--fs-sm)] font-semibold text-gray-700">Price</span>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="text-gray-500 text-[var(--fs-lg)]">€</span>
-                  <input
-                    value={form.price}
-                    onChange={(e) => setForm((f) => ({ ...f, price: e.target.value.replace(/[^0-9.,]/g, '') }))}
-                    inputMode="decimal"
+                  <NumberField
+                    value={form.price === '' ? null : Number(form.price)}
+                    onValueChange={(v) => setForm((f) => ({ ...f, price: v === null ? '' : String(v) }))}
+                    onCommit={(v) => setForm((f) => ({ ...f, price: v === null ? '' : String(v) }))}
+                    mode="decimal"
+                    allowEmpty
+                    min={0}
+                    fractionDigits={2}
+                    unit="€"
                     placeholder="0.00"
-                    className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-base)] font-mono outline-none focus:border-green-500"
+                    aria-label="Price"
+                    inputClassName="w-32 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-base)] font-mono outline-none focus:border-green-500"
                   />
                 </div>
               </label>

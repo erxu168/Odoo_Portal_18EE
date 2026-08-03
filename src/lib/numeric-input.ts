@@ -227,3 +227,31 @@ export function commit(buffer: string, rules: NumericRules): NumericValue | unde
 export function displayText(buffer: string): string {
   return buffer === '' ? '0' : buffer;
 }
+
+/**
+ * Should an in-progress typed draft survive this render?
+ *
+ * A number field shows raw text while it is being typed into (otherwise the
+ * decimal point is untypeable — see ui/NumberField). That draft must yield to a
+ * value arriving from OUTSIDE, but NOT to the parent echoing back the very value
+ * the field just reported, which is what a `onValueChange={v => setX(String(v))}`
+ * caller does on every keystroke.
+ *
+ * Without the `reported` check, selecting a field's contents and typing "."
+ * reports null, the echo reads as an external change, the draft is wiped, and
+ * the next digit turns an intended 0.5 into 5.
+ */
+export function keepDraft(args: {
+  draft: string | null;
+  prevValue: NumericValue;
+  value: NumericValue;
+  /** The value this field last reported upward, if any. */
+  reported: NumericValue | undefined;
+}): boolean {
+  const { draft, prevValue, value, reported } = args;
+  if (draft === null) return false;
+  // Object.is, not !==: a stable NaN prop would otherwise read as changed on
+  // every render and discard every keystroke.
+  if (Object.is(prevValue, value)) return true;
+  return Object.is(reported, value); // our own echo — not an outside change
+}

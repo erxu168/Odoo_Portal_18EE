@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useKds } from '@/lib/kds/state';
+import NumberField from '@/components/ui/NumberField';
 import type { KdsSettings, SourceStation, PrepType } from '@/types/kds';
 import { STATION_META, PREP_TYPE_META } from '@/types/kds';
 
@@ -129,13 +130,16 @@ function PosConfigRow({ value, onChange }: { value: number; onChange: (v: number
           </select>
         ) : (
           // Couldn't load the list — fall back to manual entry so it's never a dead end.
-          <input
-            type="number"
-            className="kds-settings-input"
+          <NumberField
+            inputClassName="kds-settings-input"
             value={value}
+            onValueChange={v => onChange(v === null ? 0 : Number(v))}
+            onCommit={v => onChange(v === null ? 0 : Number(v))}
+            mode="integer"
+            allowEmpty
             min={0}
             max={9999}
-            onChange={e => onChange(Number(e.target.value) || 0)}
+            aria-label="Connected register"
           />
         )}
       </div>
@@ -152,13 +156,16 @@ function NumRow({ label, value, onChange }: { label: string; value: number; onCh
   return (
     <div className="kds-settings-row">
       <span className="kds-settings-label">{label}</span>
-      <input
-        type="number"
-        className="kds-settings-input"
+      <NumberField
+        inputClassName="kds-settings-input"
         value={value}
+        onValueChange={v => onChange(v === null ? 0 : Number(v))}
+        onCommit={v => onChange(v === null ? 0 : Number(v))}
+        mode="integer"
+        allowEmpty
         min={0}
         max={999}
-        onChange={e => onChange(Number(e.target.value) || 0)}
+        aria-label={label}
       />
     </div>
   );
