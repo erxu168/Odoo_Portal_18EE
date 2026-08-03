@@ -1,20 +1,23 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
 import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
 import { berlinToday } from '@/lib/berlin-date';
+import DueCountCard from './DueCountCard';
 
 interface InventoryDashboardProps {
   userRole: string;
   capabilities: string[];   // single source: the parent page's (seeded with staff defaults)
   onNavigate: (screen: string) => void;
+  /** Open a specific count session (today's due card → straight into the walk). */
+  onOpenSession: (sessionId: number) => void;
   onHome: () => void;
 }
 
-export default function InventoryDashboard({ userRole, capabilities, onNavigate, onHome }: InventoryDashboardProps) {
+export default function InventoryDashboard({ userRole, capabilities, onNavigate, onOpenSession, onHome }: InventoryDashboardProps) {
   // What a person actually wants to know: how many PRODUCTS are waiting to be
   // counted today. The old numbers counted counting SESSIONS and called them
   // "lists" — so one list with six unfinished days read as "7 lists waiting",
@@ -30,6 +33,12 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
   });
   const [loading, setLoading] = useState(true);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+  // TODAY's open count sessions — shown as cards at the top so the count is the
+  // first thing staff see, not something behind a tile.
+  const [dueToday, setDueToday] = useState<any[]>([]);
+  // A failed load must NEVER read as "all caught up" — staff would skip a real
+  // count. Only a successful sessions response may show the empty state.
+  const [dueLoadFailed, setDueLoadFailed] = useState(false);
 
   const router = useRouter();
   const canManage = userRole === 'manager' || userRole === 'admin';
@@ -47,19 +56,29 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
     }).catch(() => {});
   }, []);
 
+  // Only the LATEST request may write state: `canManage` flips during auth
+  // hydration and fires a second fetch, and a slower older response must not
+  // overwrite the newer one (or resurrect a cleared error).
+  const fetchSeq = useRef(0);
+
   async function fetchStats() {
+    const token = ++fetchSeq.current;
     setLoading(true);
+    setDueLoadFailed(false);
     try {
       const [sessRes, quickRes, tmplRes] = await Promise.all([
         fetch('/api/inventory/sessions'),
         canManage ? fetch('/api/inventory/quick-count') : null,
         canManage ? fetch('/api/inventory/templates') : null,
       ]);
+      if (!sessRes.ok) throw new Error(`sessions ${sessRes.status}`);
       const sessData = await sessRes.json();
+      if (fetchSeq.current !== token) return;   // a newer request took over
       const sessions = sessData.sessions || [];
       const today = berlinToday();   // the restaurant's day, not UTC's
       const open = sessions.filter((s: any) => s.status === 'pending' || s.status === 'in_progress');
       const todays = open.filter((s: any) => s.scheduled_date === today);
+      setDueToday(todays);
       // Products, not counts. Yesterday's shelf cannot be counted today, so
       // older counts are NOT added in — that is how this reached "281 waiting".
       // A list built from CATEGORIES freezes no line rows, so lines_total is 0
@@ -86,20 +105,27 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
         templates = (tmplData.templates || []).length;
       }
 
+      // The quick/template json() awaits above are suspension points too — a
+      // newer request may have taken over while they parsed.
+      if (fetchSeq.current !== token) return;
       setStats({ toCount, countedToday, submitted, quickPending, templates, olderOpen, openWithoutLines: withoutLines });
     } catch (err) {
       console.error('Failed to load inventory stats:', err);
+      if (fetchSeq.current === token) {
+        setDueLoadFailed(true);
+        // Stale cards must not paper over a failed load — staff would trust a
+        // list that may no longer be true, and the retry row would never show.
+        setDueToday([]);
+      }
     } finally {
-      setLoading(false);
+      if (fetchSeq.current === token) setLoading(false);
     }
   }
 
   const reviewCount = stats.submitted + stats.quickPending;
+  // No "My Lists" tile any more: today's counts are cards at the top of this
+  // screen, and past counts stay reachable via the "To count"/"Counted" chips.
   const tiles = [
-    { id: 'my-lists', label: 'My Lists', emoji: '📋',
-      sublabel: stats.toCount > 0 ? `${stats.toCount} product${stats.toCount === 1 ? '' : 's'} to count`
-        : stats.countedToday > 0 ? 'All counted today' : 'Assigned counts',
-      badge: stats.toCount },
     { id: 'quick-count', label: 'Quick Count', emoji: '🔍', sublabel: 'Search + count any item', badge: 0 },
     ...(can('inventory.moingredients.view') ? [{ id: 'mo-ingredients', label: 'MO Ingredients', emoji: '🧾', sublabel: 'Confirmed MO needs', badge: 0 }] : []),
     { id: 'goods-received', label: 'Goods received', emoji: '📥', sublabel: 'Log deliveries in', badge: 0 },
@@ -141,6 +167,35 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
             onClick={can('inventory.review.approve') ? () => onNavigate('review') : undefined} />
           <KpiChip value={stats.countedToday} label="Counted" onClick={() => onNavigate('my-lists')} />
         </KpiRow>
+
+        {/* TODAY'S COUNTS — the reason staff opened this module, so they're the
+            first real content: one tappable card per due session, straight into
+            the walk. When nothing is due, say so plainly (never "0 to count"). */}
+        {!loading && (
+          <div className="mb-4">
+            <p className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 px-1">
+              Today&rsquo;s count{dueToday.length > 1 ? 's' : ''}
+            </p>
+            {dueToday.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {dueToday.map((sess: any) => (
+                  <DueCountCard key={sess.id} session={sess} onOpen={onOpenSession} />
+                ))}
+              </div>
+            ) : dueLoadFailed ? (
+              <button type="button" onClick={fetchStats}
+                className="w-full bg-red-50 border border-red-200 rounded-2xl px-4 py-3.5 flex items-center gap-2.5 text-left active:bg-red-100">
+                <span className="text-red-600 font-bold" aria-hidden="true">!</span>
+                <span className="text-[var(--fs-sm)] font-semibold text-red-700">Couldn&rsquo;t load today&rsquo;s counts — tap to retry</span>
+              </button>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3.5 flex items-center gap-2.5">
+                <span className="text-green-600 font-bold" aria-hidden="true">✓</span>
+                <span className="text-[var(--fs-sm)] font-semibold text-gray-600">All caught up — nothing to count today</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Counts from earlier days that were never finished. Stated on its own
             and NOT added into today's number: yesterday's shelf cannot be
