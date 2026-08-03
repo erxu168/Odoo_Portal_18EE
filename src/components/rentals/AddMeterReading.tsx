@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import DropZone from '@/components/ui/DropZone';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 
 interface MeterInfo {
   id: number;
@@ -185,12 +186,14 @@ export default function AddMeterReading() {
         {/* Reading Value */}
         <div>
           <label className={labelCls}>Reading Value *</label>
-          <input
-            className={inputCls}
-            value={readingValue}
-            onChange={e => setReadingValue(e.target.value)}
+          <NumberField
+            value={readingValue === '' ? null : Number(readingValue)}
+            onValueChange={v => setReadingValue(v === null ? '' : String(v))}
+            onCommit={v => setReadingValue(v === null ? '' : String(v))}
+            mode="decimal"
             placeholder="12345.67"
-            inputMode="decimal"
+            aria-label="Reading Value"
+            inputClassName={inputCls}
           />
         </div>
 

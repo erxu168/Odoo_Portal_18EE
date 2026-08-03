@@ -356,7 +356,7 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
                   value={weeklyHours === '' ? null : Number(weeklyHours)}
                   onValueChange={v => setWeeklyHours(v === null ? '' : String(v))}
                   onCommit={v => setWeeklyHours(v === null ? '' : String(v))}
-                  mode="decimal" allowEmpty min={0} step={0.5}
+                  mode="decimal" allowEmpty min={0}
                   aria-label="Hours per week" placeholder="e.g. 20" inputClassName="form-inp" />
               </Field>
               <Field label="Days / week" className="flex-1">

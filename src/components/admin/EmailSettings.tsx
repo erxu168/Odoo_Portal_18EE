@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 /**
  * Admin → Email (SMTP) settings, per company. Each restaurant can use its own
@@ -193,7 +194,12 @@ export default function EmailSettings() {
             </div>
             <div>
               <label className={lbl}>Port</label>
-              <input value={port} onChange={e => setPort(e.target.value)} placeholder="465" inputMode="numeric" className={inp} />
+              <NumberField
+                value={port === '' ? null : Number(port)}
+                onValueChange={v => setPort(v === null ? '' : String(v))}
+                onCommit={v => setPort(v === null ? '' : String(v))}
+                mode="integer" allowEmpty placeholder="465" aria-label="Port" inputClassName={inp}
+              />
             </div>
             <div>
               <label className={lbl}>Security</label>

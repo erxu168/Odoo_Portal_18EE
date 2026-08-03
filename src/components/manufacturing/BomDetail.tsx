@@ -6,6 +6,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import AppHeader from '@/components/ui/AppHeader';
 import { DragRow } from '@/components/ui/DragRow';
 import RichTextEditor from '@/components/ui/RichTextEditor';
+import NumberField from '@/components/ui/NumberField';
 import ShelfLifeCard from '@/components/manufacturing/ShelfLifeCard';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
@@ -527,8 +528,12 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Duration (minutes)</label>
-          <input type="number" inputMode="decimal" value={op.time_cycle_manual || ''} onChange={e => onChange({ time_cycle_manual: parseFloat(e.target.value) || 0 })} placeholder="e.g. 30"
-            className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
+          <NumberField
+            value={op.time_cycle_manual || null}
+            onValueChange={v => onChange({ time_cycle_manual: v === null ? 0 : Number(v) })}
+            onCommit={v => onChange({ time_cycle_manual: v === null ? 0 : Number(v) })}
+            mode="decimal" allowEmpty min={0} placeholder="e.g. 30" aria-label="Duration (minutes)"
+            inputClassName="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Instructions</label>
@@ -742,14 +747,18 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
                   <div className="text-[var(--fs-sm)] font-bold text-gray-900 break-words leading-snug">{line.product_name}</div>
                   <div className="text-[var(--fs-xs)] text-gray-400">{line.uom}</div>
                 </div>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.0001"
-                  min="0"
-                  value={line.product_qty || ''}
-                  onChange={e => updateLineQty(line.line_id, e.target.value)}
-                  className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-green-600"
+                {/* step="0.0001" carried over as fractionDigits: the pad's step
+                    rule is a multiple check, and at five-figure gram quantities
+                    float dust makes a legal 4-decimal value fail it. */}
+                <NumberField
+                  value={line.product_qty || null}
+                  onValueChange={v => updateLineQty(line.line_id, v === null ? '' : String(v))}
+                  onCommit={v => updateLineQty(line.line_id, v === null ? '' : String(v))}
+                  mode="decimal"
+                  allowEmpty
+                  min={0}
+                  aria-label={`Quantity of ${line.product_name} in ${line.uom}`}
+                  inputClassName="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-green-600"
                 />
                 <div className="w-12 text-right text-[var(--fs-xs)] text-gray-400 font-mono flex-shrink-0">
                   {editIngredientTotal > 0 ? `${((line.product_qty / editIngredientTotal) * 100).toFixed(1)}%` : ''}

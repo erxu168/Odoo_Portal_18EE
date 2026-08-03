@@ -9,6 +9,7 @@
  */
 import React, { useRef, useState } from 'react';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import NumberField from '@/components/ui/NumberField';
 
 type Match = { id: number; name: string; barcode: string | null; price: number };
 type LogEntry = { name: string; barcode: string; price: number; mode: 'attached' | 'created' };
@@ -147,14 +148,19 @@ export default function DrinksScanner() {
           </div>
           <div className="text-[var(--fs-sm)] text-gray-500 mt-1">Point the scanner at the bottle or can barcode.</div>
           <div className="mt-4 flex gap-2">
+            {/* Stays a native input: this is a SCAN TARGET, and the shared pad
+                discards scanner bursts by design. It also has to look up on
+                ENTER — a commit-on-blur would fire the lookup on a half-typed
+                code and drive the screen into match-or-create. */}
             <input
               value={manualBarcode}
-              onChange={(e) => setManualBarcode(e.target.value)}
+              onChange={(e) => setManualBarcode(e.target.value.replace(/[^0-9]/g, ''))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && manualBarcode.trim()) { handleBarcode(manualBarcode.trim()); setManualBarcode(''); }
               }}
-              placeholder="…or type a barcode + Enter"
               inputMode="numeric"
+              placeholder="…or type a barcode + Enter"
+              aria-label="Barcode"
               className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)]"
             />
           </div>
@@ -214,14 +220,24 @@ export default function DrinksScanner() {
             />
             <div className="flex gap-2 items-center">
               <span className="text-gray-500">€</span>
-              <input
-                value={newPrice}
-                onChange={(e) => setNewPrice(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') createNew(); }}
+              {/* The Enter-to-create shortcut goes with the raw input: creating on
+                  commit would fire on blur too, and blurring a price must never
+                  create a product. The "Create drink" button beside it is the way. */}
+              <div onKeyDown={(e) => { if (e.key === 'Enter') createNew(); }}>
+              <NumberField
+                value={newPrice === '' ? null : Number(newPrice)}
+                onValueChange={(v) => setNewPrice(v === null ? '' : String(v))}
+                onCommit={(v) => setNewPrice(v === null ? '' : String(v))}
+                mode="decimal"
+                allowEmpty
+                min={0}
+                fractionDigits={2}
+                unit="€"
                 placeholder="Price"
-                inputMode="decimal"
-                className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)]"
+                aria-label="Price"
+                inputClassName="w-28 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)]"
               />
+            </div>
               <button
                 onClick={createNew}
                 disabled={phase !== 'choose'}

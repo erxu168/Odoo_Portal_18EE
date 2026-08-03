@@ -4,6 +4,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
 import FilePicker from "@/components/ui/FilePicker";
+import NumberField from '@/components/ui/NumberField';
 
 export interface RecordedIngredient {
   id: string;            // local ID for UI tracking
@@ -296,9 +297,13 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
 
               {/* Qty + UoM row */}
               <div className="flex gap-2 mb-2">
-                <input type="text" value={newIngQty} onChange={(e) => setNewIngQty(e.target.value)}
-                  placeholder="Qty" maxLength={10} inputMode="decimal"
-                  className="w-20 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[14px] text-white placeholder-white/30" />
+                <NumberField
+                  value={newIngQty === '' ? null : Number(newIngQty)}
+                  onValueChange={(v) => setNewIngQty(v === null ? '' : String(v))}
+                  onCommit={(v) => setNewIngQty(v === null ? '' : String(v))}
+                  mode="decimal" allowEmpty maxLength={10}
+                  placeholder="Qty" aria-label="Qty"
+                  inputClassName="w-20 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[14px] text-white placeholder-white/30" />
                 <button onClick={() => { loadUoms(); setShowUomPicker(!showUomPicker); }}
                   className="flex-1 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[14px] text-left text-zinc-300 active:bg-zinc-700">
                   {selectedUomId ? uoms.find(u => u.id === selectedUomId)?.name || 'Unit' : 'Select unit...'}

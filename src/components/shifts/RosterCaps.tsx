@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import { Badge, EmptyState, SearchBar, Sheet, Spinner } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
 import { useCompany } from '@/lib/company-context';
@@ -350,15 +351,17 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
             <div>
               <div className={ds.label}>Monthly hour cap</div>
               <div className="flex items-center gap-2 max-w-[220px] bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus-within:border-green-600">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.5"
-                  value={capStr}
-                  onChange={e => setCapStr(e.target.value)}
+                <NumberField
+                  mode="decimal"
+                  allowEmpty
+                  min={0}
+                  value={capStr === '' ? null : Number(capStr)}
+                  onValueChange={v => setCapStr(v === null ? '' : String(v))}
+                  onCommit={v => setCapStr(v === null ? '' : String(v))}
                   placeholder="—"
-                  className="w-16 bg-transparent outline-none text-[var(--fs-md)] font-semibold text-gray-900 placeholder-gray-400"
+                  aria-label="Monthly hour cap"
+                  unit="hours / month"
+                  inputClassName="w-16 bg-transparent outline-none text-[var(--fs-md)] font-semibold text-gray-900 placeholder-gray-400"
                 />
                 <span className="text-[var(--fs-sm)] text-gray-400 whitespace-nowrap">hours / month</span>
               </div>
@@ -427,14 +430,17 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
               <div className={ds.label}>
                 Kiosk PIN{pinnedIds.has(editing.id) ? <span className="text-green-600 font-bold"> · set ✓</span> : ''}
               </div>
+              {/* Stays a native input: the shared pad shows its buffer at 36px in
+                  a full-width sheet, which is the wrong surface for a PIN on a
+                  tablet other people can see. Every other PIN screen is exempt. */}
               <input
-                type="text"
                 inputMode="numeric"
                 pattern="\d*"
                 maxLength={4}
                 value={pinStr}
                 onChange={e => setPinStr(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 placeholder={pinnedIds.has(editing.id) ? '•••• (blank = keep)' : 'Set a 4-digit PIN'}
+                aria-label="Kiosk PIN"
                 className="w-full max-w-[220px] bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[var(--fs-md)] font-semibold text-gray-900 tracking-[0.4em] outline-none focus:border-green-600"
               />
               <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5 leading-snug">

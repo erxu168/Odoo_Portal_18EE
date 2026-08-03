@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import DropZone from '@/components/ui/DropZone';
 import { useRouter } from 'next/navigation';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import NumberField from '@/components/ui/NumberField';
 import { downscale } from '@/components/inventory/LocationForm';
 import type { FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
 
@@ -302,14 +303,17 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
                   aria-label="What are they called"
                   className="h-11 min-w-0 flex-1 rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
                 />
-                <input
-                  type="number"
+                {/* integer: shelves come whole. The clamp stays as the last word,
+                    so a typed value can never leave the 1–40 the server accepts. */}
+                <NumberField
+                  value={levels.count}
+                  onValueChange={v => setLevels(l => ({ ...l, count: Math.min(40, Math.max(1, Number(v) || 1)) }))}
+                  onCommit={v => setLevels(l => ({ ...l, count: Math.min(40, Math.max(1, Number(v) || 1)) }))}
+                  mode="integer"
                   min={1}
                   max={40}
-                  value={levels.count}
-                  onChange={e => setLevels(l => ({ ...l, count: Math.min(40, Math.max(1, Number(e.target.value) || 1)) }))}
                   aria-label="How many"
-                  className="h-11 w-20 rounded-xl border-[1.5px] border-gray-200 px-3 text-center text-[14px] font-bold outline-none focus:border-blue-600"
+                  inputClassName="h-11 w-20 rounded-xl border-[1.5px] border-gray-200 px-3 text-center text-[14px] font-bold outline-none focus:border-blue-600"
                 />
               </div>
               <p className="mb-2 text-[11.5px] text-gray-500">

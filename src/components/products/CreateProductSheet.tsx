@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import NumberField from '@/components/ui/NumberField';
 
 interface UnitOption { id: number; name: string }
 interface CategoryOption { id: number; name: string }
@@ -187,7 +188,12 @@ export default function CreateProductSheet({
           {isPurchase && (
             <div className="flex-1 min-w-0">
               <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Price (€)</label>
-              <input value={priceStr} onChange={(e) => setPriceStr(e.target.value)} inputMode="decimal" placeholder="0.00" className={inputCls} />
+              <NumberField
+                value={priceStr === '' ? null : Number(priceStr)}
+                onValueChange={(v) => setPriceStr(v === null ? '' : String(v))}
+                onCommit={(v) => setPriceStr(v === null ? '' : String(v))}
+                mode="decimal" allowEmpty min={0} fractionDigits={2} unit="€"
+                placeholder="0.00" aria-label="Price" inputClassName={inputCls} />
             </div>
           )}
         </div>
@@ -227,8 +233,11 @@ export default function CreateProductSheet({
             <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
               Barcode <span className="normal-case font-normal">(optional)</span>
             </label>
-            <input value={barcode} onChange={(e) => setBarcode(e.target.value)}
-              inputMode="numeric" placeholder="Scan or type it"
+            {/* Stays a native input: this is a SCAN TARGET, and the shared pad
+                discards scanner bursts by design. Routing it through the pad
+                makes a fast scanner do nothing and a slow one auto-commit. */}
+            <input value={barcode} onChange={(e) => setBarcode(e.target.value.replace(/[^0-9]/g, ''))}
+              inputMode="numeric" placeholder="Scan or type it" aria-label="Barcode"
               className={`${inputCls} mb-1`} />
             <p className="text-[11px] text-gray-400 mb-4">
               Lets staff scan it during a count instead of searching for it.
@@ -262,7 +271,12 @@ export default function CreateProductSheet({
             </div>
             <div className="flex-1 min-w-0">
               <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Par level <span className="normal-case font-normal">(target)</span></label>
-              <input value={parLevelStr} onChange={(e) => setParLevelStr(e.target.value)} inputMode="decimal" placeholder="0" className={inputCls} />
+              <NumberField
+                value={parLevelStr === '' ? null : Number(parLevelStr)}
+                onValueChange={(v) => setParLevelStr(v === null ? '' : String(v))}
+                onCommit={(v) => setParLevelStr(v === null ? '' : String(v))}
+                mode="decimal" allowEmpty min={0}
+                placeholder="0" aria-label="Par level" inputClassName={inputCls} />
             </div>
           </div>
         )}

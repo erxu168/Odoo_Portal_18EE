@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 import PrepItemForm, { PrepItemFormValues } from './PrepItemForm';
 import { DEFAULT_COMPANY_ID } from './companies';
 
@@ -257,20 +258,27 @@ export default function PrepItemDetail({ itemId }: { itemId: number }) {
           <form onSubmit={handleAddLink} className="px-4 pt-3 pb-4 space-y-2 border-t border-gray-100 bg-gray-50">
             <div className="text-[11px] font-semibold tracking-wider uppercase text-gray-500">Add link</div>
             <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
+              {/* The POS id is an Odoo record id, never a code with leading
+                  zeros — it stays a parsed whole number. */}
+              <NumberField
+                value={linkForm.pos_product_id === '' ? null : Number(linkForm.pos_product_id)}
+                onValueChange={v => setLinkForm({ ...linkForm, pos_product_id: v === null ? '' : String(v) })}
+                onCommit={v => setLinkForm({ ...linkForm, pos_product_id: v === null ? '' : String(v) })}
+                mode="integer"
+                allowEmpty
                 placeholder="POS ID"
-                value={linkForm.pos_product_id}
-                onChange={e => setLinkForm({ ...linkForm, pos_product_id: e.target.value })}
-                className="h-10 px-3 rounded-lg border border-gray-200 bg-white text-[13px]"
+                aria-label="POS ID"
+                inputClassName="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-[13px]"
               />
-              <input
-                type="number"
-                step="0.1"
+              <NumberField
+                value={linkForm.portions_per_sale === '' ? null : Number(linkForm.portions_per_sale)}
+                onValueChange={v => setLinkForm({ ...linkForm, portions_per_sale: v === null ? '' : String(v) })}
+                onCommit={v => setLinkForm({ ...linkForm, portions_per_sale: v === null ? '' : String(v) })}
+                mode="decimal"
+                allowEmpty
                 placeholder="Portions/sale"
-                value={linkForm.portions_per_sale}
-                onChange={e => setLinkForm({ ...linkForm, portions_per_sale: e.target.value })}
-                className="h-10 px-3 rounded-lg border border-gray-200 bg-white text-[13px]"
+                aria-label="Portions per sale"
+                inputClassName="w-full h-10 px-3 rounded-lg border border-gray-200 bg-white text-[13px]"
               />
             </div>
             <input

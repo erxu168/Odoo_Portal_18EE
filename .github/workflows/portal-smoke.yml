@@ -28,6 +28,12 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      # Android's keypad covers the field being typed into, so every number-only
+      # field goes through ui/NumberField. This fails the run if a raw one
+      # reappears. Cheap, and it runs before the slow browser install pays off.
+      - name: No raw number inputs outside the shared components
+        run: npm run check:numeric
+
       # Run the pure-function unit tests (always) + the login smoke (auto-skips
       # unless SMOKE_EMAIL/SMOKE_PASSWORD secrets are set). The heavier
       # login-based module e2e suites are run manually (npm run test:inventory).

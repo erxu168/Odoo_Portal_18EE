@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import { Badge, EmptyState, SectionTitle, Sheet, Spinner } from '@/components/shifts/ui';
 import { currentWeekKey, offsetWeekKey, weekKeyDays } from '@/lib/shifts-time';
 import type { ShiftPattern, ShiftPatternLine, PublishRunState } from '@/types/shifts';
@@ -549,16 +550,15 @@ export default function PatternManager({ companyId, onBack }: PatternManagerProp
                     </select>
                     <div className="flex items-center gap-1.5 ml-auto">
                       <span className="text-[var(--fs-xs)] font-semibold text-gray-500 uppercase tracking-wide">People</span>
-                      <input
+                      <NumberField
                         aria-label="Headcount"
-                        type="number"
+                        mode="integer"
                         min={1}
                         max={20}
                         value={l.headcount}
-                        onChange={e =>
-                          patchLine(i, { headcount: Math.max(1, Math.min(20, Number(e.target.value) || 1)) })
-                        }
-                        className="w-14 bg-white border border-gray-200 rounded-lg px-2 py-2 text-[var(--fs-sm)] font-bold text-gray-900 outline-none focus:border-green-600 min-h-[44px] text-center"
+                        onValueChange={v => patchLine(i, { headcount: Math.max(1, Math.min(20, Number(v) || 1)) })}
+                        onCommit={v => patchLine(i, { headcount: Math.max(1, Math.min(20, Number(v) || 1)) })}
+                        inputClassName="w-14 bg-white border border-gray-200 rounded-lg px-2 py-2 text-[var(--fs-sm)] font-bold text-gray-900 outline-none focus:border-green-600 min-h-[44px] text-center"
                       />
                     </div>
                   </div>

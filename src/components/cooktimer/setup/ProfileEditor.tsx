@@ -7,6 +7,7 @@ import {
   arrayMove, SortableContext, useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import NumberField from '@/components/ui/NumberField';
 import { OptionGrid } from '@/components/ui/OptionGrid';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import type { CookProfile, CookProfileAdmin, CookProfileInput, CookStationAdmin, CookStepType } from '@/types/cooktimer';
@@ -170,11 +171,14 @@ export default function ProfileEditor({
           <div>
             <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-1">Most per batch</div>
             <div className="flex items-center gap-2.5">
-              <input
-                value={maxBatch} inputMode="numeric" aria-label="Most portions per batch"
-                onChange={e => setMaxBatch(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+              <NumberField
+                value={maxBatch === '' ? null : Number(maxBatch)}
+                onValueChange={v => setMaxBatch(v === null ? '' : String(v))}
+                onCommit={v => setMaxBatch(v === null ? '' : String(v))}
+                mode="integer" allowEmpty min={0} maxLength={3}
+                aria-label="Most portions per batch"
                 placeholder="No limit"
-                className="w-24 rounded-xl border border-gray-300 px-3 py-3 text-[15px] min-h-[48px] text-center tabular-nums focus:outline-none focus:border-green-500"
+                inputClassName="w-24 rounded-xl border border-gray-300 px-3 py-3 text-[15px] min-h-[48px] text-center tabular-nums focus:outline-none focus:border-green-500"
               />
               <span className="text-xs text-gray-500 leading-snug">
                 How many portions fit in one basket. COOK&nbsp;ALL splits into
@@ -305,16 +309,24 @@ function SortableStepRow({
             <span className="text-xs font-bold text-sky-600 tracking-wide px-1">INSTANT</span>
           ) : (
             <>
-              <input
-                inputMode="numeric" aria-label="Minutes"
-                value={min} onChange={e => setMin(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
-                className="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-green-500"
+              <NumberField
+                value={min}
+                onValueChange={v => setMin(Number(v) || 0)}
+                onCommit={v => setMin(Number(v) || 0)}
+                mode="integer" allowEmpty min={0}
+                aria-label="Minutes"
+                inputClassName="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-green-500"
               />
               <span className="text-gray-400 text-sm font-bold">:</span>
-              <input
-                inputMode="numeric" aria-label="Seconds"
-                value={String(sec).padStart(2, '0')} onChange={e => setSec(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
-                className="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-green-500"
+              {/* digit-string, not integer: the seconds half of an m:ss pair is
+                  shown padded ("05"), and only a digit string keeps that zero. */}
+              <NumberField
+                value={String(sec).padStart(2, '0')}
+                onValueChange={v => setSec(Number(v) || 0)}
+                onCommit={v => setSec(Number(v) || 0)}
+                mode="digit-string" allowEmpty maxLength={2}
+                aria-label="Seconds"
+                inputClassName="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-green-500"
               />
               <span className="text-[10px] text-gray-400 font-semibold">m:ss</span>
             </>

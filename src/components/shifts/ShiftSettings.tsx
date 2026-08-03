@@ -457,7 +457,7 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                       value={agMiniStr === '' ? null : Number(agMiniStr)}
                       onValueChange={v => setAgMiniStr(v === null ? '' : String(v))}
                       onCommit={v => commitAg('agCostMinijob', v === null ? '' : String(v), form.agCostMinijob, setAgMiniStr)}
-                      mode="decimal" allowEmpty min={0} max={100} step={0.5}
+                      mode="decimal" allowEmpty min={0} max={100}
                       aria-label="Employer on-cost percentage for Minijob staff"
                       inputClassName={pctInputClass}
                     />
@@ -478,7 +478,7 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                       value={agRegStr === '' ? null : Number(agRegStr)}
                       onValueChange={v => setAgRegStr(v === null ? '' : String(v))}
                       onCommit={v => commitAg('agCostRegular', v === null ? '' : String(v), form.agCostRegular, setAgRegStr)}
-                      mode="decimal" allowEmpty min={0} max={100} step={0.5}
+                      mode="decimal" allowEmpty min={0} max={100}
                       aria-label="Employer on-cost percentage for regular staff"
                       inputClassName={pctInputClass}
                     />

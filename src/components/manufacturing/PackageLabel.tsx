@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
 import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
@@ -557,13 +558,18 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
               <div className="text-[var(--fs-xs)] text-gray-400">Splits the total automatically</div>
             </div>
             <div className="flex gap-2 items-stretch">
-              <div className="flex-1">
-                <input type="number" inputMode="decimal" step="0.01" min="0"
-                  value={packSize}
-                  onChange={e => setPackSize(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && autoSplitPreview) { e.preventDefault(); applyAutoSplit(); } }}
+              {/* Enter-to-split lives on the WRAPPER, not the field: on the pad
+                  path the field's own Enter opens the pad, and only a key that
+                  escapes it reaches here. Keyboard users keep the shortcut. */}
+              <div className="flex-1" onKeyDown={e => { if (e.key === 'Enter' && autoSplitPreview) { e.preventDefault(); applyAutoSplit(); } }}>
+                <NumberField
+                  value={packSize === '' ? null : Number(packSize)}
+                  onValueChange={v => setPackSize(v === null ? '' : String(v))}
+                  onCommit={v => setPackSize(v === null ? '' : String(v))}
+                  mode="decimal" allowEmpty min={0} fractionDigits={2}
                   placeholder={`e.g. 2 ${uom}`}
-                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
+                  aria-label={`Pack size in ${uom}`}
+                  inputClassName="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
               </div>
               <select value={packType} onChange={e => setPackType(e.target.value as typeof CONTAINER_TYPES[number])}
                 className="px-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-bold text-gray-700 outline-none focus:border-green-600">
@@ -610,9 +616,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5 block">Qty ({uom})</label>
-                  <input type="number" inputMode="decimal" step="0.01" min="0"
-                    value={c.qty} onChange={e => updateContainer(idx, 'qty', e.target.value)} placeholder="0.00"
-                    className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
+                  <NumberField
+                    value={c.qty === '' ? null : Number(c.qty)}
+                    onValueChange={v => updateContainer(idx, 'qty', v === null ? '' : String(v))}
+                    onCommit={v => updateContainer(idx, 'qty', v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty min={0} fractionDigits={2}
+                    placeholder="0.00" aria-label={`Container ${idx + 1} quantity (${uom})`}
+                    inputClassName="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
                 </div>
                 <div className="flex-1">
                   <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5 block">Expiry</label>

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 
 interface LegalCheck {
   key: string;
@@ -239,11 +240,14 @@ export default function RentIncreaseWizard() {
             <div className="text-[11px] font-semibold tracking-wider uppercase text-gray-400">Proposed Increase</div>
             <div>
               <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">New Kaltmiete ({'\u20ac'}) *</label>
-              <input
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 transition-colors"
-                value={proposedKaltmiete}
-                onChange={e => setProposedKaltmiete(e.target.value)}
-                inputMode="decimal"
+              <NumberField
+                value={proposedKaltmiete === '' ? null : Number(proposedKaltmiete)}
+                onValueChange={v => setProposedKaltmiete(v === null ? '' : String(v))}
+                onCommit={v => setProposedKaltmiete(v === null ? '' : String(v))}
+                mode="decimal"
+                fractionDigits={2}
+                aria-label="New Kaltmiete"
+                inputClassName="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 transition-colors"
               />
             </div>
             <div>

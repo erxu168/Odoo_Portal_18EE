@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import NumberField from '@/components/ui/NumberField';
 
 export interface PrepItemFormValues {
   name: string;
@@ -210,12 +211,17 @@ function FieldNumber({ label, value, onChange, hint }: { label: string; value: s
   return (
     <label className="block">
       <span className="block text-[12px] font-semibold text-gray-600 mb-1">{label}</span>
-      <input
-        type="number"
+      {/* All three callers are whole minutes or whole portions, and the form
+          parses them with parseInt. */}
+      <NumberField
+        value={value === '' ? null : Number(value)}
+        onValueChange={v => onChange(v === null ? '' : String(v))}
+        onCommit={v => onChange(v === null ? '' : String(v))}
+        mode="integer"
+        allowEmpty
         min={0}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full h-11 px-3 rounded-lg border border-gray-200 bg-white text-[14px]"
+        aria-label={label}
+        inputClassName="w-full h-11 px-3 rounded-lg border border-gray-200 bg-white text-[14px]"
       />
       {hint && <div className="text-[11px] text-gray-500 mt-1">{hint}</div>}
     </label>

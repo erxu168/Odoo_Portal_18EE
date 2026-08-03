@@ -106,6 +106,9 @@ export default function MyPin({ companyId, onBack }: MyPinProps) {
             </div>
 
             <label className={labelCls}>New PIN</label>
+            {/* Stays a native input: the shared pad shows its buffer at 36px in a
+                full-width sheet, which is the wrong surface for a PIN on a tablet
+                other people can see. Every other PIN screen is exempt for this. */}
             <input
               inputMode="numeric"
               pattern="\d*"
@@ -113,6 +116,7 @@ export default function MyPin({ companyId, onBack }: MyPinProps) {
               value={pin}
               onChange={e => setPin(onlyDigits(e.target.value))}
               placeholder="••••"
+              aria-label="New PIN"
               className={`${inputCls} mb-4`}
             />
 
@@ -124,6 +128,7 @@ export default function MyPin({ companyId, onBack }: MyPinProps) {
               value={confirm}
               onChange={e => setConfirm(onlyDigits(e.target.value))}
               placeholder="••••"
+              aria-label="Confirm PIN"
               className={`${inputCls} mb-4`}
             />
 

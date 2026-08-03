@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import NumberField from '@/components/ui/NumberField';
 
 type PropertyType = 'apartment_wg' | 'house' | 'studio' | 'other';
 
@@ -97,7 +98,17 @@ export default function AddProperty() {
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className={labelCls}>PLZ *</label>
-            <input className={inputCls} value={plz} onChange={e => setPlz(e.target.value)} placeholder="10243" inputMode="numeric" />
+            {/* digit-string, not a number: German postcodes start with a zero
+                (01067 Dresden) and must survive the round trip. */}
+            <NumberField
+              value={plz === '' ? null : plz}
+              onValueChange={v => setPlz(v === null ? '' : String(v))}
+              onCommit={v => setPlz(v === null ? '' : String(v))}
+              mode="digit-string"
+              placeholder="10243"
+              aria-label="PLZ"
+              inputClassName={inputCls}
+            />
           </div>
           <div className="col-span-2">
             <label className={labelCls}>City *</label>
@@ -134,7 +145,16 @@ export default function AddProperty() {
         {/* Size */}
         <div>
           <label className={labelCls}>Total Size (m{'\u00b2'})</label>
-          <input className={inputCls} value={totalSize} onChange={e => setTotalSize(e.target.value)} placeholder="85" inputMode="decimal" />
+          <NumberField
+            value={totalSize === '' ? null : Number(totalSize)}
+            onValueChange={v => setTotalSize(v === null ? '' : String(v))}
+            onCommit={v => setTotalSize(v === null ? '' : String(v))}
+            mode="decimal"
+            allowEmpty
+            placeholder="85"
+            aria-label="Total Size"
+            inputClassName={inputCls}
+          />
         </div>
 
         {/* Owner */}
@@ -152,7 +172,17 @@ export default function AddProperty() {
         {/* Mietspiegel */}
         <div>
           <label className={labelCls}>Mietspiegel ({'\u20ac'}/m{'\u00b2'})</label>
-          <input className={inputCls} value={mietspiegel} onChange={e => setMietspiegel(e.target.value)} placeholder="7.50" inputMode="decimal" />
+          <NumberField
+            value={mietspiegel === '' ? null : Number(mietspiegel)}
+            onValueChange={v => setMietspiegel(v === null ? '' : String(v))}
+            onCommit={v => setMietspiegel(v === null ? '' : String(v))}
+            mode="decimal"
+            allowEmpty
+            fractionDigits={2}
+            placeholder="7.50"
+            aria-label="Mietspiegel"
+            inputClassName={inputCls}
+          />
         </div>
 
         {/* Rundfunkbeitragsnummer (ARD/ZDF broadcasting fee) */}

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
+import NumberField from '@/components/ui/NumberField';
 
 interface UnknownBarcodeSheetProps {
   barcode: string;
@@ -113,17 +114,17 @@ export default function UnknownBarcodeSheet({ barcode, onCancel, onCreated, stan
           className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none"
           disabled={submitting}
         >&minus;</button>
-        <input
-          type="text"
-          inputMode="decimal"
+        {/* The quantity is held as a number here, not a string, and a cleared
+            field has always meant 0 — so a blank commit keeps meaning 0. */}
+        <NumberField
           value={qtyValue}
-          onChange={(e) => {
-            const v = e.target.value.replace(/[^0-9.]/g, '');
-            if (v === '' || v === '.') { setQtyValue(0); return; }
-            const n = parseFloat(v);
-            if (!isNaN(n)) setQtyValue(n);
-          }}
-          className="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#F5800A]"
+          onValueChange={(v) => setQtyValue(v === null ? 0 : Number(v))}
+          onCommit={(v) => setQtyValue(v === null ? 0 : Number(v))}
+          mode="decimal"
+          allowEmpty
+          min={0}
+          aria-label="Quantity"
+          inputClassName="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#F5800A]"
           disabled={submitting}
         />
         <button

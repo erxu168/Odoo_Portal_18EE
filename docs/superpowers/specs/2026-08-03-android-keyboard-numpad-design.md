@@ -1,5 +1,38 @@
 # 2026-08-03 — Android keyboard & numeric entry: portal-wide design
 
+> **BUILT 2026-08-03.** Where the build knowingly departs from what is written
+> below, the reason is recorded here rather than by quietly editing the plan:
+>
+> 1. **Wave 0b is pure addition.** The spec had `ui/Numpad` and
+>    `inventory/NumpadModal` rewrapped around the canonical core in 0b. They were
+>    left completely untouched instead, and migrated in Wave 1 alongside their
+>    screens. "Behaviour-neutral by construction" beats a compat shim that could
+>    itself carry a bug — and the review had already caught that rewriting the
+>    shared pad a wave ahead of its importers would break live Purchase and
+>    Manufacturing entry on push.
+> 2. **Five pads existed, not three.** `recipes/BatchSize` had its own
+>    hand-rolled keypad too, on top of the `recipes/RecipeDetail` one the review
+>    found. Neither imported the shared pad, so both were invisible to the file
+>    inventory in §1.
+> 3. **Fixed overlays are handled generically, not one by one.** §7 required each
+>    fixed overlay to consume `--keyboard-inset-bottom` itself. An audit found 54
+>    of them hosting text fields. `KeyboardViewportManager` now reserves the space
+>    on the focused control's nearest fixed ancestor automatically — preserving
+>    that overlay's own padding — so overlays written next year are covered too.
+>    Overlays that already handle it mark themselves `data-keyboard-managed`.
+> 4. **`minExclusive` was added to `numeric-input`.** The recipe pads accepted any
+>    value above zero; migrating them to `min: 1` would have banned a legitimate
+>    0.5 kg batch. "Must be positive" is a different rule from "at least 1".
+> 5. **The CI guard cannot see hand-rolled pads.** It matches `type="number"` and
+>    `inputMode`; a digit array mapped into buttons has neither. That is exactly
+>    how the two recipe keypads survived an audit. Wave 4 therefore also carries a
+>    manual sweep for pad-shaped markup, and the guard says so in its own header.
+> 6. **Not verified in a browser by me.** The e2e spec exists
+>    (`tests/numpad-android.e2e.spec.ts`) but cannot authenticate against staging
+>    from this machine — no `SMOKE_MANAGER_EMAIL`/`SMOKE_MANAGER_PASSWORD`. The
+>    device checklist in §11 stands, and the browser run still needs doing.
+
+
 **Status:** Approach + design approved verbally by Ethan 2026-08-03. Spec revised after adversarial review; awaiting his written sign-off.
 **Scope decision (Ethan):** ALL number-only fields portal-wide open the in-app numpad — **except** the named exemptions in §5.3 (phone, OTP, date/time, masked authentication PIN pads). Text-field visibility is fixed centrally, portal-wide.
 **Cross-checks folded in:** OpenAI Codex (gpt-5.6-sol, high) converged independently on this architecture. A 3-lens adversarial review (consistency / process / mobile-web engineering) then produced 31 findings against the first draft; the verified ones are incorporated and called out as **[AR]** where they changed a decision.

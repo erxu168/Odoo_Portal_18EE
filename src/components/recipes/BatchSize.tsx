@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { useNumpad } from '@/components/ui/NumpadProvider';
+import NumberField from '@/components/ui/NumberField';
 
 /** One driving-ingredient option: an ingredient with its base amount for one base batch. */
 export interface ScaleIngredient {
@@ -109,11 +110,15 @@ export default function BatchSize({ mode, recipeName, baseBatch, ingredients, on
                 </select>
                 <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">How much {driving?.name} do you have?</div>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number" inputMode="decimal" placeholder={`e.g. ${driving?.baseQty ?? ''}`}
-                    value={drivingQty}
-                    onChange={(e) => setDrivingQty(e.target.value)}
-                    className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-[16px] font-bold font-mono"
+                  <NumberField
+                    className="flex-1"
+                    placeholder={`e.g. ${driving?.baseQty ?? ''}`}
+                    value={drivingQty === '' ? null : Number(drivingQty)}
+                    onValueChange={(v) => setDrivingQty(v === null ? '' : String(v))}
+                    onCommit={(v) => setDrivingQty(v === null ? '' : String(v))}
+                    mode="decimal" allowEmpty unit={driving?.uom || 'kg'}
+                    aria-label={`How much ${driving?.name ?? ''} do you have?`}
+                    inputClassName="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-[16px] font-bold font-mono"
                   />
                   <div className="text-[13px] text-gray-500 font-mono">{driving?.uom || 'kg'}</div>
                 </div>
