@@ -11,8 +11,9 @@ const FloorplanOverlay = dynamic(() => import('@/components/inventory/floorplan/
  * The count, as ONE walk you scroll — not doors you open.
  *
  * Every product is on screen under the place it lives, in walking order, and is
- * counted in place. A route rail down the left draws the walk itself: a green
- * tick behind you, a solid dot where you are, hollow dots ahead.
+ * counted in place. Nothing ever opens or shuts: a finished spot stays exactly
+ * where it is, its header simply gains a tick, and a counted product fades in
+ * place while staying tappable. The page only moves when a person scrolls it.
  *
  * Additive: CountingSession stays the data/mutation controller and passes
  * `renderRow` (its ProductRow) so all count/offline logic is reused unchanged.
@@ -34,7 +35,7 @@ interface Props {
   productsById: Record<number, { id: number; name: string }>;
   statuses: Record<number, { status: string; skip_reason: string | null }>;
   renderRow: (product: { id: number; name: string }, bucketId: number) => React.ReactNode;
-  /** How many of a stop's lines are counted — drives the per-stop progress + auto-collapse. */
+  /** How many of a stop's lines are counted — drives every progress reading on the page. */
   stopProgress: (bucketId: number, productIds: number[]) => { counted: number; total: number };
   onSkipStop: (bucketId: number, reason: string) => void;
   /** Take back a skip — the place gets counted after all. */
@@ -111,14 +112,6 @@ export default function GuidedCountingFlow({
   stops, productsById, statuses, renderRow, stopProgress, onSkipStop, onUnskipStop, onReview,
 }: Props) {
   const [skipFor, setSkipFor] = useState<number | null>(null);
-  // Stops the user re-opened by hand after they auto-collapsed.
-  const [reopened, setReopened] = useState<Set<number>>(new Set());
-  // Unit groups (a fridge full of drawers) the user held open after the whole
-  // unit finished and folded to one strip. Mirrors `reopened`. Keyed by the RUN
-  // key (unit id + first stop), not the unit id alone: a unit's children can be
-  // split into two runs by a deeper sub-location between them, and one tap must
-  // not open both runs.
-  const [openUnits, setOpenUnits] = useState<Set<string>>(new Set());
   const [mapSpotId, setMapSpotId] = useState<number | null>(null);
 
   const effStatus = (s: Stop) => statuses[s.bucket_id]?.status ?? s.status ?? 'pending';
@@ -149,24 +142,17 @@ export default function GuidedCountingFlow({
   // presses any more — the same rule the server now uses to allow submitting.
   const allDone = steps.every(stepDone);
 
-  const toggleReopen = (bucketId: number) => setReopened((p) => {
-    const n = new Set(p);
-    if (n.has(bucketId)) n.delete(bucketId); else n.add(bucketId);
-    return n;
-  });
-  const toggleUnit = (runKey: string) => setOpenUnits((p) => {
-    const n = new Set(p);
-    if (n.has(runKey)) n.delete(runKey); else n.add(runKey);
-    return n;
-  });
-
   // The skip / un-skip action for a drawer — it lives INSIDE that drawer's card,
   // so there's never a question of which spot a floating "Nothing here" belongs to.
-  const drawerFooter = (s: Stop, full: boolean, skipped: boolean) => (
-    skipped ? (
+  const drawerFooter = (s: Stop, full: boolean, skipped: boolean) => {
+    // The reason as SAVED with the route, unless this session just changed it.
+    // Reading only the live override lost the reason on a reopened count — the
+    // stop still read "skipped" with nothing to say why (Codex, 2026-08-03).
+    const reason = statuses[s.bucket_id]?.skip_reason ?? s.skip_reason;
+    return skipped ? (
       <div className="flex items-center gap-2 text-[var(--fs-xs)] text-orange-700 bg-orange-50 px-3 py-2 border-t border-orange-100">
         <span className="min-w-0">
-          Skipped{statuses[s.bucket_id]?.skip_reason ? ` — ${statuses[s.bucket_id]?.skip_reason}` : ''}
+          Skipped{reason ? ` — ${reason}` : ''}
         </span>
         <button onClick={() => onUnskipStop(s.bucket_id)}
           className="ml-auto flex-shrink-0 font-bold underline active:opacity-60">
@@ -175,16 +161,30 @@ export default function GuidedCountingFlow({
       </div>
     ) : !full ? (
       <button onClick={() => setSkipFor(s.bucket_id)}
-        className="w-full text-right text-[var(--fs-xs)] font-bold text-gray-400 px-3 py-2 border-t border-gray-100 bg-white active:text-gray-600">
+        className="w-full text-right text-[var(--fs-xs)] font-bold text-gray-400 px-3 py-2 border-t border-gray-100 bg-white active:text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">
         Nothing in this drawer {'→'}
       </button>
-    ) : null
-  );
+    ) : (
+      // Finishing the last product here must NOT make this line vanish —
+      // dropping it would shift the whole page up, the very jump we removed
+      // (Codex, 2026-08-03). The slot keeps its exact height instead and says
+      // the spot is done. Both versions are ONE line, kept short and pinned
+      // with whitespace-nowrap: a wrap on a 320px phone would change the
+      // height and reintroduce the very shift this exists to prevent.
+      <div className="w-full text-right text-[var(--fs-xs)] font-bold text-green-700 px-3 py-2 border-t border-gray-100 bg-white whitespace-nowrap overflow-hidden text-ellipsis">
+        ✓ All counted here
+      </div>
+    );
+  };
 
-  // Auto-collapse relies on the browser's native scroll anchoring (overflow-anchor,
-  // on by default): when a finished shelf folds away above you, the viewport keeps
-  // its place on its own. A hand-rolled scrollBy here FOUGHT that and threw the
-  // page to the top — measured 400 -> 0. Don't reintroduce one.
+  // NOTHING ON THIS PAGE COLLAPSES ITSELF (Ethan, 2026-08-03: "the screen starts
+  // to move because the list collapses for that location"). A finished spot stays
+  // open exactly where it is and simply reads as finished; a counted product row
+  // dims in place and stays tappable, so a wrong number is corrected by tapping
+  // it again. Nothing above the thumb is ever removed, so the page cannot shift
+  // under a moving finger. Don't reintroduce auto-folding — and don't add a
+  // hand-rolled scrollBy either: one here fought the browser's native scroll
+  // anchoring and threw the page to the top (measured 400 -> 0).
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-3 pb-40">
       {/* Jump strip: a 40-line count is a very long page — this is how you get
@@ -214,13 +214,18 @@ export default function GuidedCountingFlow({
         const isNow = i === currentIdx;
         // A step that IS a single roomless shelf ("Everything else", a shelf with
         // no room above it) names itself in the AREA header, so its products sit
-        // directly under it — no second heading. Fold it from that header.
+        // directly under it — no second heading.
         const solo = st.stops.length === 1 && !st.room;
         const soloBucket = st.stops[0].bucket_id;
-        const soloOpen = solo && reopened.has(soloBucket);
-        // Area totals for the section header count.
+        // Area totals for the section header count. Skipped spots are tracked
+        // separately: a step counts as DONE once every spot is either counted
+        // or skipped, so "done" must never be reported as "all counted" — an
+        // area that was skipped outright had nothing counted at all (Codex,
+        // 2026-08-03).
         const areaTotal = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).total, 0);
         const areaCounted = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).counted, 0);
+        const areaSkipped = st.stops.filter((s) => effStatus(s) === 'skipped').length;
+        const areaAllSkipped = areaSkipped > 0 && areaSkipped === st.stops.length;
         const soloLoc = st.stops[0].location;
         const areaName = st.room || (soloLoc
           ? (nameIncludesType(soloLoc.name, typeLabel(soloLoc.kind)) ? soloLoc.name : `${typeLabel(soloLoc.kind)} ${soloLoc.name}`)
@@ -233,14 +238,13 @@ export default function GuidedCountingFlow({
         const groups = buildGroups(st.stops);
         const loneUnit = !solo && groups.length === 1 && groups[0].unit ? groups[0] : null;
         // The merged header must CARRY the container's affordances, not drop
-        // them: its own progress, its fold, and its map button.
+        // them: its own progress and its map button.
         const luMembers = loneUnit ? (loneUnit.own ? [loneUnit.own, ...loneUnit.stops] : loneUnit.stops) : [];
         const luDone = luMembers.filter((m) => {
           const pr = stopProgress(m.bucket_id, m.product_ids);
           return effStatus(m) === 'skipped' || (pr.total > 0 && pr.counted >= pr.total);
         }).length;
         const luAllDone = luMembers.length > 0 && luDone === luMembers.length;
-        const luFolded = !!loneUnit && luAllDone && !openUnits.has(loneUnit.key);
         const luLabel = loneUnit ? typeLabel(loneUnit.unit!.kind) : '';
         const luShowLabel = !!loneUnit && !!luLabel && !nameIncludesType(loneUnit.unit!.name, luLabel);
         const soloS = st.stops[0];
@@ -253,15 +257,11 @@ export default function GuidedCountingFlow({
                 belonging to its area instead of floating apart. Areas are separated
                 by the gap between containers; no rail threads through the content. */}
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-              {/* Area header = the container's title bar. Solo done areas fold here. */}
+              {/* Area header = the container's title bar. It states where you are
+                  and how far along — it is not a door, because nothing here
+                  opens or shuts any more. */}
               <div className="w-full flex items-center gap-2.5 px-3.5 py-3 border-b border-gray-100">
-                <button
-                  type="button"
-                  disabled={!((solo && done) || (loneUnit && luAllDone))}
-                  onClick={() => (solo ? toggleReopen(soloBucket) : loneUnit && toggleUnit(loneUnit.key))}
-                  aria-expanded={solo && done ? soloOpen : (loneUnit && luAllDone ? !luFolded : undefined)}
-                  className="min-w-0 flex-1 flex items-center gap-2.5 text-left disabled:opacity-100 enabled:active:opacity-70"
-                >
+                <div className="min-w-0 flex-1 flex items-center gap-2.5">
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
                     done ? 'bg-green-600 text-white'
                       : isNow ? 'bg-blue-600 text-white'
@@ -286,26 +286,32 @@ export default function GuidedCountingFlow({
                           {/* the type word matters for a cryptic name — "Fridge F1", not "F1" */}
                           {luShowLabel && <span className="font-semibold text-gray-500">{luLabel} </span>}
                           {loneUnit.unit!.name}
-                          {luAllDone && <span className="text-[var(--fs-xs)] text-green-700 font-bold"> {luFolded ? '▸ Tap to view' : '▾ Hide'}</span>}
                         </span>
                       </>
                     ) : (
                       <span className="block text-[var(--fs-lg)] font-extrabold [overflow-wrap:anywhere]">
                         {areaName}
-                        {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
                       </span>
                     )}
                   </span>
-                </button>
-                <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums whitespace-nowrap">
-                  {loneUnit ? (
+                </div>
+                <span className={`flex-shrink-0 text-[var(--fs-xs)] font-semibold tabular-nums whitespace-nowrap ${
+                  areaAllSkipped ? 'text-orange-700'
+                    : (loneUnit ? luAllDone : done) ? 'text-green-700' : 'text-gray-400'
+                }`}>
+                  {/* Skipped outright is checked FIRST, whichever shape the
+                      header takes: a merged room+container header must not
+                      report "3/3" for three places nobody counted. */}
+                  {areaAllSkipped ? '⊘ skipped' : loneUnit ? (
                     <>
                       {/* compact on screen, a sentence for a screen reader —
                           "2/3" alone announces as "two slash three". */}
-                      <span aria-hidden="true">{luDone}/{luMembers.length}</span>
+                      <span aria-hidden="true">{luAllDone && '✓ '}{luDone}/{luMembers.length}</span>
                       <span className="sr-only">{luDone} of {luMembers.length} places done</span>
+                      {areaSkipped > 0 && <span className="text-orange-700"> · {areaSkipped} skipped</span>}
                     </>
-                  ) : done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
+                  ) : done ? `✓ ${areaCounted} counted${areaSkipped > 0 ? ` · ${areaSkipped} skipped` : ''}`
+                    : `${areaCounted} of ${areaTotal}`}
                 </span>
                 {loneUnit && (
                   <button onClick={() => setMapSpotId(loneUnit.unit!.id)}
@@ -317,14 +323,12 @@ export default function GuidedCountingFlow({
               </div>
 
               {solo ? (
-                (!done || soloOpen) && (
-                  <div className="px-3">
-                    {soloS.product_ids.map((id) => productsById[id] && (
-                      <div key={id}>{renderRow(productsById[id], soloBucket)}</div>
-                    ))}
-                    {drawerFooter(soloS, soloFull, soloSkipped)}
-                  </div>
-                )
+                <div className="px-3">
+                  {soloS.product_ids.map((id) => productsById[id] && (
+                    <div key={id}>{renderRow(productsById[id], soloBucket)}</div>
+                  ))}
+                  {drawerFooter(soloS, soloFull, soloSkipped)}
+                </div>
               ) : (
                 (() => {
                   const grps = groups;
@@ -333,46 +337,26 @@ export default function GuidedCountingFlow({
                     const skipped = effStatus(s) === 'skipped';
                     return { counted, total, skipped, full: total > 0 && counted >= total };
                   };
-                  const plural = (w: string, n: number) => (n === 1 ? w : w.toLowerCase() === 'shelf' ? `${w.slice(0, -1)}ves` : `${w}s`);
 
-                  // One stop — folded strip or open lid + products. Inside a unit
-                  // the trail is dropped (the heading above already said where we
-                  // are) and the lid/strip indent; product rows keep full width.
+                  // One stop: its lid, then its products — always both. A finished
+                  // spot keeps its full height and just reads as finished, so the
+                  // page never reflows under a thumb. Inside a unit the trail is
+                  // dropped (the heading above already said where we are) and the
+                  // lid indents; product rows keep full width.
                   const renderStop = (s: Stop, inUnit: boolean, topBorder: boolean) => {
                     const { shelf, rest } = addressOf(s);
                     const { counted, total, skipped, full } = stopBits(s);
-                    const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
                     const label = s.location ? typeLabel(s.location.kind) : '';
                     const showLabel = nameIncludesType(shelf, label) ? false : !!label;
-                    const active = !full && !skipped;
                     const divider = topBorder ? 'border-t border-gray-100' : '';
                     const indent = inUnit ? 'pl-7' : '';
-
-                    if (collapsed) {
-                      return (
-                        <button key={s.bucket_id} onClick={() => toggleReopen(s.bucket_id)}
-                          className={['w-full flex items-center gap-2 px-3.5 py-2.5 text-left active:opacity-70', divider, indent, skipped ? 'bg-orange-50' : 'bg-green-50'].filter(Boolean).join(' ')}>
-                          <span className={`flex-shrink-0 text-[13px] font-bold ${skipped ? 'text-orange-600' : 'text-green-600'}`} aria-hidden="true">
-                            {skipped ? '⊘' : '✓'}
-                          </span>
-                          <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
-                            {!inUnit && rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
-                            {showLabel && <span className="text-gray-500">{label} </span>}
-                            <span className="font-bold text-gray-900">{shelf}</span>
-                            {' — '}{skipped ? 'skipped' : `${counted} counted`}
-                          </span>
-                          <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${skipped ? 'text-orange-600' : 'text-green-700'}`}>
-                            Tap to view ▸
-                          </span>
-                        </button>
-                      );
-                    }
+                    // Icon + colour + words, never colour alone.
+                    const lidTint = skipped ? 'bg-orange-50' : full ? 'bg-green-50' : 'bg-blue-50';
 
                     return (
                       <div key={s.bucket_id} className={divider}>
-                        <div className={['flex items-start gap-2 px-3.5 py-2.5', indent, active ? 'bg-blue-50' : 'bg-gray-50'].filter(Boolean).join(' ')}>
-                          <button onClick={() => toggleReopen(s.bucket_id)}
-                            className="min-w-0 flex-1 flex items-start gap-2 text-left active:opacity-70">
+                        <div className={['flex items-start gap-2 px-3.5 py-2.5', indent, lidTint].filter(Boolean).join(' ')}>
+                          <div className="min-w-0 flex-1 flex items-start gap-2">
                             <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
                               {s.location ? typeIcon(s.location.kind) : '📦'}
                             </span>
@@ -386,12 +370,20 @@ export default function GuidedCountingFlow({
                                 {showLabel && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
                               </span>
                             </span>
-                            <span className="flex-shrink-0 mt-0.5 flex items-center gap-1.5">
-                              <span className="text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{counted}/{total}</span>
-                              {/* Opened by "Tap to view" — show the way to fold it back. */}
-                              {!active && <span className="text-[var(--fs-xs)] font-bold text-green-700">Hide ▾</span>}
+                            <span className={`flex-shrink-0 mt-0.5 text-[var(--fs-xs)] font-bold tabular-nums ${
+                              skipped ? 'text-orange-700' : full ? 'text-green-700' : 'text-gray-500'
+                            }`}>
+                              {skipped ? (
+                                <span>⊘ skipped</span>
+                              ) : (
+                                <>
+                                  {/* "3/3" alone announces as "three slash three". */}
+                                  <span aria-hidden="true">{full && '✓ '}{counted}/{total}</span>
+                                  <span className="sr-only">{counted} of {total} counted{full ? ' — done' : ''}</span>
+                                </>
+                              )}
                             </span>
-                          </button>
+                          </div>
                           {s.bucket_id > 0 && (
                             <button onClick={() => setMapSpotId(s.bucket_id)}
                               aria-label={`Show ${shelf} on the floorplan`}
@@ -417,7 +409,6 @@ export default function GuidedCountingFlow({
                     // exactly one of them merges the two lines), so drawing the
                     // heading again would be the very stack we removed.
                     if (loneUnit && g.key === loneUnit.key) {
-                      if (luFolded) return null;   // header says "Tap to view"
                       const members2 = g.own ? [g.own, ...g.stops] : g.stops;
                       const ob = g.own ? stopBits(g.own) : null;
                       return (
@@ -441,35 +432,13 @@ export default function GuidedCountingFlow({
                     const members = g.own ? [g.own, ...g.stops] : g.stops;
                     const bits = members.map(stopBits);
                     const doneCount = bits.filter((b) => b.full || b.skipped).length;
-                    const countedSum = bits.reduce((n, b) => n + b.counted, 0);
                     const skippedCount = bits.filter((b) => b.skipped).length;
                     const allDone = doneCount === members.length && members.length > 0;
-                    const folded = allDone && !openUnits.has(g.key);
                     const uLabel = typeLabel(g.unit.kind);
                     const showULabel = nameIncludesType(g.unit.name, uLabel) ? false : !!uLabel;
-                    const kinds = new Set(g.stops.map((s) => s.location?.kind || ''));
-                    const childWord = kinds.size === 1 ? (typeLabel(g.stops[0].location?.kind || '') || 'spot') : 'spot';
                     // Heavier rule between unit groups than between drawers.
                     const divider = gi > 0 ? 'border-t border-gray-200' : '';
                     const ownBits = g.own ? stopBits(g.own) : null;
-
-                    // Whole unit finished → ONE quiet strip. Honest about skips:
-                    // a skipped drawer is a manager-visible fact, not buried.
-                    if (folded) {
-                      return (
-                        <button key={g.key} onClick={() => toggleUnit(g.key)}
-                          className={['w-full flex items-center gap-2 px-3.5 py-2.5 text-left active:opacity-70', divider, 'bg-green-50'].filter(Boolean).join(' ')}>
-                          <span className="flex-shrink-0 text-[13px] font-bold text-green-600" aria-hidden="true">✓</span>
-                          <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
-                            <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
-                            <span className="font-bold text-gray-900">{g.unit.name}</span>
-                            {' — '}{g.stops.length} {plural(childWord, g.stops.length).toLowerCase()} · {countedSum} counted
-                            {skippedCount > 0 && <span className="font-bold text-orange-600"> · {skippedCount} skipped</span>}
-                          </span>
-                          <span className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-green-700">Tap to view ▸</span>
-                        </button>
-                      );
-                    }
 
                     return (
                       <div key={g.key} className={divider}>
@@ -480,22 +449,14 @@ export default function GuidedCountingFlow({
                             <div className="text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere] mb-0.5">{g.between.join(' › ')} ›</div>
                           )}
                           <div className="flex items-center gap-2">
-                            {allDone ? (
-                              <button onClick={() => toggleUnit(g.key)}
-                                className="min-w-0 flex-1 flex items-center gap-1.5 text-left active:opacity-70">
-                                <span className="text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
-                                  <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
-                                  {showULabel && <span className="font-semibold text-gray-500">{uLabel} </span>}{g.unit.name}
-                                </span>
-                                <span className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-green-700">Hide ▾</span>
-                              </button>
-                            ) : (
-                              <span className="min-w-0 flex-1 text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
-                                <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
-                                {showULabel && <span className="font-semibold text-gray-500">{uLabel} </span>}{g.unit.name}
-                              </span>
-                            )}
-                            <span className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{doneCount} of {members.length} done</span>
+                            <span className="min-w-0 flex-1 text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                              <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
+                              {showULabel && <span className="font-semibold text-gray-500">{uLabel} </span>}{g.unit.name}
+                            </span>
+                            <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold tabular-nums ${allDone ? 'text-green-700' : 'text-gray-500'}`}>
+                              <span aria-hidden="true">{allDone && '✓ '}</span>{doneCount} of {members.length} done
+                              {skippedCount > 0 && <span className="text-orange-700"> · {skippedCount} skipped</span>}
+                            </span>
                             <button onClick={() => setMapSpotId(g.unit!.id)}
                               aria-label={`Show ${g.unit.name} on the floorplan`}
                               className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
@@ -536,6 +497,7 @@ export default function GuidedCountingFlow({
         </button>
         <p className="text-center text-[var(--fs-xs)] text-gray-500 mt-2">
           Every item needs an answer {'—'} a count, {'“'}out of stock{'”'} or {'“'}couldn{'’'}t find it{'”'} {'—'} before you can submit.
+          {' '}Got one wrong? Tap its number again {'—'} nothing here closes or disappears.
         </p>
       </div>
 

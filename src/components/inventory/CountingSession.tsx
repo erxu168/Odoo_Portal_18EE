@@ -1044,16 +1044,30 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       : (val != null ? splitFromTotal(val, size) : null);
     // Sibling lines: the SAME product counted at other spots — the double-count guard.
     const siblings = (spotsOfProduct.get(p.id) || []).filter((l) => l !== loc);
+    // Answered = this line has a number, including a deliberate 0 ("none here",
+    // "couldn't find it"). Same rule the walk's progress counter uses.
+    //
+    // An answered row FADES IN PLACE — it never moves, shrinks or locks
+    // (Ethan, 2026-08-03: "fade out the product once its counted instead of
+    // collapsing the location list"). ONLY what identifies the product fades —
+    // its picture and its name — so the eye lands on the rows still blank. The
+    // number, every badge that carries a fact, and every control stay at full
+    // strength: tapping the number is how a wrong count gets corrected, and a
+    // faded control would both look dead and fall under the 3:1 contrast floor.
+    // Nothing is disabled and nothing is removed, so the page cannot shift
+    // under a thumb. Never fade a manager's read-only view — there every line
+    // is answered, so the whole list would grey out at once.
+    const fade = `transition-opacity duration-200${entries[k] !== undefined && !isReadOnly ? ' opacity-60' : ''}`;
     return (
       <div className="py-3 border-b border-gray-100">
         <div className="flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-3">
-          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} />
+          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} className={fade} />
           <div className="flex-1 min-w-0">
             <div className="flex items-start gap-1.5">
             <div className="flex-1 min-w-0 flex items-baseline gap-1.5 flex-wrap">
               {/* Wrap rather than truncate: "Beef, goula…" is useless to someone
                   holding the product. Two lines beat a cut-off name. */}
-              <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug min-w-0 [overflow-wrap:anywhere]">{p.name}</span>
+              <span className={`text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug min-w-0 [overflow-wrap:anywhere] ${fade}`}>{p.name}</span>
               {/* The unit staff COUNT in — bunches, not the kilograms it converts
                   to. The conversion is the manager's business when ordering. */}
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">
