@@ -196,7 +196,12 @@ export default function PinnableImage({
           >
             {/* 28px visible circle inside a 44px touch target for accessibility. */}
             <span className="absolute -inset-[8px]" aria-hidden="true" />
-            <span className="w-7 h-7 flex items-center justify-center">
+            {/* Draw the eye: an unopened view-mode marker gently pings so staff
+                know it's tappable. Stops once opened (active) or done. */}
+            {mode === 'view' && !active && !p.done && (
+              <span className="absolute inset-0 rounded-full bg-orange-400 opacity-70 motion-safe:animate-ping" aria-hidden="true" />
+            )}
+            <span className="relative w-7 h-7 flex items-center justify-center">
               {p.done ? '✓' : p.number ?? i + 1}
             </span>
           </button>

@@ -403,6 +403,18 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                 stepNo={index + 1}
               />
 
+              {/* Pins aren't obviously tappable on their own — tell staff to tap
+                  them (and pulse the markers, below, to draw the eye). */}
+              {step.media_type === 'photo' && step.pins.length > 0 && !imgError.has(step.id) && (
+                <div className="flex items-center justify-center gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-orange-500 text-white text-[11px] font-bold flex items-center justify-center" aria-hidden="true">1</span>
+                  <p className="text-[13px] font-semibold text-orange-800">
+                    Tap each numbered marker on the photo to read its note
+                    {step.pins.length > 1 ? ` (${step.pins.length} of them)` : ''}.
+                  </p>
+                </div>
+              )}
+
               {/* Explanation, always as TEXT (never HTML). Tip steps render the
                   explanation inside their own panel, so don't repeat it here. */}
               {step.media_type !== 'tip' && step.explanation.trim() && (
