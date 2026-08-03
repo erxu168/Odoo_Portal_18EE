@@ -11,8 +11,23 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, ensureTodaySessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate, templateHasRealSessions } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, templatesClashingProducts, updateTemplate, generateSessionForTemplate, ensureTodaySessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate, templateHasRealSessions } from '@/lib/inventory-db';
 import { listShiftTemplates } from '@/lib/shifts-db';
+
+/**
+ * Product ids as NUMBERS. A string id compares unequal to the stored numeric one,
+ * so "12" would slip past the duplicate check and then be stored in a shape
+ * nothing else matches (Codex, 2026-08-03). Junk is dropped, not coerced.
+ */
+function normalizeProductIds(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const v of raw) {
+    const n = typeof v === 'number' ? v : (typeof v === 'string' && /^[0-9]+$/.test(v) ? Number(v) : NaN);
+    if (Number.isInteger(n) && n > 0) out.push(n);
+  }
+  return Array.from(new Set(out));
+}
 
 /** A real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
 function isValidYmd(s: unknown): s is string {
@@ -85,7 +100,7 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { name, frequency, schedule_days, adhoc_date, location_id, category_ids, product_ids, assign_type, assign_id } = body;
+  const { name, frequency, schedule_days, adhoc_date, location_id, category_ids, product_ids, assign_type, assign_id, allow_duplicates } = body;
 
   if (!name || !location_id) {
     return NextResponse.json({ error: 'name and location_id are required' }, { status: 400 });
@@ -176,6 +191,22 @@ export async function POST(request: Request) {
     adhocDate = adhoc_date;
   }
 
+  // A product already on ANOTHER of this restaurant's lists means staff walk to
+  // the same shelf twice and the day ends with two different answers for one
+  // product. Advisory, not a block: the manager is shown exactly which products
+  // clash and chooses. `allow_duplicates` is that choice coming back.
+  // Consent must be the literal true — "false", 1 and {} are all truthy and
+  // would silently wave the warning through (Codex, 2026-08-03).
+  // Normalise ONCE and store what we checked — checking numbers then storing
+  // "12" would leave a list nothing can ever match again (Codex, 2026-08-03).
+  const cleanProductIds = normalizeProductIds(product_ids);
+  if (allow_duplicates !== true) {
+    const clash = templatesClashingProducts(companyId, cleanProductIds);
+    if (clash.length > 0) {
+      return NextResponse.json({ error: 'DUPLICATE_PRODUCTS', clash }, { status: 409 });
+    }
+  }
+
   const id = createTemplate({
     name,
     frequency: freq,
@@ -184,7 +215,7 @@ export async function POST(request: Request) {
     location_id,
     company_id: companyId,
     category_ids: category_ids || [],
-    product_ids: product_ids || [],
+    product_ids: cleanProductIds,
     assign_type: assign_type || null,
     // Normalized: an id is only meaningful WITH a type (validated above).
     assign_id: assign_type ? assign_id : null,
@@ -200,10 +231,15 @@ export async function POST(request: Request) {
     id,
     session_id: gen.sessionId,
     joined_walk: gen.joinedWalk,
+    deferred: gen.deferred,
+    // Honest about WHY there is no count today. The old wording for a deferral
+    // read "not scheduled for today", which was simply untrue and left a
+    // manager with no idea what had happened (Ethan, 3 Aug: he made the weekly
+    // list at 13:32 mid-service and got a second card with no explanation).
     message: gen.joinedWalk
       ? 'List created and added to today\u2019s count'
       : gen.deferred
-        ? 'List created. Today\u2019s combined count is already under way, so this list is counted from its next scheduled day.'
+        ? 'List created \u2014 but a count is already running today that covers some of these products, so this list starts on its next scheduled day. Counting them twice today would give you two different answers.'
         : gen.sessionId
           ? 'Template created + session generated for today'
           : 'Template created (not scheduled for today)',
@@ -266,6 +302,24 @@ export async function PUT(request: Request) {
     const locErr = await locationCompanyError(effectiveLocation, effectiveCompany);
     if (locErr) return NextResponse.json({ error: locErr }, { status: 400 });
   }
+
+  // Same duplicate check as on create — adding a product to one list that
+  // another list already counts is the same accident, just later.
+  if (updates.allow_duplicates !== true) {
+    // Check the products this list will HAVE, which is not always the ones in
+    // the request: re-tagging a legacy list to a restaurant moves its existing
+    // products into that restaurant's world without ever sending product_ids
+    // (Codex, 2026-08-03).
+    const effectiveProducts = Array.isArray(updates.product_ids)
+      ? normalizeProductIds(updates.product_ids)
+      : normalizeProductIds(existing.product_ids as number[]);
+    if (Array.isArray(updates.product_ids)) updates.product_ids = effectiveProducts;
+    const clash = templatesClashingProducts(effectiveCompany, effectiveProducts, { excludeTemplateId: Number(id) });
+    if (clash.length > 0) {
+      return NextResponse.json({ error: 'DUPLICATE_PRODUCTS', clash }, { status: 409 });
+    }
+  }
+  delete updates.allow_duplicates;   // a UI choice, never a stored column
 
   // Ad-hoc date on edit: an ad-hoc list must have a valid date; switching away
   // from ad-hoc clears it. Only reject a PAST date when the date actually CHANGES

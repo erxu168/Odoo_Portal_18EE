@@ -990,6 +990,38 @@ export function getTemplate(id: number): CountingTemplate | null {
   return row ? parseTemplate(row) : null;
 }
 
+/**
+ * Products on this list that ANOTHER active list at the same restaurant already
+ * counts — a clash the manager should see BEFORE saving.
+ *
+ * Ethan's model (2026-08-03): the daily list is produce and perishables, the
+ * weekly list is packaging, sauces and slow movers. Overlap between them is
+ * normally an accident, and the cost is real: staff walk to the same shelf
+ * twice, and the same product ends up with two different answers on the same
+ * day (thyme read 0.03 on one list and 0.0 on the other). His rule when they
+ * DO clash: the daily list is the one that counts it.
+ *
+ * Advisory, never a block — a product genuinely wanted on two lists is rare but
+ * legitimate, and this is the manager's call to make.
+ */
+export function templatesClashingProducts(
+  companyId: number | null,
+  productIds: number[],
+  opts: { excludeTemplateId?: number } = {},
+): { product_id: number; template_id: number; template_name: string; frequency: string }[] {
+  if (companyId == null || productIds.length === 0) return [];
+  const wanted = new Set(productIds);
+  const out: { product_id: number; template_id: number; template_name: string; frequency: string }[] = [];
+  for (const t of listTemplates({ active: true, company_ids: [companyId] })) {
+    if (t.id === opts.excludeTemplateId) continue;
+    if (t.company_id !== companyId) continue;              // never leak another restaurant's list
+    for (const pid of (t.product_ids as number[]) || []) {
+      if (wanted.has(pid)) out.push({ product_id: pid, template_id: t.id, template_name: t.name, frequency: t.frequency });
+    }
+  }
+  return out;
+}
+
 export function listTemplates(filters?: { location_id?: number; active?: boolean; company_ids?: number[] }): CountingTemplate[] {
   const db = getDb();
   const where: string[] = [];
@@ -1298,6 +1330,33 @@ export function mergedWalkEnabled(): boolean {
  * approval is finished as far as the floor is concerned, and starting a fresh
  * count of those products is a deliberate act. Only OPEN counts block.
  */
+/**
+ * Products of this list that an OPEN count today already covers — the same
+ * question as `productsAlreadyCountedToday`, but never switched off.
+ *
+ * `productsAlreadyCountedToday` is the merged walk's own safety guard and
+ * returns nothing when the feature is off. A warning shown to a manager must
+ * not depend on a feature flag, so this one always answers. (Codex, 2026-08-03.)
+ */
+export function openCountClashToday(
+  companyId: number | null,
+  productIds: number[],
+  excludeSessionId?: number,
+): number[] {
+  if (companyId == null || productIds.length === 0) return [];
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT DISTINCT i.odoo_product_id AS pid
+      FROM counting_sessions s
+      JOIN session_count_items i ON i.session_id = s.id
+     WHERE s.company_id = ? AND s.scheduled_date = ?
+       AND s.status IN ('pending','in_progress')
+       AND (? IS NULL OR s.id != ?)
+  `).all(companyId, todayStr(), excludeSessionId ?? null, excludeSessionId ?? null) as { pid: number }[];
+  const live = new Set(rows.map((r) => r.pid));
+  return productIds.filter((pid) => live.has(pid));
+}
+
 export function productsAlreadyCountedToday(
   companyId: number | null,
   productIds: number[],
@@ -1650,7 +1709,7 @@ export function ensureTodaySessionForTemplate(
   /** false = only resolve the MERGE cases; leave ordinary creation to the caller
    *  (the manual sessions endpoint, which honours its own assigned_user_id). */
   opts: { createIfNoWalk?: boolean } = {},
-): { sessionId: number | null; joinedWalk: boolean; deferred: boolean } {
+): { sessionId: number | null; joinedWalk: boolean; deferred: boolean; clash?: number[] } {
   const createIfNoWalk = opts.createIfNoWalk !== false;
   const db = getDb();
   const tmpl = getTemplate(templateId);
@@ -1658,6 +1717,48 @@ export function ensureTodaySessionForTemplate(
 
   const already = walkSessionForTemplateToday(templateId);
   if (already) return { sessionId: already.id, joinedWalk: true, deferred: false };
+
+  // Does a count ALREADY RUNNING today cover some of these products? Creating a
+  // second session then puts one product in two open counts — which is how one
+  // shelf ended the day with two different answers on 3 Aug (Weekly created at
+  // 13:32, mid-service, beside a Daily count already under way).
+  //
+  // Deliberately NOT productsAlreadyCountedToday: that one is switched off with
+  // the merged walk (it is the merge's own guard), and a plain warning to a
+  // manager must not silently vanish with a feature flag. (Codex, 2026-08-03.)
+  // The template's OWN session is excluded — a repeated create must stay
+  // idempotent and return that session, not report a clash with itself.
+  const ownToday = db.prepare(
+    'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, todayStr()) as { id: number } | undefined;
+  const clash = openCountClashToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || [], ownToday?.id);
+
+  if (clash.length > 0) {
+    // BEFORE deferring, try the good outcome: if nobody has counted anything
+    // yet, the whole day can be rebuilt atomically as ONE walk covering both
+    // lists — which is exactly what this feature is for. Only a day somebody
+    // has already started defers. (Codex spotted that the first version never
+    // reached reconciliation and deferred a list that could simply have been
+    // merged in.)
+    if (mergedWalkEnabled() && isMergeable(tmpl) && tmpl.company_id != null) {
+      generateTodaySessions([tmpl.company_id]);
+      const joined = walkSessionForTemplateToday(templateId);
+      if (joined) return { sessionId: joined.id, joinedWalk: true, deferred: false };
+    }
+    const stillClashing = openCountClashToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || [], ownToday?.id);
+    if (stillClashing.length > 0) {
+      // This list may ALREADY have today's count (the merge can leave it, or it
+      // predates the clash). Nothing is being created, so a clash with some
+      // OTHER open session must not hide the session that exists — returning
+      // null there would read as "no count today" when there plainly is one.
+      // (Codex, 2026-08-03.)
+      const own = db.prepare(
+        'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+      ).get(templateId, todayStr()) as { id: number } | undefined;
+      if (own) return { sessionId: own.id, joinedWalk: false, deferred: false };
+      return { sessionId: null, joinedWalk: false, deferred: true, clash: stillClashing };
+    }
+  }
 
   if (mergedWalkEnabled() && isMergeable(tmpl) && tmpl.company_id != null) {
     const companyId = tmpl.company_id;
@@ -1678,8 +1779,8 @@ export function ensureTodaySessionForTemplate(
       // NO product with the walk — otherwise those products would be counted
       // twice into the same Odoo location. Overlap → no count today.
       const walkProductIds = new Set(getSessionItems(walk.id).map((i) => i.odoo_product_id));
-      const overlaps = ((tmpl.product_ids as number[]) || []).some((pid) => walkProductIds.has(pid));
-      if (overlaps) return { sessionId: null, joinedWalk: false, deferred: true };
+      const overlapping = ((tmpl.product_ids as number[]) || []).filter((pid) => walkProductIds.has(pid));
+      if (overlapping.length > 0) return { sessionId: null, joinedWalk: false, deferred: true, clash: overlapping };
       // Disjoint products — an ordinary session is safe.
       return { sessionId: createIfNoWalk ? generateSessionForTemplate(templateId) : null, joinedWalk: false, deferred: false };
     }

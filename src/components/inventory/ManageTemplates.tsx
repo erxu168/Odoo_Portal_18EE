@@ -11,6 +11,9 @@ interface ManageTemplatesProps {
   onBack: () => void;
 }
 
+/** One product this list shares with another of the same restaurant's lists. */
+type ClashRow = { product_id: number; template_id: number; template_name: string; frequency: string };
+
 export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   const { companyId } = useCompany();
   const [templates, setTemplates] = useState<any[]>([]);
@@ -21,6 +24,9 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   const [assignFilter, setAssignFilter] = useState('all');
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
+  // Products this list shares with another one, held with the save that hit
+  // them so either answer can go straight back to the server.
+  const [clash, setClash] = useState<{ data: any; rows: ClashRow[] } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<any | null>(null);  // list pending delete confirmation
   const [deleting, setDeleting] = useState(false);
 
@@ -112,11 +118,24 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+      if (res.status === 409) {
+        // Products already counted by another list. Not an error — a choice.
+        const body = await res.json().catch(() => ({}));
+        if (Array.isArray(body.clash) && body.clash.length > 0) {
+          setClash({ data, rows: body.clash });
+          return;
+        }
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         alert(body.error || 'Could not save the list. Please try again.');
         return;   // keep the form open so the manager can fix it
       }
+      // A list can be created and still get no count today — say so, rather
+      // than let it look like nothing happened.
+      const ok = await res.json().catch(() => ({}));
+      if (ok.deferred && ok.message) alert(ok.message);
+      setClash(null);
       setEditing(null);
       setCreating(false);
       fetchData();
@@ -126,22 +145,56 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
     }
   }
 
-  // Show form
+const clashSheet = clash ? (
+      <DuplicateProductsSheet
+        rows={clash.rows}
+        onRemove={() => {
+          // Ethan's rule: when two lists want the same product, the one that
+          // already counts it keeps it. Strip them from the list being saved.
+          const drop = new Set(clash.rows.map((r) => r.product_id));
+          const kept = (clash.data.product_ids || []).filter((id: number) => !drop.has(id));
+          if (kept.length === 0) {
+            // Removing them all would save a list that counts nothing, which
+            // the form itself refuses — so say what to do instead of silently
+            // creating an empty list (Codex, 2026-08-03).
+            alert('That would leave this list empty — every product on it is already counted by another list. Pick different products, or keep them anyway.');
+            return;
+          }
+          const next = { ...clash.data, product_ids: kept };
+          setClash(null);
+          void handleSave(next);
+        }}
+        onKeep={() => {
+          const next = { ...clash.data, allow_duplicates: true as const };
+          setClash(null);
+          void handleSave(next);
+        }}
+        onCancel={() => setClash(null)}
+      />
+    ) : null;
+
+  // Show form. The duplicate sheet MUST render here too: a clash is raised BY
+  // saving the form, so the form is always what's on screen when it happens.
+  // Rendering the sheet only after this early return made the whole warning
+  // dead on arrival — the save just appeared to do nothing (Codex, 2026-08-03).
   if (creating || editing) {
     return (
-      <TemplateForm
-        template={editing}
-        locations={locations}
-        departments={departments}
-        onSave={handleSave}
-        onCancel={() => {
-          // Refetch even on cancel. The editor can DELETE a product, which the
-          // server strips from every list — without this the stale template
-          // object is reused on the next open and "Save changes" writes the
-          // deleted id straight back.
-          setEditing(null); setCreating(false); fetchData();
-        }}
-      />
+      <>
+        <TemplateForm
+          template={editing}
+          locations={locations}
+          departments={departments}
+          onSave={handleSave}
+          onCancel={() => {
+            // Refetch even on cancel. The editor can DELETE a product, which the
+            // server strips from every list — without this the stale template
+            // object is reused on the next open and "Save changes" writes the
+            // deleted id straight back.
+            setEditing(null); setCreating(false); fetchData();
+          }}
+        />
+        {clashSheet}
+      </>
     );
   }
 
@@ -245,6 +298,84 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
           onCancel={() => { if (!deleting) setConfirmDelete(null); }}
         />
       )}
+      {clashSheet}
+    </div>
+  );
+}
+
+/**
+ * "4 of these are already counted on Daily Count."
+ *
+ * Counting one product on two lists means staff walk to the same shelf twice
+ * AND the day ends with two different answers for it — on 3 Aug thyme read 0.03
+ * on one list and 0.0 on the other. Overlap is nearly always an accident (daily
+ * = perishables, weekly = packaging and slow movers), so removing them is the
+ * main button. It is never a block: a product genuinely wanted on two lists is
+ * the manager's call.
+ */
+function DuplicateProductsSheet({ rows, onRemove, onKeep, onCancel }: {
+  rows: ClashRow[];
+  onRemove: () => void;
+  onKeep: () => void;
+  onCancel: () => void;
+}) {
+  const [names, setNames] = useState<Record<number, string>>({});
+  const ids = Array.from(new Set(rows.map((r) => r.product_id)));
+  useEffect(() => {
+    // Ids mean nothing to a person standing in a kitchen — show the products.
+    fetch(`/api/inventory/products?ids=${ids.join(',')}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.products) return;
+        const m: Record<number, string> = {};
+        d.products.forEach((p: any) => { m[p.id] = p.name; });
+        setNames(m);
+      })
+      .catch(() => { /* names are a nicety; the count and the list still read */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids.join(',')]);
+
+  // Group by the list they clash with, so the sentence is true when there are two.
+  const byList = new Map<string, number[]>();
+  rows.forEach((r) => {
+    const cur = byList.get(r.template_name) || [];
+    if (!cur.includes(r.product_id)) cur.push(r.product_id);
+    byList.set(r.template_name, cur);
+  });
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center" onClick={onCancel}>
+      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 pb-8 max-h-[90vh] overflow-y-auto"
+           onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-[var(--fs-lg)] font-bold leading-snug">
+          {ids.length} of these {ids.length === 1 ? 'is' : 'are'} already counted on{' '}
+          {Array.from(byList.keys()).join(' and ')}
+        </h3>
+        <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5 mb-3 leading-relaxed">
+          Counting the same thing on two lists sends staff to the same shelf twice,
+          and you get two different answers for it.
+        </p>
+        <ul className="mb-4 space-y-1.5">
+          {ids.map((pid) => (
+            <li key={pid} className="flex items-center gap-2.5 text-[var(--fs-sm)] font-semibold text-gray-900">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" aria-hidden="true" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">{names[pid] || `#${pid}`}</span>
+            </li>
+          ))}
+        </ul>
+        <button onClick={onRemove}
+          className="w-full py-3.5 rounded-xl bg-[#16A34A] text-white font-bold active:scale-[0.98] transition-transform">
+          Remove {ids.length === 1 ? 'it' : 'them'} from this list
+        </button>
+        <button onClick={onKeep}
+          className="w-full py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold mt-2 active:bg-gray-50">
+          Keep {ids.length === 1 ? 'it' : 'them'} anyway
+        </button>
+        <button onClick={onCancel}
+          className="w-full py-3 text-[var(--fs-sm)] text-gray-500 font-semibold mt-1">
+          Back to the list
+        </button>
+      </div>
     </div>
   );
 }
