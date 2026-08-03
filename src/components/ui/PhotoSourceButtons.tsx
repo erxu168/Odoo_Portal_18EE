@@ -20,6 +20,10 @@ import DropZone from '@/components/ui/DropZone';
 interface Props {
   onFile: (file: File) => void;
   disabled?: boolean;
+  /** Which camera "Take photo" opens on a phone/tablet: 'user' (front — selfies,
+   *  profile photos) or 'environment' (rear — shelves, deliveries, proof shots).
+   *  Desktop webcam modal is unaffected. */
+  facing?: 'user' | 'environment';
 }
 
 /**
@@ -35,7 +39,7 @@ function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || iPadOS;
 }
 
-export default function PhotoSourceButtons({ onFile, disabled = false }: Props) {
+export default function PhotoSourceButtons({ onFile, disabled = false, facing = 'user' }: Props) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -91,7 +95,7 @@ export default function PhotoSourceButtons({ onFile, disabled = false }: Props) 
       </div>
 
       {/* Hidden inputs */}
-      <input ref={cameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={pick} disabled={disabled} />
+      <input ref={cameraRef} type="file" accept="image/*" capture={facing} className="hidden" onChange={pick} disabled={disabled} />
       <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
 

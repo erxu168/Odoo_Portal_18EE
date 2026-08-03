@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import DropZone from '@/components/ui/DropZone';
+import BottomSheet from '@/components/ui/BottomSheet';
+import PhotoSourceButtons from '@/components/ui/PhotoSourceButtons';
 
 const DEFAULT_MAX_PHOTOS = 3;
 const MAX_DIMENSION = 1280;
@@ -22,15 +24,13 @@ interface PhotoCaptureStripProps {
  * renders + emits.
  */
 export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DEFAULT_MAX_PHOTOS }: PhotoCaptureStripProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (file) await addFiles([file]);
-  }
+  // The [+] opens an EXPLICIT chooser. A bare <input accept="image/*"> looked
+  // conformant in the July audit but on the kitchen Android tablets the OS
+  // sheet offers the gallery only — no camera. Every photo field must present
+  // its sources itself (Ethan, 2026-08-03).
+  const [chooserOpen, setChooserOpen] = useState(false);
 
   /** Shared by the picker and by dropping — one path in, whichever way you came. */
   async function addFiles(files: File[]) {
@@ -86,17 +86,9 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
       ))}
       {!atMax && (
         <DropZone onFiles={addFiles} multiple disabled={disabled || busy} hint="Drop">
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFile}
-            disabled={disabled || busy}
-          />
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={() => setChooserOpen(true)}
             disabled={disabled || busy}
             className="w-14 h-14 rounded-lg border-2 border-dashed border-[#F5800A] text-[#F5800A] flex items-center justify-center active:bg-[#FFF4E6] disabled:opacity-50"
             aria-label={photos.length === 0 ? 'Add photo' : 'Add another photo'}
@@ -111,6 +103,17 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
             )}
           </button>
         </DropZone>
+      )}
+      {chooserOpen && (
+        <BottomSheet title="Add a photo" onClose={() => setChooserOpen(false)}>
+          <PhotoSourceButtons
+            facing="environment"
+            onFile={(f) => { setChooserOpen(false); void addFiles([f]); }}
+          />
+          <p className="text-[var(--fs-xs)] text-gray-400 mt-3">
+            You can also drag a photo straight onto the {'\u002B'} button.
+          </p>
+        </BottomSheet>
       )}
     </div>
   );

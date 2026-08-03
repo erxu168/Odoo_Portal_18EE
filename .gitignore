@@ -89,3 +89,9 @@ android-timeclock/
 # (Its icon-foreground/background are COMMITTED source art, unlike the other apps.)
 /apps/timeclock/android/
 /apps/timeclock/www/
+
+# Claude Code workspace. ONLY machine state is ignored — `.claude/commands`,
+# `hooks`, `memory` and `skills` are tracked project knowledge that every
+# session and checkout must be able to read.
+.claude/worktrees/
+.claude/settings.local.json

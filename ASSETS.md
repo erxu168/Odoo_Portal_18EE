@@ -16,13 +16,23 @@ purpose is a smell — it usually means other screens hand-rolled the same thing
 ## Files / photos / camera  ← the binding rules live here
 
 Every photo or file input must accept **camera + camera roll + file picker +
-drag-and-drop + paste**. Drag is *in addition to*, never instead of.
+drag-and-drop** — those FOUR are Ethan's binding rule, and drag is *in addition
+to*, never instead of. **Paste is a fifth, opt-in way**, for desktop-first
+fields where one file at a time is the point (`FilePicker`'s `paste` prop,
+`BatchPhotos`); it is not achievable on a kitchen tablet and is not required.
+
+**The sources must be OFFERED EXPLICITLY.** A bare `<input accept="image/*">`
+is NOT conformant — on the kitchen Android tablets the OS sheet shows the
+gallery only, no camera (found live 2026-08-03, photo-required counts).
+
+**There is a repo skill for this — invoke it for ANY photo-input work:**
+`.claude/skills/photo-inputs`.
 
 | Asset | Path | What | users |
 |---|---|---|---|
 | `DropZone` | `ui/DropZone.tsx` | Wraps any target to accept a dragged-in file (handles enter/leave counting so nested elements don't flicker) | 3 |
-| `FilePicker` | `ui/FilePicker.tsx` | Camera + gallery + file input + **drag-and-drop** (built in, all 3 variants) + optional paste (`paste` prop) | 7 |
-| `PhotoSourceButtons` | `ui/PhotoSourceButtons.tsx` | Take photo / library / file, mobile UA detection, **+ drag** | 1 |
+| `FilePicker` | `ui/FilePicker.tsx` | SINGLE OS-chooser input + **drag** + optional paste. Fine for document-first fields (PDFs); **not sufficient for photo-first fields** — the Android OS sheet may omit the camera. Use `PhotoSourceButtons`/the strip's chooser there | 7 |
+| `PhotoSourceButtons` | `ui/PhotoSourceButtons.tsx` | Take photo / library / file, mobile UA detection, **+ drag**. `facing` picks front/rear camera | 2 |
 | `CameraCaptureModal` | `ui/CameraCaptureModal.tsx` | In-browser webcam capture for desktop | 1 |
 | `DocumentUploadWidget` | `ui/DocumentUploadWidget.tsx` | Document card: preview, replace, drag **in both states** | 2 |
 | `UploadWidget` | `ui/UploadWidget.tsx` | Simple file box, **+ drag** | 1 |
@@ -32,6 +42,11 @@ drag-and-drop + paste**. Drag is *in addition to*, never instead of.
 | `BatchPhotos` | `components/products/BatchPhotos.tsx` | The paste-and-advance grid: camera, file, drop, paste, or copied URL | 1 |
 
 ### Conformance — audited 2026-07-30, 24 photo fields, ALL PASS
+**CORRECTION 2026-08-03:** that audit accepted bare `accept="image/*"` inputs
+as conformant. On the kitchen Android tablets they open the GALLERY ONLY — the
+camera never appears (staff hit this on photo-required counts). PhotoCaptureStrip's
+[+] now opens an explicit chooser (PhotoSourceButtons, rear camera). Fields
+still on FilePicker for photo-first use need the same treatment when touched.
 
 Every photo field in the portal offers camera + gallery + file upload + drag.
 Two were worse than missing drag and are the reason to re-audit rather than trust
