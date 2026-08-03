@@ -554,13 +554,15 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         return;
       }
       if (typeof body?.revision === 'number' && mountedRef.current) setRevision(body.revision);
-      onSaved?.();
-      // MANDATORY: the server rebuilt the aggregate, so every local id is now
-      // stale. Re-GET to refresh ids + drop the base64 the server now owns, or a
-      // follow-up save would reference deleted ids and lose kept photos.
+      // Save = DONE: refresh the library list and CLOSE (return to it), so it's
+      // one action, not save-then-close. The aggregate rebuild changes step ids,
+      // but that only matters for CONTINUED editing — reopening re-reads fresh
+      // ids, so there's nothing to preserve by staying open.
       savingRef.current = false;
-      await load({ silent: true });
-      if (mountedRef.current) setNotice('Saved.');
+      setDirty(false);
+      onSaved?.();
+      onClose();
+      return;
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not save the guide.');
     } finally {
@@ -683,28 +685,28 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                 />
               </div>
 
-              {/* Draft / Published toggle */}
-              <div className="rounded-xl border border-gray-200 p-3 flex items-center gap-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={published}
-                  aria-label={published ? 'Published — visible to staff' : 'Draft — hidden from staff'}
-                  onClick={() => { setPublished(v => !v); markDirty(); }}
-                  className={`relative w-11 h-6 flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${published ? 'bg-green-600' : 'bg-gray-300'}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${published ? 'translate-x-5' : ''}`} />
-                </button>
-                <div className="min-w-0">
-                  <p className={`text-sm font-semibold ${published ? 'text-green-700' : 'text-gray-700'}`}>
-                    {published ? 'Published' : 'Draft'}
-                  </p>
-                  <p className="text-[11px] text-gray-500 leading-snug">
-                    {dirty
-                      ? (published ? 'Staff will see this after you save.' : 'Staff won’t see this until you publish.')
-                      : (published ? 'Staff can see this guide.' : 'Draft is hidden from staff until you publish.')}
-                  </p>
+              {/* Draft ⇄ Published switch — labels on both sides make the
+                  direction unmistakable: OFF (left) = Draft, ON (right) = Published. */}
+              <div className="rounded-xl border border-gray-200 p-3">
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-semibold ${!published ? 'text-gray-800' : 'text-gray-400'}`}>Draft</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={published}
+                    aria-label="Publish this guide to staff"
+                    onClick={() => { setPublished(v => !v); markDirty(); }}
+                    className={`relative w-11 h-6 flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${published ? 'bg-green-600' : 'bg-gray-300'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${published ? 'translate-x-5' : ''}`} />
+                  </button>
+                  <span className={`text-sm font-semibold ${published ? 'text-green-700' : 'text-gray-400'}`}>Published</span>
                 </div>
+                <p className="text-[11px] text-gray-500 leading-snug mt-2">
+                  {published
+                    ? (dirty ? 'Turned on — staff can open it once you save.' : 'On — staff can open this guide. Flip left to make it a draft.')
+                    : 'Off — a draft, hidden from staff. Flip the switch right to publish.'}
+                </p>
               </div>
 
               {stale && (

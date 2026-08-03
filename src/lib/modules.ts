@@ -46,7 +46,7 @@ export const PORTAL_MODULES: PortalModule[] = [
   { id: 'products',        label: 'Products',         minRole: 'manager', href: '/products',       emoji: '🏷️', subtitle: 'Catalog, units & photos' },
   { id: 'purchase',        label: 'Purchase',         minRole: 'staff',   href: '/purchase',       emoji: '🛒', subtitle: 'Orders & suppliers' },
   { id: 'shifts',          label: 'Planning',         minRole: 'staff',   href: '/shifts',         emoji: '📅', subtitle: 'Shifts, claims & covers' },
-  { id: 'tasks',           label: 'My Tasks',         minRole: 'staff',   href: '/tasks',          emoji: '✅', subtitle: 'Daily department checklist' },
+  { id: 'tasks',           label: 'Task Manager',     minRole: 'staff',   href: '/tasks',          emoji: '✅', subtitle: 'Daily department checklist' },
   { id: 'prep-planner',    label: 'Prep Planner',     minRole: 'manager', href: '/prep-planner',   emoji: '📊', subtitle: 'Demand forecasts & prep targets' },
   { id: 'cooktimer',       label: 'Cooking Timer',    minRole: 'manager', href: '/cooktimer-setup', emoji: '🍳', subtitle: 'Stations & cook profiles' },
   { id: 'sales',           label: 'Sales',            minRole: 'manager', href: '/sales',          emoji: '📈', subtitle: 'What a Jerk revenue & top sellers' },

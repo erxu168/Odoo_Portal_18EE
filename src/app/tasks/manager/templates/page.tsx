@@ -5,18 +5,22 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ManagerTabs from '../../_components/ManagerTabs';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../_components/useToast';
 import type { TaskTemplateSummary, DepartmentOption } from '@/lib/odoo-tasks';
 
 export default function TemplateListPage() {
   const router = useRouter();
+  const { toast, showToast, dismissToast } = useToast();
   const [templates, setTemplates]   = useState<TaskTemplateSummary[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState<TaskTemplateSummary | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -40,6 +44,27 @@ export default function TemplateListPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function setArchived(t: TaskTemplateSummary, archived: boolean) {
+    setBusyId(t.id);
+    try {
+      const res = await fetch(`/api/tasks/templates/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: archived ? 'archive' : 'unarchive' }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.ok === false) throw new Error(body.error || 'Failed');
+      showToast(archived ? 'Template archived.' : 'Template restored.', 'success');
+      // Instant view update: drop it (archive, default list) or reload to re-place it.
+      if (archived && !showArchived) setTemplates(prev => prev.filter(x => x.id !== t.id));
+      else load();
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Failed', 'error');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
@@ -47,19 +72,25 @@ export default function TemplateListPage() {
         title="Templates"
         showBack
         onBack={() => router.push('/tasks/manager')}
-        action={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25"
-          >
-            + New
-          </button>
-        }
       />
 
       <ManagerTabs />
 
       <div className="max-w-2xl mx-auto px-4 py-4">
+        <p className="text-sm text-gray-500 mb-3 leading-snug">
+          A template is a department&apos;s recurring task list. The daily lists are spawned from the active ones.
+        </p>
+
+        {/* Standard primary action — one green button (matches the Guides screen). */}
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="w-full min-h-[48px] mb-3 rounded-xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New template
+        </button>
+
         <label className="flex items-center gap-2 text-sm text-gray-600 mb-3">
           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
           Show archived
@@ -75,22 +106,50 @@ export default function TemplateListPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2">📋</p>
             <p className="font-semibold">No templates yet</p>
-            <p className="text-sm mt-1">Create one to start spawning daily lists.</p>
+            <p className="text-sm mt-1">Create one with the button above to start spawning daily lists.</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {templates.map((t, i) => (
-              <Link key={t.id} href={`/tasks/manager/templates/${t.id}`}
-                className={`flex items-center justify-between px-4 py-3.5 hover:bg-orange-50/30 transition-colors ${i < templates.length - 1 ? 'border-b border-gray-100' : ''} ${!t.active ? 'opacity-60' : ''}`}>
-                <div className="min-w-0 flex-1">
+          <div className="space-y-2">
+            {templates.map(t => (
+              <div
+                key={t.id}
+                className={`flex items-stretch bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden ${busyId === t.id ? 'opacity-50' : ''} ${!t.active ? 'opacity-70' : ''}`}
+              >
+                <Link
+                  href={`/tasks/manager/templates/${t.id}`}
+                  className="flex-1 min-w-0 px-4 py-3.5 hover:bg-blue-50/40 active:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                >
                   <p className="font-semibold text-sm text-gray-800 truncate">
                     {t.name}
                     {!t.active && <span className="ml-2 text-xs font-normal text-gray-400">(archived)</span>}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">{t.department_name} · {t.line_count} task{t.line_count === 1 ? '' : 's'}</p>
-                </div>
-                <span className="text-gray-300 text-lg flex-shrink-0">›</span>
-              </Link>
+                </Link>
+                {t.active ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmArchive(t)}
+                    disabled={busyId === t.id}
+                    aria-label={`Archive template ${t.name}`}
+                    title="Archive"
+                    className="w-12 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-red-600 active:text-red-700 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500 disabled:opacity-50"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setArchived(t, false)}
+                    disabled={busyId === t.id}
+                    aria-label={`Restore template ${t.name}`}
+                    className="px-3 flex-shrink-0 flex items-center justify-center text-xs font-semibold text-blue-600 hover:text-blue-700 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 disabled:opacity-50"
+                  >
+                    Restore
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -103,6 +162,19 @@ export default function TemplateListPage() {
           onCreated={(id) => { setShowCreate(false); window.location.href = `/tasks/manager/templates/${id}`; }}
         />
       )}
+
+      {confirmArchive && (
+        <ConfirmDialog
+          title="Archive this template?"
+          message={`Daily lists will stop being created from “${confirmArchive.name}”. Tasks already spawned are kept, and you can restore it any time from “Show archived”.`}
+          confirmLabel="Archive"
+          variant="danger"
+          onConfirm={() => { const t = confirmArchive; setConfirmArchive(null); setArchived(t, true); }}
+          onCancel={() => setConfirmArchive(null)}
+        />
+      )}
+
+      {toast && <Toast message={toast.msg} type={toast.type} visible onDismiss={dismissToast} />}
     </div>
   );
 }
@@ -160,7 +232,7 @@ function CreateModal({ departments, onClose, onCreated }: {
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-white">
           <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="flex-1 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+          <button onClick={submit} disabled={submitting} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
             {submitting ? 'Creating…' : 'Create'}
           </button>
         </div>

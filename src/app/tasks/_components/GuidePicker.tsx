@@ -150,7 +150,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
           taskName={taskName}
           currentGuideId={link?.guide_id || null}
           onClose={() => setPicking(false)}
-          onPick={async (guideId) => { setPicking(false); await attach(guideId); }}
+          onPick={async (g) => { setPicking(false); await attach(g.id); }}
           onCreated={async (guideId, name) => {
             setPicking(false);
             // Only present the new guide as the task's guide if it actually linked;
@@ -173,14 +173,15 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
   );
 }
 
-/** Modal: pick an existing library guide to link, or create a new one. */
-function GuideAttachModal({
+/** Modal: pick an existing library guide to link, or create a new one. Exported
+ * so the add-task form can reuse it to pick a guide for a not-yet-saved task. */
+export function GuideAttachModal({
   taskName, currentGuideId, onClose, onPick, onCreated,
 }: {
   taskName: string;
   currentGuideId: number | null;
   onClose: () => void;
-  onPick: (guideId: number) => void;
+  onPick: (guide: { id: number; name: string }) => void;
   onCreated: (guideId: number, name: string) => void;
 }) {
   const [guides, setGuides] = useState<LibraryGuideSummary[] | null>(null);
@@ -284,7 +285,7 @@ function GuideAttachModal({
                     <button
                       type="button"
                       disabled={g.id === currentGuideId}
-                      onClick={() => onPick(g.id)}
+                      onClick={() => onPick({ id: g.id, name: g.name })}
                       className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-blue-400 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-default"
                     >
                       <span className="text-base" aria-hidden="true">📖</span>

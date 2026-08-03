@@ -11,7 +11,7 @@ import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
 import { type GuidePin, type EditorPhoto } from '../../../_components/SetupGuideEditor';
-import GuidePicker from '../../../_components/GuidePicker';
+import GuidePicker, { GuideAttachModal } from '../../../_components/GuidePicker';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -578,6 +578,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   // New lines: remember the id created by the first successful save, so a retry
   // after a failed upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
+  // A guide chosen on the ADD-task form (before the task exists). It's linked to
+  // the task right after it's created on save. For an already-saved line, the
+  // live <GuidePicker/> below handles linking directly.
+  const [pendingGuide, setPendingGuide] = useState<{ id: number; name: string } | null>(null);
+  const [guidePicking, setGuidePicking] = useState(false);
 
   // Set when the manager dismisses the modal. A save already in flight then skips
   // its onSaved (which refreshes the list and closes the CURRENTLY open modal), so
@@ -687,6 +692,20 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
       // retry can't create a duplicate task.
       const lineId: number | undefined = existingId ?? body.line_id;
       if (!existingId && body.line_id) setCreatedLineId(body.line_id);
+
+      // Link a guide picked on the ADD-task form to the just-created task. The
+      // task is already saved, so a link failure must not fail the save — it can
+      // be re-linked by reopening the task (the live GuidePicker handles it).
+      if (!existingId && lineId && pendingGuide) {
+        try {
+          await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/guide-link`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ guide_id: pendingGuide.id }),
+          });
+          setPendingGuide(null);
+        } catch { /* task saved; guide link can be added by reopening */ }
+      }
 
       // Upload pending photos. NEW photos APPEND (no seq → the server allocates
       // the sequence atomically, so two managers editing the same guide can't
@@ -901,20 +920,36 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             </div>
           </div>
 
-          {/* Guided tutorial — link a REUSABLE library guide (many tasks → one
-              guide). Only offered for an already-saved line, since attaching
-              needs a real lineId. */}
-          {line && line.id > 0 ? (
+          {/* Guided tutorial — link a REUSABLE library guide. Once the task
+              exists (saved, or created this session) the live GuidePicker handles
+              linking; on a brand-new task you can still pick one now and it links
+              when you save. */}
+          {(line?.id ?? createdLineId) ? (
             <GuidePicker
               templateId={tplId}
-              lineId={line.id}
-              taskName={line.name}
+              lineId={(line?.id ?? createdLineId) as number}
+              taskName={name}
               onChanged={onBackgroundRefresh}
             />
           ) : (
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
-              <p className="text-[11px] text-gray-400">💡 Save this task first, then reopen it to link a guided tutorial.</p>
+              {pendingGuide ? (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 flex items-center gap-2">
+                  <span className="text-lg leading-none" aria-hidden="true">📖</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-gray-800 truncate">{pendingGuide.name}</span>
+                  <button type="button" onClick={() => setPendingGuide(null)} className="text-xs font-semibold text-red-600 hover:text-red-700">Remove</button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setGuidePicking(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  📖 Link a guide
+                </button>
+              )}
+              <p className="text-[11px] text-gray-400 mt-1">Optional — a step-by-step how-to. It links when you save the task.</p>
             </div>
           )}
           <div>
@@ -978,6 +1013,15 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
         </div>
       </div>
     </div>
+    {guidePicking && (
+      <GuideAttachModal
+        taskName={name}
+        currentGuideId={pendingGuide?.id ?? null}
+        onClose={() => setGuidePicking(false)}
+        onPick={(g) => { setPendingGuide(g); setGuidePicking(false); }}
+        onCreated={(id, nm) => { setPendingGuide({ id, name: nm }); setGuidePicking(false); }}
+      />
+    )}
     </>
   );
 }

@@ -6,6 +6,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import Toast from '@/components/ui/Toast';
 import ManagerTabs from '../../_components/ManagerTabs';
 import GuidedTutorialEditor from '../../_components/GuidedTutorialEditor';
+import GuidedTutorialPlayer from '../../_components/GuidedTutorialPlayer';
 import type { LibraryGuideSummary } from '@/lib/task-guide';
 
 /*
@@ -78,6 +79,7 @@ export default function GuideLibraryPage() {
   // ── New-guide dialog + open editor state. ───────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<{ id: number; name: string } | null>(null);
+  const [previewing, setPreviewing] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
 
   function openCreated(id: number, name: string) {
@@ -205,6 +207,7 @@ export default function GuideLibraryPage() {
                 guide={g}
                 deleting={deletingId === g.id}
                 onOpen={() => setEditing({ id: g.id, name: g.name })}
+                onPreview={() => setPreviewing(g.id)}
                 onDelete={() => handleDelete(g)}
               />
             ))}
@@ -229,6 +232,13 @@ export default function GuideLibraryPage() {
         />
       )}
 
+      {previewing !== null && (
+        <GuidedTutorialPlayer
+          source={{ kind: 'library-manager', guideId: previewing }}
+          onClose={() => setPreviewing(null)}
+        />
+      )}
+
       <Toast
         message={toast?.message || ''}
         type={toast?.type}
@@ -242,11 +252,12 @@ export default function GuideLibraryPage() {
 // ── One guide row (white card). Tapping it opens the editor; the trash button
 // (stops propagation) deletes it. ────────────────────────────────────────────
 function GuideRow({
-  guide, deleting, onOpen, onDelete,
+  guide, deleting, onOpen, onPreview, onDelete,
 }: {
   guide: LibraryGuideSummary;
   deleting: boolean;
   onOpen: () => void;
+  onPreview: () => void;
   onDelete: () => void;
 }) {
   const used = guide.template_line_count;
@@ -266,6 +277,18 @@ function GuideRow({
           {guide.step_count} step{guide.step_count === 1 ? '' : 's'}
           {used > 0 ? <span> · Used by {used} task{used === 1 ? '' : 's'}</span> : null}
         </p>
+      </button>
+      <button
+        type="button"
+        onClick={onPreview}
+        disabled={deleting}
+        aria-label={`Preview guide ${guide.name}`}
+        title="Preview"
+        className="w-12 flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-blue-600 active:text-blue-700 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 disabled:opacity-50"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" />
+        </svg>
       </button>
       <button
         type="button"
