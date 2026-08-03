@@ -267,6 +267,21 @@ export default function GuidedCountingFlow({
                     }
                   });
 
+                  // A "unit" that turns out to hold ONE drawer is pure overhead:
+                  // the fridge gets a whole heading band of its own, then the
+                  // drawer gets another band under it, for a single stop. Fold
+                  // it back to a plain stop — the stop then prints the fridge as
+                  // the small grey trail above its own bold name, which is the
+                  // same information in one block instead of two.
+                  // (A unit with SEVERAL drawers keeps its heading: naming the
+                  // fridge once above four drawers saves more than it costs.)
+                  for (let gi = 0; gi < grps.length; gi++) {
+                    const g = grps[gi];
+                    if (g.unit && !g.own && g.stops.length === 1) {
+                      grps[gi] = { key: `plain-${g.stops[0].bucket_id}`, unit: null, between: [], own: null, stops: g.stops };
+                    }
+                  }
+
                   const stopBits = (s: Stop) => {
                     const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
                     const skipped = effStatus(s) === 'skipped';
