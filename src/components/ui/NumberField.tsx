@@ -2,7 +2,7 @@
 
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { useNumpad } from './NumpadProvider';
-import { bufferFromValue, type NumericRules, type NumericValue } from '@/lib/numeric-input';
+import { bufferFromValue, keepDraft, type NumericRules, type NumericValue } from '@/lib/numeric-input';
 import type { NumpadLayout } from './NumpadCore';
 import type { NumpadQuickAction } from './NumpadProvider';
 
@@ -133,13 +133,18 @@ export default function NumberField({
    * normalised back to the parsed value on blur.
    */
   const [draft, setDraft] = useState<string | null>(null);
-  // A value arriving from OUTSIDE (an async par/price load landing while someone
-  // is typing) must win over an in-progress draft — otherwise the stale text
-  // stays on screen and the next keystroke saves it back over the fresh value.
-  const lastValueRef = useRef(value);
-  if (lastValueRef.current !== value) {
-    lastValueRef.current = value;
-    if (draft !== null) setDraft(null);
+  /** The value this field last reported upward, so its own echo is recognisable. */
+  const reportedRef = useRef<NumericValue | undefined>(undefined);
+  /**
+   * Previous value as STATE, not a ref. React's documented way to compare
+   * against the last render — a ref mutated during render can be left advanced
+   * by an abandoned concurrent render, and the retry would then miss the very
+   * external update this exists to catch.
+   */
+  const [prevValue, setPrevValue] = useState<NumericValue>(value);
+  if (!Object.is(prevValue, value)) {
+    setPrevValue(value);
+    if (!keepDraft({ draft, prevValue, value, reported: reportedRef.current })) setDraft(null);
   }
   const text = draft ?? bufferFromValue(value, rules);
 
@@ -177,16 +182,13 @@ export default function NumberField({
     const raw = e.target.value.replace(',', '.');
     // Keep exactly what was typed, so a trailing "." survives to become "2.5".
     setDraft(maxLength !== undefined ? raw.slice(0, maxLength) : raw);
-    if (raw === '') {
-      onValueChange?.(null);
-      return;
-    }
-    if (mode === 'digit-string') {
-      onValueChange?.(raw);
-      return;
-    }
-    const num = parseFloat(raw);
-    onValueChange?.(Number.isFinite(num) ? num : null);
+    const next: NumericValue =
+      raw === '' ? null
+      : mode === 'digit-string' ? raw
+      : Number.isFinite(parseFloat(raw)) ? parseFloat(raw)
+      : null;
+    reportedRef.current = next;
+    onValueChange?.(next);
   }
 
   return (
