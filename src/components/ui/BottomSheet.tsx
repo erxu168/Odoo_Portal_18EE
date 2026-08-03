@@ -47,6 +47,9 @@ export function BottomSheet({
       onClick={dismissOnBackdrop ? onClose : undefined}
       // Lift the sheet clear of the on-screen keyboard. ui/KeyboardViewportManager
       // keeps the variable current; it is 0px whenever no keyboard is up.
+      // data-keyboard-managed tells it we handle our own inset, so it does not
+      // also pad us and shift the sheet twice as far as the keyboard is tall.
+      data-keyboard-managed=""
       style={{ paddingBottom: 'var(--keyboard-inset-bottom, 0px)' }}
     >
       <div

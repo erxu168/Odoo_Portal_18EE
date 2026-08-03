@@ -76,6 +76,7 @@ export default function NumpadModal({
     // scroll container (and ui/KeyboardViewportManager) can then move.
     <div
       className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-gray-50"
+      data-keyboard-managed=""
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--keyboard-inset-bottom, 0px))' }}
     >
       {/* Header */}

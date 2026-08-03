@@ -66,6 +66,22 @@ function nearestScrollable(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
+/**
+ * Nearest `position: fixed` ancestor — the overlay the control lives in, if any.
+ * Skips overlays that declare `data-keyboard-managed`, meaning they already
+ * subtract the keyboard themselves and must not be shifted twice.
+ */
+function nearestFixedOverlay(el: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = el;
+  while (node && node !== document.body && node !== document.documentElement) {
+    if (getComputedStyle(node).position === 'fixed') {
+      return node.hasAttribute('data-keyboard-managed') ? null : node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 export default function KeyboardViewportManager() {
   useEffect(() => {
     const vv = window.visualViewport;
@@ -114,6 +130,45 @@ export default function KeyboardViewportManager() {
     }
 
     /**
+     * A fixed overlay cannot be scrolled — page scroll does not move fixed
+     * elements, and the layout viewport no longer shrinks — so the only way to
+     * lift its content clear of the keyboard is to reserve the space inside it.
+     *
+     * Doing it here rather than in each overlay is deliberate: an audit found 54
+     * fixed overlays hosting text fields, and hand-editing them would still
+     * leave every overlay written next year broken.
+     *
+     * The reserved space is ADDED to whatever padding the overlay already has,
+     * so a `pb-24` stays honoured, and the original inline value is restored on
+     * close.
+     */
+    let paddedOverlay: { el: HTMLElement; original: string } | null = null;
+
+    function releaseOverlay() {
+      if (!paddedOverlay) return;
+      paddedOverlay.el.style.paddingBottom = paddedOverlay.original;
+      paddedOverlay = null;
+    }
+
+    function reserveOverlaySpace(inset: number) {
+      const el = document.activeElement;
+      if (!isTextControl(el)) return releaseOverlay();
+
+      const overlay = nearestFixedOverlay(el);
+      if (!overlay) return releaseOverlay();
+      if (paddedOverlay && paddedOverlay.el !== overlay) releaseOverlay();
+
+      if (!paddedOverlay) {
+        // Measure BEFORE we touch it, or we would compound our own padding.
+        const base = parseFloat(getComputedStyle(overlay).paddingBottom) || 0;
+        paddedOverlay = { el: overlay, original: overlay.style.paddingBottom };
+        overlay.dataset.kwKeyboardBase = String(base);
+      }
+      const base = parseFloat(paddedOverlay.el.dataset.kwKeyboardBase || '0') || 0;
+      paddedOverlay.el.style.paddingBottom = `${base + inset}px`;
+    }
+
+    /**
      * Scroll the focused control clear of the keyboard — but only as far as its
      * own top allows, so a tall textarea never has its label pushed off the top.
      */
@@ -158,7 +213,13 @@ export default function KeyboardViewportManager() {
           clearTimeout(settleTimer);
           settleTimer = null;
         }
-        if (inset === 0) return;
+        if (inset === 0) {
+          releaseOverlay();
+          return;
+        }
+        // Reserve first: a fixed overlay must make room before there is anything
+        // for the scroll pass to move.
+        reserveOverlaySpace(inset);
         // Let the keyboard animation and Chrome's own scroll finish, then correct.
         settleTimer = setTimeout(ensureVisible, SETTLE_MS);
       });
@@ -180,6 +241,7 @@ export default function KeyboardViewportManager() {
       document.removeEventListener('focusout', update);
       if (rafId !== null) cancelAnimationFrame(rafId);
       if (settleTimer) clearTimeout(settleTimer);
+      releaseOverlay();
       root.style.removeProperty('--keyboard-inset-bottom');
       root.style.removeProperty('--visual-viewport-height');
       root.removeAttribute('data-keyboard-open');

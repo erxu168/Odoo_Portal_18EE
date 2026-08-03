@@ -77,6 +77,31 @@ a second screen wants that, lift it out.
 
 ---
 
+## On-screen keyboards  ← binding on every input
+
+Android covers the bottom of the screen with its keyboard, including the field
+being typed into. Two standing rules:
+
+1. **A number-only field never raises the OS keypad.** Use `ui/NumberField`, or
+   `ui/useNumpadField` when the number is not an input element. Exempt, and
+   deliberately so: phone numbers and OTP (need `+` and SMS autofill), date/time
+   (OS pickers), and the masked sign-in PIN pads (they mask and auto-submit —
+   the shared pad shows the value and waits for Confirm).
+2. **A text field stays visible above the keyboard.** `ui/KeyboardViewportManager`
+   handles this portal-wide with no per-screen work — EXCEPT that it works by
+   scrolling, and **a `position: fixed` overlay with no scroll container cannot
+   be scrolled at all**. Such an overlay must consume `--keyboard-inset-bottom`
+   itself, or wrap its content in `overflow-y-auto`. Opt a control out with
+   `data-keyboard-scroll="off"`.
+
+| Asset | Path | What | users |
+|---|---|---|---|
+| `KeyboardViewportManager` | `ui/KeyboardViewportManager.tsx` | Mounted once in the root layout. Detects the keyboard by GEOMETRY plus a focused text control (focus alone misfires on split-screen and Capacitor `adjustResize`; geometry alone mistakes pinch-zoom for a keyboard). Publishes `--keyboard-inset-bottom`, `--visual-viewport-height`, `html[data-keyboard-open]` | 1 |
+
+Spec: `docs/superpowers/specs/2026-08-03-android-keyboard-numpad-design.md`
+
+---
+
 ## Feedback after a change  ← the other binding rule
 
 A delete/archive/add/edit must change the screen **immediately**. If it needs a
@@ -127,7 +152,11 @@ list told only about the room keeps rendering orphans.
 | `Select` | `ui/Select.tsx` | Touch-sized select with chevron + placeholder | 1 |
 | `Field` | `ui/Field.tsx` | Label + control + hint/error row | 1 |
 | `OptionGrid` | `ui/OptionGrid.tsx` | Big-target replacement for radios — glove-friendly | 2 |
-| `Numpad` | `ui/Numpad.tsx` | Large touch numeric keypad | 2 |
+| `NumberField` | `ui/NumberField.tsx` | **The number input to use everywhere.** On a touch device it suppresses Android's keypad (`inputMode="none"`) and opens the shared in-app pad; on desktop it is an ordinary typed input. Pad edits stay in the pad's buffer — the parent hears them once, via `onCommit` | 0 |
+| `useNumpadField` | `ui/useNumpadField.ts` | Same pad for screens whose number is NOT an input — a tappable quantity on a counting row, a price in a card. Returns `triggerProps` to spread | 0 |
+| `NumpadProvider` / `useNumpad` | `ui/NumpadProvider.tsx` | The ONE pad host, mounted in the root layout. Owns Android Back (history entry, so Back closes the pad instead of leaving the screen), hardware-key capture (a Bluetooth Enter must not submit the form behind it), barcode-scanner burst rejection, async commit (spinner, stays open on failure), focus restore, portal to `<body>` at z-[130] so it never paints behind the sheet that opened it | 1 |
+| `NumpadCore` | `ui/NumpadCore.tsx` | The keypad body — no sheet, no backdrop, controlled buffer. What the shells share. `layout` keeps counting's grid and Purchase's grid both available; the KEYS behave identically either way | 1 |
+| `Numpad` | `ui/Numpad.tsx` | Legacy modal keypad. **Being replaced by NumberField/useNumpadField** — untouched until its importers migrate, then deleted | 2 |
 | `ContainerLevelPicker` / `ContainerLevelGlyph` | `ui/ContainerLevelPicker.tsx` | Mark the open container's level by eye — drawings of the REAL containers (white 10 L bucket, 20 L tub, blue 30 L drum, bottle), quarter steps, 44px zones; glyph = tiny read-only variant for review lines. Feeds the existing loose quantity via `looseFromFraction`/`quarterFromLoose` in `crate-units` | 2 |
 | `PhoneInput` | `ui/PhoneInput.tsx` | Country code + validation | 1 |
 | `RichTextEditor` | `ui/RichTextEditor.tsx` | Formatted-note editor | 2 |
@@ -176,6 +205,8 @@ importers.
 | `location-tree.ts` | `lib/location-tree.ts` | `locationPathLabel` and tree walking |
 | `crate-units.ts` | `lib/crate-units.ts` | Pack/loose wording — "1 crate = 24 bottles" |
 | `zpl.ts` / `zpl-net.ts` | `lib/` | Zebra label ZPL; network send is server-only |
+| `numeric-input.ts` | `lib/numeric-input.ts` | **What typing a number MEANS** — one buffer truth table for every pad. Modes `integer`/`decimal`/`digit-string`. **THE RULE: empty is not zero.** Blank means "nobody counted this"; a typed `0` means "there is none here, set stock to zero" — they go to different places in Odoo. `ui/Numpad` used to collapse them with `parseFloat(v) \|\| 0`. Also: German decimal comma in, dot stored; `digit-string` keeps leading zeros (postcode `01067`, barcode) and is never parsed; range rules apply at zero too (the old tolerance check's `>0` escape let `0` past a `min: 1` field) |
+| `modal-stack.ts` | `lib/modal-stack.ts` | `useEscapeStack` — who owns Escape. Only the TOP-most overlay reacts, so the numpad opened from inside a sheet can't close the sheet and discard its edits. Shared by `BottomSheet` and `NumpadProvider` |
 | `design-system.ts` / `ux-rules.ts` | `lib/` | Tokens; plain-language mappings |
 
 ---
