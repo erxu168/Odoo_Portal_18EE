@@ -12,7 +12,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="TASK MANAGER" title="Settings" />
+      <AppHeader supertitle="TASK MANAGER" title="Settings" showBack backHref="/tasks/manager" />
 
       <ManagerTabs />
 

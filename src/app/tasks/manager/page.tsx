@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import ManagerTabs from '../_components/ManagerTabs';
 import type { DashboardData, TaskListSummary } from '@/lib/odoo-tasks';
 
 export default function ManagerDashboard() {
+  const router = useRouter();
   const [data, setData]       = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -48,6 +50,8 @@ export default function ManagerDashboard() {
       <AppHeader
         supertitle="TASK MANAGER"
         title="Department Tasks"
+        showBack
+        onBack={() => router.push('/')}
         action={
           <button
             onClick={handleSpawn}

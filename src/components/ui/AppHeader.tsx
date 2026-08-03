@@ -23,11 +23,12 @@ interface AppHeaderProps {
   subtitle?: string;
   showBack?: boolean;
   onBack?: () => void;
+  backHref?: string;   // declarative UP-the-hierarchy back target (works from server components)
   root?: boolean;   // a genuine top-level screen with nowhere to return to → home-only (no Back arrow)
   action?: React.ReactNode;
 }
 
-export default function AppHeader({ supertitle, title, subtitle, showBack, onBack, root, action }: AppHeaderProps) {
+export default function AppHeader({ supertitle, title, subtitle, showBack, onBack, backHref, root, action }: AppHeaderProps) {
   const router = useRouter();
 
   function goHome() {

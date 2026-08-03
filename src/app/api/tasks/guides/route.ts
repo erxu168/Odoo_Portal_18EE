@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listLibraryGuides, createLibraryGuide } from '@/lib/task-guide';
@@ -35,9 +36,18 @@ export async function POST(req: NextRequest) {
     if (name.length > MAX_NAME) return NextResponse.json({ error: 'That name is too long.' }, { status: 400 });
     let companyId = Number(body?.company_id);
     if (!Number.isInteger(companyId) || companyId <= 0) {
-      // Default to the sole assigned company; otherwise the caller must choose.
-      if (allowed.length === 1) companyId = allowed[0];
-      else return NextResponse.json({ error: 'Choose a company for this guide.' }, { status: 400 });
+      // Use the ACTIVE company (the one selected in the top-right pill, stored in
+      // the kw_company_id cookie) when the caller may use it — so a multi-company
+      // admin/manager never has to re-pick. Then the sole assigned company. Only
+      // ask when it's genuinely ambiguous. (Mirrors the inventory create routes.)
+      const activeCompany = parseInt(cookies().get('kw_company_id')?.value || '0', 10);
+      if (activeCompany && userCompanyAllowed(user, activeCompany)) {
+        companyId = activeCompany;
+      } else if (allowed.length === 1) {
+        companyId = allowed[0];
+      } else {
+        return NextResponse.json({ error: 'Choose a company for this guide.' }, { status: 400 });
+      }
     }
     // Fail CLOSED: a non-admin may only create in a company they're assigned to.
     if (!userCompanyAllowed(user, companyId)) {
