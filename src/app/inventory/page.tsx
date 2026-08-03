@@ -31,7 +31,7 @@ type Screen =
   | { type: 'consumption' }
   | { type: 'goods-received' }
   | { type: 'settings' }
-  | { type: 'session'; sessionId: number; from?: 'dashboard' | 'my-lists' | 'review' };
+  | { type: 'session'; sessionId: number; sessionIds?: number[]; from?: 'dashboard' | 'my-lists' | 'review' };
 
 export default function InventoryPage() {
   const router = useRouter();
@@ -62,7 +62,7 @@ export default function InventoryPage() {
         userRole={userRole}
         capabilities={capabilities}
         onNavigate={(id) => { if (id === 'floorplan') router.push('/inventory/floorplan'); else setScreen({ type: id as any }); }}
-        onOpenSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'dashboard' })}
+        onOpenSession={(sids) => setScreen({ type: 'session', sessionId: sids[0], sessionIds: sids, from: 'dashboard' })}
         onHome={goHome}
       />
     );
@@ -81,6 +81,7 @@ export default function InventoryPage() {
     return (
       <CountingSession
         sessionId={screen.sessionId}
+        sessionIds={screen.sessionIds}
         userRole={userRole}
         onBack={backToOrigin}
         onSubmit={backToOrigin}
@@ -180,7 +181,7 @@ export default function InventoryPage() {
       userRole={userRole}
       capabilities={capabilities}
       onNavigate={(id) => { if (id === 'floorplan') router.push('/inventory/floorplan'); else setScreen({ type: id as any }); }}
-      onOpenSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'dashboard' })}
+      onOpenSession={(sids) => setScreen({ type: 'session', sessionId: sids[0], sessionIds: sids, from: 'dashboard' })}
       onHome={goHome}
     />
   );
