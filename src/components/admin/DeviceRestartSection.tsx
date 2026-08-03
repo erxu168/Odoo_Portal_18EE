@@ -221,15 +221,11 @@ export default function DeviceRestartSection() {
       {/* MANAGED */}
       <div className="flex items-center justify-between mb-2 mt-1">
         <h3 className="text-[12px] font-bold uppercase tracking-wide text-gray-400">Your devices <span className="text-gray-300">· {managedOnline} online</span></h3>
-        {managed.length > 0 && (
-          <div className="flex gap-3">
-            {kdsCount > 0 && (
-              <button onClick={() => restartGroup({ type: 'surface', surface: 'kds' }, `all kitchen displays (${kdsCount} online)`)} disabled={busy !== null}
-                className="text-[11.5px] font-semibold text-gray-500 active:opacity-70 disabled:opacity-40">Restart all KDS</button>
-            )}
-            <button onClick={() => restartGroup({ type: 'all' }, 'every managed screen')} disabled={busy !== null || managed.length === 0}
-              className="text-[11.5px] font-semibold text-gray-500 active:opacity-70 disabled:opacity-40">Restart all</button>
-          </div>
+        {/* Only the surface-targeted "all KDS" bulk action — a blanket "restart everything"
+            would also reload staff phones + POS tills, which we deliberately don't touch. */}
+        {kdsCount > 0 && (
+          <button onClick={() => restartGroup({ type: 'surface', surface: 'kds' }, `all kitchen displays (${kdsCount} online)`)} disabled={busy !== null}
+            className="text-[11.5px] font-semibold text-gray-500 active:opacity-70 disabled:opacity-40">Restart all KDS</button>
         )}
       </div>
       {managed.length === 0 ? (
