@@ -20,6 +20,7 @@ One Android tablet sits at the speakers at What A Jerk and runs a fullscreen pla
 7. All interaction on the player tablet itself (no phone remote in v1).
 8. Explicit lyrics: don't care.
 9. Auto-radio: one shuffled mix of all 4 genres (no vibe switch, no schedule).
+10. *(added 2026-08-03, after mock)* The player ships as an **Android kiosk app** on a **dedicated Sunmi T2s** unit — separate from the live POS register (Ethan considered same-device background play; chose the dedicated device). The app is a thin wrapper around `/music/player`; managers keep using the portal on their phones. YouTube Music app installation is NOT required — the app is self-contained.
 
 ### 1a. Compliance position — eyes open (updated after Codex review)
 
@@ -44,6 +45,14 @@ Mitigations built into this design: YouTube-sourced **metadata expires after 30 
 | Other staff / other devices | No access — player-mutation APIs verify the request comes from the assigned device's session, not just any staff login. |
 
 Module registered `minRole: 'manager'`; the radio tablet's account gets an explicit `music` module grant at rollout (customized per-user allow-lists don't inherit new modules automatically). WAJ is hard-pinned to its company — no company switcher on any music screen. All mutations follow the repo's CSRF/same-origin pattern and the shared `authorize(capability)` helper (effective actor on shared tablets, per-user module access enforced server-side).
+
+## 2a. Device & Android app packaging (added after mock review)
+
+- **Hardware:** one dedicated **Sunmi T2s** (Sunmi OS / Android 9, 4GB RAM, octa-core — ample for video). Audio to the restaurant speakers via its **3.5mm jack** (or Bluetooth); the built-in 1.2W speaker is not sufficient for the room. This unit is NOT the live POS register.
+- **App:** Capacitor Android kiosk app in its **own folder** with its own config + GitHub Actions APK workflow (binding one-folder-per-app rule; never a shared repo-root `android/`). The WebView loads the **remote** `https://portal.krawings.de/music/player` — so every portal deploy updates the jukebox with no APK rebuild. App provides: fullscreen/immersive, keep-screen-on, launch-on-boot, `mediaPlaybackRequiresUserGesture=false` (**no daily start-tap in the app** — the browser splash remains only as a web fallback), pinned to the player page.
+- **Install:** sideloaded APK (no Play Store/GMS dependency). Runbook covers install + WebView-version check.
+- **Phase-0 spike (mandatory before full build):** a bare APK that plays one YouTube embed on the actual T2s — validates Sunmi's WebView version, embed referer behavior (error 153), audio-jack output, and autoplay flag. If the stock WebView is too old, sideload an updated Android System WebView (documented in runbook).
+- **Ads caveat:** signing a Google/Premium account into an app WebView is unreliable (Google blocks OAuth in embedded WebViews), so v1 in the app accepts occasional ads between songs. If ads become annoying: revisit (TWA/Chrome-based wrapper with a Premium profile, or accept).
 
 ## 3. Entry points
 
@@ -171,10 +180,10 @@ Max song length **15 min**; live/upcoming streams refused; made-for-kids refused
 
 ## 15. Open assumptions & Ethan's prerequisites
 
-1. Tablet = Android + Chrome/Fully Kiosk, portal shared-tablet login, kiosk keeps screen awake; audio out to speakers (3.5mm/BT/USB).
+1. Player device = a dedicated **Sunmi T2s** running our kiosk app (§2a), portal shared-tablet login, audio to speakers via 3.5mm jack or Bluetooth. Ethan provides the T2s unit + speaker connection.
 2. **New env vars on staging:** `YOUTUBE_API_KEY` (free Google Cloud key, restricted), `ANTHROPIC_API_KEY` (portal's first LLM usage).
 3. Classifier = Haiku 4.5 by explicit cost choice ("small AI" approved 2026-08-03); one-line swap if accuracy disappoints.
-4. Ads may play between songs without a Premium login on the tablet (~€13/mo removes them) — accepted v1.
+4. Ads may play between songs — accepted v1 (Premium sign-in inside an app WebView is unreliable; see §2a ads caveat).
 5. GEMA registration — Ethan, independent of this build.
 6. §1a compliance position — Ethan signs off with the spec.
 
@@ -190,9 +199,11 @@ Codex (gpt-5.6-sol, high) reviewed the plan against the repo. **Accepted:** deve
 
 ## 18. Implementation plan (each phase ends: build+lint clean, commit, push to `main`, Codex diff review)
 
+0. **T2s spike:** bare Android APK playing one YouTube embed on the actual Sunmi T2s (WebView version, error 153, audio jack, autoplay flag). Go/no-go gate for the app packaging approach.
 1. Schema + `music-db.ts` + pure `music-gate.ts` with mocked adapters + adversarial unit tests.
 2. Adapters: `youtube-data.ts` (batching, backoff, breaker), `youtube-music.ts` (pinned, fixture-tested), Claude classifier.
 3. Transactional queue/playback/radio selection + device pinning + API routes.
-4. `/music/player` (IFrame, search, queue UI, splash, error-skip).
+4. `/music/player` (IFrame, search, queue UI, splash [web fallback], error-skip).
 5. `/music` home, requests, decisions/history, settings, `PORTAL_MODULES` + grants.
-6. Pool pre-warm + inspect, Playwright suite, staging verify, tablet runbook (one page).
+6. Pool pre-warm + inspect, Playwright suite, staging verify.
+7. **Android kiosk app:** Capacitor project in its own folder + GitHub Actions APK build, install on the T2s, multi-hour soak on real speakers, one-page runbook.
