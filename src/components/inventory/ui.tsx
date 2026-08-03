@@ -22,7 +22,9 @@ export function FilterBar({ children }: { children: React.ReactNode }) {
 
 export function FilterPill({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
   return (
-    <button onClick={onClick}
+    // aria-pressed, not colour alone: a filter's selected state must be
+    // announced to a screen reader (and assertable in a test).
+    <button onClick={onClick} type="button" aria-pressed={active}
       className={`px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold whitespace-nowrap transition-all ${
         active ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
       }`}>

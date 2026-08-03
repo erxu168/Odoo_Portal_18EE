@@ -24,6 +24,7 @@ type Screen =
   | { type: 'quick-count' }
   | { type: 'manage' }
   | { type: 'review' }
+  | { type: 'review-unsubmitted' }
   | { type: 'mo-ingredients' }
   | { type: 'drinks-scanner' }
   | { type: 'drinks-editor' }
@@ -31,7 +32,7 @@ type Screen =
   | { type: 'consumption' }
   | { type: 'goods-received' }
   | { type: 'settings' }
-  | { type: 'session'; sessionId: number; sessionIds?: number[]; from?: 'dashboard' | 'my-lists' | 'review' };
+  | { type: 'session'; sessionId: number; sessionIds?: number[]; from?: 'dashboard' | 'my-lists' | 'review' | 'review-unsubmitted' };
 
 export default function InventoryPage() {
   const router = useRouter();
@@ -77,6 +78,9 @@ export default function InventoryPage() {
     // My Lists -> My Lists, Review -> Review.
     const backToOrigin = screen.from === 'my-lists' ? () => setScreen({ type: 'my-lists' })
       : screen.from === 'review' ? () => setScreen({ type: 'review' })
+      // Back from a stuck count returns to the STUCK list, not to Submitted —
+      // otherwise the dead end this whole change fixes comes straight back.
+      : screen.from === 'review-unsubmitted' ? () => setScreen({ type: 'review-unsubmitted' })
       : goDashboard;
     return (
       <CountingSession
@@ -165,12 +169,16 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'review' && can('inventory.review.approve')) {
+  if ((screen.type === 'review' || screen.type === 'review-unsubmitted') && can('inventory.review.approve')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Review" subtitle="Approve or reject submitted counts" showBack onBack={goDashboard} />
         <ReviewSubmissions
-          onViewSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'review' })}
+          initialFilter={screen.type === 'review-unsubmitted' ? 'pending,in_progress' : undefined}
+          onViewSession={(id, fromFilter) => setScreen({
+            type: 'session', sessionId: id,
+            from: fromFilter === 'pending,in_progress' ? 'review-unsubmitted' : 'review',
+          })}
         />
       </div>
     );

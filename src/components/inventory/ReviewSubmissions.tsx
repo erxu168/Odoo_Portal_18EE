@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, ProductThumb } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
 import RecordLink from '@/components/ui/RecordLink';
@@ -10,18 +10,26 @@ import NumpadModal from './NumpadModal';
 import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords, crateTotal, quarterFromLoose, pluralizePack } from '@/lib/crate-units';
 import { ContainerLevelGlyph, type ContainerShape } from '@/components/ui/ContainerLevelPicker';
 import { typeIcon, typeLabel, LOCATION_TYPES } from '@/lib/location-types';
+import { berlinToday } from '@/lib/berlin-date';
 
 const LEVEL_WORD: Record<number, string> = { 0.25: '\u00BC', 0.5: '\u00BD', 0.75: '\u00BE' };
 
+/** The statuses of a count that was STARTED but never submitted. */
+const UNSUBMITTED = 'pending,in_progress';
+
 interface ReviewSubmissionsProps {
-  onViewSession: (sessionId: number) => void;
+  /** The second argument is the list the manager was looking at, so Back
+   *  returns THERE — the filter can change after landing. */
+  onViewSession: (sessionId: number, fromFilter?: string) => void;
+  /** Land straight on a filter — the dashboard's stuck-counts notice does. */
+  initialFilter?: string;
 }
 
-export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsProps) {
+export default function ReviewSubmissions({ onViewSession, initialFilter }: ReviewSubmissionsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [quickCounts, setQuickCounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('submitted');
+  const [filter, setFilter] = useState(initialFilter || 'submitted');
   const [tab, setTab] = useState<'sessions' | 'quick'>('sessions');
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [reviewSession, setReviewSession] = useState<any>(null);
@@ -75,15 +83,27 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     return loc?.complete_name || loc?.name || null;
   }
 
+  const reqToken = useRef(0);
   const fetchData = useCallback(async () => {
+    const token = ++reqToken.current;
     setLoading(true);
     try {
+      const isUnsubmitted = filter === UNSUBMITTED;
       const [sessRes, qcRes] = await Promise.all([
         fetch(`/api/inventory/sessions?status=${filter}`).then((r) => r.json()),
-        fetch(`/api/inventory/quick-count?status=${filter}`).then((r) => r.json()),
+        // Quick counts are a different lifecycle (pending → approved); asking
+        // them for a COUNT status returns nothing useful.
+        isUnsubmitted ? Promise.resolve({ counts: [] }) : fetch(`/api/inventory/quick-count?status=${filter}`).then((r) => r.json()),
       ]);
       let sessData = sessRes.sessions || [];
       const qcData = qcRes.counts || [];
+
+      if (isUnsubmitted) {
+        // "Stuck" means EARLIER days. Today's count is simply in progress and
+        // belongs in My Lists, not in a list of things needing rescue.
+        const today = berlinToday();
+        sessData = sessData.filter((x: any) => String(x.scheduled_date) < today);
+      }
 
       if (dateRange && (filter === 'approved' || filter === 'rejected')) {
         sessData = sessData.filter((s: any) => {
@@ -92,12 +112,15 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         });
       }
 
+      if (token !== reqToken.current) return;   // a newer filter owns the screen
       setSessions(sessData);
       setQuickCounts(qcData);
     } catch (err) {
       console.error('Failed to fetch reviews:', err);
+      // Never leave the PREVIOUS filter's rows sitting under the new label.
+      if (token === reqToken.current) { setSessions([]); setQuickCounts([]); }
     } finally {
-      setLoading(false);
+      if (token === reqToken.current) setLoading(false);
     }
   }, [filter, dateRange]);
 
@@ -1115,9 +1138,24 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
       <div className="pt-2">
         <FilterBar>
-          {['submitted', 'approved', 'rejected'].map((s) => (
-            <FilterPill key={s} active={filter === s} label={s.charAt(0).toUpperCase() + s.slice(1)}
-              onClick={() => { setFilter(s); setDateRange(null); }} />
+          {[
+            { v: 'submitted', l: 'Submitted' },
+            { v: UNSUBMITTED, l: 'Not submitted' },
+            { v: 'approved', l: 'Approved' },
+            { v: 'rejected', l: 'Rejected' },
+          ].map((o) => (
+            <FilterPill key={o.v} active={filter === o.v} label={o.l}
+              onClick={() => {
+                // Re-tapping the ACTIVE pill changes nothing, so no replacement
+                // request would run — invalidating here would strand the
+                // in-flight one and leave the spinner up for ever.
+                if (filter === o.v) return;
+                reqToken.current++;          // in-flight responses are stale from NOW
+                setFilter(o.v); setDateRange(null);
+                // Quick counts have no pending/in_progress lifecycle — sending
+                // that filter to their tab produced a dead end.
+                if (o.v === UNSUBMITTED) setTab('sessions');
+              }} />
           ))}
         </FilterBar>
       </div>
@@ -1132,7 +1170,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         {loading ? <Spinner /> : (<>
           {tab === 'sessions' && (
             sessions.length === 0 ? (
-              <EmptyState icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>} title={`No ${filter} sessions`} />
+              <EmptyState icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>} title={filter === UNSUBMITTED ? 'Nothing stuck' : `No ${filter} sessions`}
+                body={filter === UNSUBMITTED ? 'Every count from an earlier day has been dealt with.' : undefined} />
             ) : (
               <div className="flex flex-col gap-3">
                 {sessions.map((sess: any) => (
@@ -1152,6 +1191,17 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                           {actionLoading === sess.id ? '...' : 'Recount'}
                         </button>
                       </div>
+                    ) : (sess.status === 'pending' || sess.status === 'in_progress') ? (
+                      <>
+                        <button onClick={() => onViewSession(sess.id, filter)}
+                          className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold active:bg-green-700 shadow-sm">
+                          Open and finish it
+                        </button>
+                        <p className="text-[var(--fs-xs)] text-gray-500 mt-2 leading-snug">
+                          Started on {sess.scheduled_date} and never submitted. Open it to see what was
+                          counted, then submit it — or leave it and it stays here.
+                        </p>
+                      </>
                     ) : (
                       <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[var(--fs-base)] font-semibold active:bg-gray-200">View details</button>
                     )}
@@ -1163,7 +1213,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
           {tab === 'quick' && (
             quickCounts.length === 0 ? (
-              <EmptyState icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>} title={`No ${filter} quick counts`} />
+              <EmptyState icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>} title={filter === UNSUBMITTED ? 'Quick counts don\u2019t get stuck' : `No ${filter} quick counts`} />
             ) : (
               <div className="flex flex-col gap-3">
                 {quickCounts.map((qc: any) => (

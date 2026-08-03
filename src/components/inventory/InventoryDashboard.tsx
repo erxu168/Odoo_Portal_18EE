@@ -215,14 +215,14 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
           const inner = (
             <>
               <p className="text-[var(--fs-sm)] font-bold text-amber-900">
-                {stats.olderOpen} count{stats.olderOpen === 1 ? '' : 's'} from earlier days {stats.olderOpen === 1 ? 'was' : 'were'} started and never submitted
+                {stats.olderOpen} count{stats.olderOpen === 1 ? '' : 's'} from earlier days {stats.olderOpen === 1 ? 'is' : 'are'} still open
               </p>
               <p className="text-[var(--fs-xs)] text-amber-800 mt-0.5">
-                Counts nobody touched close themselves overnight, so {stats.olderOpen === 1 ? 'this one has' : 'these have'} work in
-                {stats.olderOpen === 1 ? ' it' : ' them'}.{' '}
+                Opened on an earlier day and never submitted. The 6:00 tidy-up closes the ones
+                nobody touched {'\u2014'} open one to see what is in it.{' '}
                 {canReview
-                  ? <span className="font-bold underline">Tap to open Review.</span>
-                  : `A manager can submit or reject ${stats.olderOpen === 1 ? 'it' : 'them'} from Review.`}
+                  ? <span className="font-bold underline">Tap to see {stats.olderOpen === 1 ? 'it' : 'them'}.</span>
+                  : `A manager can finish ${stats.olderOpen === 1 ? 'it' : 'them'} from Review.`}
               </p>
             </>
           );
@@ -230,7 +230,7 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
           return (
             <div className="mx-4 mb-3">
               {canReview ? (
-                <button type="button" onClick={() => onNavigate('review')}
+                <button type="button" onClick={() => onNavigate('review-unsubmitted')}
                   className={`${box} block w-full text-left active:bg-amber-100`}>
                   {inner}
                 </button>
