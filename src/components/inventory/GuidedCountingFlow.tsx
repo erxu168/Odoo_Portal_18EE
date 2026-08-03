@@ -269,27 +269,43 @@ export default function GuidedCountingFlow({
                   }`} aria-hidden="true">
                     {done ? '✓' : i + 1}
                   </span>
+                  {/* THE CONTAINER IS THE DESTINATION, so it is the loud line and
+                      the room is the quiet trail above it. The first version had
+                      this the wrong way round and truncated the name that
+                      matters ("Countertop f…") — Ethan, 2026-08-03. Nothing
+                      truncates now: a long name wraps rather than hiding. */}
                   <span className="min-w-0 flex-1 leading-tight">
-                    <span className="block text-[var(--fs-lg)] font-extrabold truncate">
-                      {areaName}
-                      {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
-                    </span>
-                    {loneUnit && (
-                      <span className="block text-[var(--fs-sm)] font-bold text-gray-600 truncate">
-                        <span aria-hidden="true">{typeIcon(loneUnit.unit!.kind)} </span>
-                        {loneUnit.between.length > 0 && <span className="font-semibold text-gray-400">{loneUnit.between.join(' › ')} › </span>}
-                        {/* the type word matters for a cryptic name — "Fridge F1", not "F1" */}
-                        {luShowLabel && <span className="font-semibold text-gray-500">{luLabel} </span>}
-                        {loneUnit.unit!.name}
-                        {luAllDone && <span className="text-green-700"> {luFolded ? '▸ Tap to view' : '▾ Hide'}</span>}
+                    {loneUnit ? (
+                      <>
+                        <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 truncate">
+                          {areaName}
+                          {loneUnit.between.length > 0 && <> {'›'} {loneUnit.between.join(' › ')}</>}
+                        </span>
+                        <span className="block text-[var(--fs-lg)] font-extrabold [overflow-wrap:anywhere]">
+                          <span aria-hidden="true">{typeIcon(loneUnit.unit!.kind)} </span>
+                          {/* the type word matters for a cryptic name — "Fridge F1", not "F1" */}
+                          {luShowLabel && <span className="font-semibold text-gray-500">{luLabel} </span>}
+                          {loneUnit.unit!.name}
+                          {luAllDone && <span className="text-[var(--fs-xs)] text-green-700 font-bold"> {luFolded ? '▸ Tap to view' : '▾ Hide'}</span>}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="block text-[var(--fs-lg)] font-extrabold [overflow-wrap:anywhere]">
+                        {areaName}
+                        {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
                       </span>
                     )}
                   </span>
                 </button>
-                <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums">
-                  {loneUnit
-                    ? `${luDone} of ${luMembers.length} done`
-                    : done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
+                <span className="flex-shrink-0 text-[var(--fs-xs)] font-semibold text-gray-400 tabular-nums whitespace-nowrap">
+                  {loneUnit ? (
+                    <>
+                      {/* compact on screen, a sentence for a screen reader —
+                          "2/3" alone announces as "two slash three". */}
+                      <span aria-hidden="true">{luDone}/{luMembers.length}</span>
+                      <span className="sr-only">{luDone} of {luMembers.length} places done</span>
+                    </>
+                  ) : done ? `${areaTotal} counted` : `${areaCounted} of ${areaTotal}`}
                 </span>
                 {loneUnit && (
                   <button onClick={() => setMapSpotId(loneUnit.unit!.id)}
