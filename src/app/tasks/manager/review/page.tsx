@@ -27,6 +27,13 @@ function initials(name: string): string {
 function berlinTodayStr(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
+/** Odoo completed_at is a UTC "YYYY-MM-DD HH:MM:SS" string — show it in Berlin time. */
+function berlinTimeHM(utc: string): string {
+  if (!utc) return '';
+  const d = new Date(utc.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+}
 
 export default function PhotoReviewPage() {
   const router = useRouter();
@@ -55,6 +62,7 @@ export default function PhotoReviewPage() {
   const [busyLine, setBusyLine] = useState<number | null>(null);
   const [lightbox, setLightbox] = useState<{ item: ReviewItem; attId: number } | null>(null);
   const reqSeq = useRef(0);
+  const flagBusyRef = useRef(false);   // synchronous lock — blocks a double-click before React rerenders
 
   const load = useCallback(async () => {
     const token = ++reqSeq.current;
@@ -86,7 +94,7 @@ export default function PhotoReviewPage() {
   const isToday = date === berlinTodayStr();
 
   async function toggleFlag(item: ReviewItem) {
-    if (busyLine) return;
+    if (flagBusyRef.current) return;                // sync guard against a fast double-click
     const willFlag = !item.flagged;
     let reason = item.flag_reason || 'Please redo this one.';
     if (willFlag) {
@@ -94,8 +102,9 @@ export default function PhotoReviewPage() {
       if (entered === null) return;                 // cancelled
       reason = entered.trim() || 'Please redo this one.';
     }
+    flagBusyRef.current = true;
     setBusyLine(item.line_id);
-    // Optimistic update (immediate feedback), reconciled by reload.
+    // Optimistic update for immediate feedback; reconciled from the response below.
     setFeed(prev => prev && ({
       ...prev,
       items: prev.items.map(i => i.line_id === item.line_id ? { ...i, flagged: willFlag, flag_reason: willFlag ? reason : '' } : i),
@@ -114,11 +123,17 @@ export default function PhotoReviewPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || 'Could not update the flag.');
+      // Reconcile this row from the authoritative server state (flagged/reason).
+      setFeed(prev => prev && ({
+        ...prev,
+        items: prev.items.map(i => i.line_id === item.line_id ? { ...i, flagged: !!body.flagged, flag_reason: body.reason || '' } : i),
+      }));
       setToast({ message: willFlag ? `Flagged — sent back to ${item.completed_by_name || 'the staff member'}.` : 'Flag cleared.', type: 'success' });
     } catch (e: unknown) {
       setToast({ message: e instanceof Error ? e.message : 'Could not update the flag.', type: 'error' });
       load(); // revert the optimistic change from the server
     } finally {
+      flagBusyRef.current = false;
       setBusyLine(null);
     }
   }
@@ -243,7 +258,7 @@ function ReviewCard({
   onEnlarge: (attId: number) => void;
   onFlag: () => void;
 }) {
-  const when = item.completed_at ? item.completed_at.slice(11, 16) : '';
+  const when = berlinTimeHM(item.completed_at);
   return (
     <div className={`bg-white rounded-2xl border shadow-sm p-3 ${item.flagged ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200'}`}>
       <div className="flex items-start justify-between gap-2">

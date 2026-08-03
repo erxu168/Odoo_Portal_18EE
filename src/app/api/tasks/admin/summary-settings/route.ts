@@ -84,7 +84,8 @@ export async function PUT(request: Request) {
       if (!ALLOWED_HOURS.includes(hour)) {
         return NextResponse.json({ error: 'Pick a valid send time.' }, { status: 400 });
       }
-      updates.push({ id, enabled: !!row?.enabled, hour });
+      // Strict boolean — a JSON string like "false" must not read as enabled.
+      updates.push({ id, enabled: row?.enabled === true, hour });
     }
 
     const eligible = new Set(await eligibleCompanyIds());

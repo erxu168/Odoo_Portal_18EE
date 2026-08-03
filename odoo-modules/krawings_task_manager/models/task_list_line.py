@@ -360,13 +360,15 @@ class KrawingsTaskListLine(models.Model):
     # ── Photo review + end-of-day summary (manager oversight) ────────────
     @api.model
     def _proof_photo_map(self, line_ids):
-        """{line_id: [{id, name, mimetype}]} of PROOF photos (res_field empty) for
-        the given daily lines. Excludes field-backed binaries (setup photos)."""
+        """{line_id: [{id, name, mimetype}]} of PROOF photos for the given daily
+        lines: direct attachments (res_field empty — excludes field-backed setup
+        binaries) that are IMAGES. The image filter keeps reference PDFs / docs
+        out of the review feed and photo route (they aren't proof photos)."""
         if not line_ids:
             return {}
         atts = self.env['ir.attachment'].sudo().search_read(
             [('res_model', '=', self._name), ('res_id', 'in', list(line_ids)),
-             ('res_field', '=', False)],
+             ('res_field', '=', False), ('mimetype', 'like', 'image/%')],
             ['id', 'res_id', 'name', 'mimetype'], order='id asc',
         )
         out = {}
@@ -432,7 +434,14 @@ class KrawingsTaskListLine(models.Model):
             raise UserError('Not allowed for this company.')
         if line.list_id.date and line.list_id.date < fields.Date.context_today(self):
             raise UserError('Past task lists are read-only.')
+        was_flagged = line.review_flagged
         if flagged:
+            # Only a real submission can be flagged: it must be completed AND carry
+            # a proof photo (so the staff push actually corresponds to a photo).
+            if not line.completed_at:
+                raise UserError('Only a completed task can be flagged.')
+            if not self._proof_photo_map([line.id]).get(line.id):
+                raise UserError('This task has no proof photo to flag.')
             if isinstance(employee, int):
                 employee = self.env['hr.employee'].sudo().browse(employee)
             line.write({
@@ -455,6 +464,9 @@ class KrawingsTaskListLine(models.Model):
             'name': line.name,
             'company_id': company_id,
             'flagged': line.review_flagged,
+            # True only on a false→true TRANSITION, so a replay / double-click /
+            # two managers flagging the same line never re-alerts the staff member.
+            'newly_flagged': bool(flagged and not was_flagged),
             'reason': line.review_flag_reason or '',
             'completed_by_id': line.completed_by_id.id or False,
         }
@@ -470,6 +482,8 @@ class KrawingsTaskListLine(models.Model):
         att = self.env['ir.attachment'].sudo().browse(int(attachment_id))
         if not att.exists() or att.res_model != self._name or att.res_field:
             return False
+        if not (att.mimetype or '').startswith('image/'):
+            return False  # proof photos are images; never serve a doc here
         line = self.sudo().browse(att.res_id)
         if not line.exists():
             return False

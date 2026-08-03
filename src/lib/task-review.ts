@@ -50,6 +50,8 @@ export interface FlagResult {
   name: string;
   company_id: number;
   flagged: boolean;
+  /** True only on a false→true transition — push the staff redo notice only then. */
+  newly_flagged: boolean;
   reason: string;
   completed_by_id: number | false;
 }

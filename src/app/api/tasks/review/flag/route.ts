@@ -31,13 +31,15 @@ export async function PUT(req: NextRequest) {
     }
     const result = await setPhotoFlag(lineId, flagged, reason, user.employee_id ?? null, allowed);
 
-    // Tell the staff member who did it — but never let a push failure fail the flag.
-    if (result.flagged && result.completed_by_id) {
+    // Tell the staff member who did it — but ONLY on a fresh flag (not a replay /
+    // double-click / re-flag), and never let a push failure fail the flag write.
+    if (result.newly_flagged && result.completed_by_id) {
       try {
         await notifyEmployee(result.completed_by_id, result.company_id, 'task_photo_flagged', {
           title: 'A photo was flagged',
           body: `${result.name}: ${result.reason}`,
           url: '/tasks/staff',
+          tag: `task-flag-${result.line_id}`,
           taskName: result.name,
           reason: result.reason,
         });

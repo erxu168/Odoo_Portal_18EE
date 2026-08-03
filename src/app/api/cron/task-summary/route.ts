@@ -50,10 +50,13 @@ export async function GET(req: NextRequest) {
       considered++;
       const hour = typeof c.kw_task_summary_hour === 'number' ? c.kw_task_summary_hour : 22.5;
       if (nowH < hour) continue;                          // not yet time today
-      if (!(await claimSummary(c.id, today))) continue;    // already sent / claimed today
 
+      // Compute BEFORE claiming: an empty day (no list spawned yet) must NOT burn
+      // the once-per-day claim, so a list created later can still be summarised.
       const s = await getDaySummary(c.id, today);
-      if (s.total === 0) continue;                         // no task list today — nothing to report
+      if (s.total === 0) continue;                         // nothing to report yet
+
+      if (!(await claimSummary(c.id, today))) continue;    // at-most-once per day
 
       const shown = s.missed_names.slice(0, 5);
       const missedText = s.missed_names.length
@@ -68,7 +71,9 @@ export async function GET(req: NextRequest) {
         title: `${c.name} — end of day`,
         body,
         url: '/tasks/manager/review',
-        tag: 'task-day-summary',
+        // Per company + date, so a multi-company manager's recaps don't collapse
+        // into one another on the device.
+        tag: `task-summary-${c.id}-${today}`,
       });
       sent++;
     }
