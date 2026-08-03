@@ -148,17 +148,17 @@ export default function DrinksScanner() {
           </div>
           <div className="text-[var(--fs-sm)] text-gray-500 mt-1">Point the scanner at the bottle or can barcode.</div>
           <div className="mt-4 flex gap-2">
-            {/* Stays a native input: this is a SCAN TARGET, and the shared pad
+            {/* keyboard-exempt: a SCAN TARGET. The shared pad
                 discards scanner bursts by design. It also has to look up on
                 ENTER — a commit-on-blur would fire the lookup on a half-typed
                 code and drive the screen into match-or-create. */}
             <input
+              inputMode="numeric"
               value={manualBarcode}
-              onChange={(e) => setManualBarcode(e.target.value.replace(/[^0-9]/g, ''))}
+              onChange={(e) => setManualBarcode(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && manualBarcode.trim()) { handleBarcode(manualBarcode.trim()); setManualBarcode(''); }
               }}
-              inputMode="numeric"
               placeholder="…or type a barcode + Enter"
               aria-label="Barcode"
               className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)]"

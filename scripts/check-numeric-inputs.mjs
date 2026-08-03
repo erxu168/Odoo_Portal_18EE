@@ -20,7 +20,14 @@ import { join, relative } from 'node:path';
 const ROOT = new URL('..', import.meta.url).pathname;
 const SRC = join(ROOT, 'src');
 
-/** The shared implementation itself, plus the fields that deliberately keep a native keyboard. */
+/**
+ * Whole files that ARE the mechanism, or are nothing but native-keyboard entry.
+ *
+ * Keep this list tiny. A file-level skip once hid two real quantity inputs
+ * inside BarcodeScanner.tsx and the guard passed while the sweep was
+ * incomplete — so anything with MIXED content marks the individual line with
+ * `keyboard-exempt: <reason>` instead (see EXEMPT_MARKER below).
+ */
 const ALLOWED = new Set([
   // The shared components — they ARE the mechanism.
   'src/components/ui/NumberField.tsx',
@@ -35,22 +42,17 @@ const ALLOWED = new Set([
   'src/components/station/StationSignIn.tsx',
   'src/app/kiosk/page.tsx',
   'src/app/kiosk/reset-pin/page.tsx',
-  // The scanner's hidden input receives a hardware scan, never a human number.
-  'src/components/ui/BarcodeScanner.tsx',
-  // "On day -1" means the last day of the month, and the pad has no minus key.
-  'src/app/tasks/_components/RecurrenceEditor.tsx',
-  // Scan targets. The pad DISCARDS scanner bursts by design, so routing a field
-  // a scanner aims at through it makes a fast scanner do nothing and a slow one
-  // auto-commit — behaviour that varies by scanner model.
-  'src/components/inventory/DrinksScanner.tsx',
-  'src/components/products/CreateProductSheet.tsx',
-  // PIN entry, same reason as the other PIN screens above: the pad renders its
-  // buffer at 36px in a full-width sheet, in front of whoever else is standing there.
-  'src/components/shifts/MyPin.tsx',
-  'src/components/shifts/RosterCaps.tsx',
 ]);
 
 const PATTERN = /type="number"|inputMode="(numeric|decimal)"/;
+
+/**
+ * Per-line opt-out. Put it on the line itself or the line above, WITH a reason:
+ * Put a JSX comment reading "keyboard-exempt: <reason>" on the offending line
+ * or within the five lines above it. The reason belongs next to the code,
+ * where the next reader will look for it.
+ */
+const EXEMPT_MARKER = 'keyboard-exempt';
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -67,7 +69,12 @@ for (const file of walk(SRC)) {
   if (ALLOWED.has(rel)) continue;
   const lines = readFileSync(file, 'utf8').split('\n');
   lines.forEach((line, i) => {
-    if (PATTERN.test(line)) offenders.push(`${rel}:${i + 1}`);
+    if (!PATTERN.test(line)) return;
+    // Looks a few lines up: in JSX the attribute sits inside an element whose
+    // explaining comment naturally lands above the opening tag.
+    const window = lines.slice(Math.max(0, i - 5), i + 1);
+    const marked = window.some((l) => l.includes(EXEMPT_MARKER));
+    if (!marked) offenders.push(`${rel}:${i + 1}`);
   });
 }
 
@@ -77,10 +84,11 @@ if (offenders.length) {
   console.error(
     '\nUse ui/NumberField instead (or ui/useNumpadField when the number is not an input),' +
     '\nso Android’s keypad never covers the field being typed into.' +
-    '\nIf this field genuinely needs a native keyboard — a phone number, an OTP, a masked' +
-    '\nPIN — add it to ALLOWED in scripts/check-numeric-inputs.mjs with the reason.\n',
+    '\nIf this field genuinely needs a native keyboard — a phone number, an OTP, a' +
+    '\nmasked PIN, a barcode scan target — mark THAT LINE (or the line above) with' +
+    '\n"keyboard-exempt: <reason>". Whole-file exemptions hide the next mistake.\n',
   );
   process.exit(1);
 }
 
-console.log(`No raw number inputs outside the shared components (${ALLOWED.size} deliberate exemptions).`);
+console.log(`No unmarked raw number inputs (${ALLOWED.size} exempt files, plus per-line \`${EXEMPT_MARKER}\` markers).`);

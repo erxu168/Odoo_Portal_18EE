@@ -566,7 +566,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                   value={packSize === '' ? null : Number(packSize)}
                   onValueChange={v => setPackSize(v === null ? '' : String(v))}
                   onCommit={v => setPackSize(v === null ? '' : String(v))}
-                  mode="decimal" allowEmpty min={0} fractionDigits={2}
+                  mode="decimal" allowEmpty min={0}
                   placeholder={`e.g. 2 ${uom}`}
                   aria-label={`Pack size in ${uom}`}
                   inputClassName="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
@@ -620,7 +620,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                     value={c.qty === '' ? null : Number(c.qty)}
                     onValueChange={v => updateContainer(idx, 'qty', v === null ? '' : String(v))}
                     onCommit={v => updateContainer(idx, 'qty', v === null ? '' : String(v))}
-                    mode="decimal" allowEmpty min={0} fractionDigits={2}
+                    mode="decimal" allowEmpty min={0}
                     placeholder="0.00" aria-label={`Container ${idx + 1} quantity (${uom})`}
                     inputClassName="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
                 </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { useNumpad } from './NumpadProvider';
 import { bufferFromValue, type NumericRules, type NumericValue } from '@/lib/numeric-input';
 import type { NumpadLayout } from './NumpadCore';
@@ -108,7 +108,12 @@ export default function NumberField({
   // check, so deciding at render time would make the server's HTML and the
   // client's first pass disagree and trip a hydration mismatch.
   const [coarsePointer, setCoarsePointer] = useState(false);
-  useEffect(() => setCoarsePointer(prefersInAppPad()), []);
+  const [pointerResolved, setPointerResolved] = useState(false);
+  useEffect(() => {
+    setCoarsePointer(prefersInAppPad());
+    setPointerResolved(true);
+  }, []);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // No provider mounted, a desktop pointer, or a field that cannot be edited:
   // behave as a normal input.
@@ -128,7 +133,22 @@ export default function NumberField({
    * normalised back to the parsed value on blur.
    */
   const [draft, setDraft] = useState<string | null>(null);
+  // A value arriving from OUTSIDE (an async par/price load landing while someone
+  // is typing) must win over an in-progress draft — otherwise the stale text
+  // stays on screen and the next keystroke saves it back over the fresh value.
+  const lastValueRef = useRef(value);
+  if (lastValueRef.current !== value) {
+    lastValueRef.current = value;
+    if (draft !== null) setDraft(null);
+  }
   const text = draft ?? bufferFromValue(value, rules);
+
+  // Deferred until the pointer type is known: focusing on mount would raise
+  // Android's keypad on a touch device, which is the whole thing being avoided.
+  useEffect(() => {
+    if (pointerResolved && autoFocus && !usePad) inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointerResolved]);
 
   function openPad() {
     if (!numpad) return;
@@ -177,6 +197,7 @@ export default function NumberField({
         </label>
       )}
       <input
+        ref={inputRef}
         id={fieldId}
         name={name}
         type="text"
@@ -194,14 +215,20 @@ export default function NumberField({
         // Forwarded, not merely held in `rules`: the pad enforces it via applyKey,
         // but a TYPED postcode or PIN would otherwise have no cap at all.
         maxLength={maxLength}
-        autoFocus={!usePad && autoFocus}
         aria-label={ariaLabel || label}
         // Opened on pointer-down and on Enter/Space — deliberately NOT on focus.
         // The pad restores focus to this field when it closes, so opening on
         // focus would immediately re-open it, forever.
         onPointerDown={usePad ? (e) => { e.preventDefault(); openPad(); } : undefined}
         onKeyDown={usePad ? (e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPad(); }
+          if (e.key === 'Enter' || e.key === ' ') {
+            // stopPropagation as well as preventDefault: a wrapper may carry its
+            // own Enter shortcut, and on the pad path this key belongs to the pad
+            // alone — otherwise Enter would fire the shortcut AND open the pad.
+            e.preventDefault();
+            e.stopPropagation();
+            openPad();
+          }
         } : undefined}
         // Always live, even in pad mode: a Bluetooth keyboard on a tablet must
         // still be able to type straight into the field while the pad is closed.

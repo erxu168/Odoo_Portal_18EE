@@ -430,7 +430,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
               <div className={ds.label}>
                 Kiosk PIN{pinnedIds.has(editing.id) ? <span className="text-green-600 font-bold"> · set ✓</span> : ''}
               </div>
-              {/* Stays a native input: the shared pad shows its buffer at 36px in
+              {/* keyboard-exempt: PIN. The shared pad shows its buffer at 36px in
                   a full-width sheet, which is the wrong surface for a PIN on a
                   tablet other people can see. Every other PIN screen is exempt. */}
               <input

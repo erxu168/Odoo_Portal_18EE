@@ -135,7 +135,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
                   onChange={() => set({ monthly_mode: 'day_of_month' as MonthlyMode })}
                 />
                 On day
-                {/* Stays a native number input: the in-app pad has no minus key,
+                {/* keyboard-exempt: the in-app pad has no minus key,
                     and -1 (last day of the month) has to stay typeable. */}
                 <input
                   type="number" min={-1} max={31} value={v.day_of_month}

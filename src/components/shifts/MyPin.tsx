@@ -106,7 +106,7 @@ export default function MyPin({ companyId, onBack }: MyPinProps) {
             </div>
 
             <label className={labelCls}>New PIN</label>
-            {/* Stays a native input: the shared pad shows its buffer at 36px in a
+            {/* keyboard-exempt: PIN. The shared pad shows its buffer at 36px in a
                 full-width sheet, which is the wrong surface for a PIN on a tablet
                 other people can see. Every other PIN screen is exempt for this. */}
             <input
@@ -121,6 +121,7 @@ export default function MyPin({ companyId, onBack }: MyPinProps) {
             />
 
             <label className={labelCls}>Confirm PIN</label>
+            {/* keyboard-exempt: PIN, same reason as above. */}
             <input
               inputMode="numeric"
               pattern="\d*"
