@@ -17,6 +17,32 @@
   --fs-base: clamp(13px, 3.3vw, 16px);   /* search, inputs     */
   --fs-sm:   clamp(12px, 3vw, 14px);     /* detail text, UOM   */
   --fs-xs:   clamp(11px, 2.7vw, 13px);   /* labels, badges     */
+
+  /* On-screen keyboard geometry, kept current by ui/KeyboardViewportManager.
+     Defaults here so any consumer works before it mounts and on desktop. */
+  --keyboard-inset-bottom: 0px;
+  --visual-viewport-height: 100vh;
+}
+
+/* ── On-screen keyboard ──
+   The bottom tab bar would otherwise sit under the keyboard, stealing a row of
+   space from the field being typed into. CSS rather than React state so it
+   costs no re-render and cannot flicker on rapid focus changes. */
+html[data-keyboard-open] .kw-tabbar {
+  display: none;
+}
+
+/* BottomSheet panel height. A sheet is position-fixed, so it is anchored to the
+   LAYOUT viewport — which no longer shrinks when the keyboard opens (Chrome 108+).
+   Without subtracting the keyboard, the bottom of every sheet, including its
+   footer button, sits behind it. */
+.kw-sheet-panel {
+  max-height: calc(92vh - var(--keyboard-inset-bottom, 0px));
+}
+@media (min-width: 1024px) {
+  .kw-sheet-panel {
+    max-height: calc(85vh - var(--keyboard-inset-bottom, 0px));
+  }
 }
 
 

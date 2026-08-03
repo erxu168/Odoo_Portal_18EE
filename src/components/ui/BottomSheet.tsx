@@ -1,12 +1,8 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { CloseIcon } from './ChromeIcons';
-
-// Module-level stack so Escape only closes the TOP-most sheet — otherwise a
-// stacked sheet's Escape would also fire the underlying sheet's onClose and
-// discard its edits.
-const sheetStack: symbol[] = [];
+import { useEscapeStack } from '@/lib/modal-stack';
 
 /**
  * Portal-standard bottom sheet (modal dialog that slides up from the bottom).
@@ -40,37 +36,21 @@ export function BottomSheet({
   closeLabel = 'Close',
   dismissOnBackdrop = true,
 }: BottomSheetProps) {
-  // Keep onClose current without re-running the mount effect (callers usually
-  // pass a fresh arrow each render, which would otherwise churn the stack).
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    const id = Symbol('sheet');
-    sheetStack.push(id);
-    function onKey(e: KeyboardEvent) {
-      // Only the top-most sheet responds, so a stacked sheet's Escape can't
-      // close (and discard edits in) the sheet beneath it.
-      if (e.key === 'Escape' && sheetStack[sheetStack.length - 1] === id) {
-        e.stopPropagation();
-        onCloseRef.current();
-      }
-    }
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      const idx = sheetStack.lastIndexOf(id);
-      if (idx !== -1) sheetStack.splice(idx, 1);
-    };
-  }, []);
+  // Only the top-most overlay responds to Escape, so a stacked sheet — or the
+  // numpad opened from a field inside this one — can't close the sheet beneath
+  // it and discard its edits. The stack is shared with ui/NumpadProvider.
+  useEscapeStack(onClose);
 
   return (
     <div
       className="fixed inset-0 z-[100] bg-black/50 flex items-end justify-center lg:items-center"
       onClick={dismissOnBackdrop ? onClose : undefined}
+      // Lift the sheet clear of the on-screen keyboard. ui/KeyboardViewportManager
+      // keeps the variable current; it is 0px whenever no keyboard is up.
+      style={{ paddingBottom: 'var(--keyboard-inset-bottom, 0px)' }}
     >
       <div
-        className="bg-white w-full max-w-lg lg:max-w-md mx-auto rounded-t-2xl lg:rounded-2xl max-h-[92vh] lg:max-h-[85vh] flex flex-col"
+        className="kw-sheet-panel bg-white w-full max-w-lg lg:max-w-md mx-auto rounded-t-2xl lg:rounded-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={typeof title === 'string' ? title : undefined}

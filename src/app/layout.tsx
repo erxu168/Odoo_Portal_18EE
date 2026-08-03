@@ -8,6 +8,7 @@ import DebugOverlay from '@/components/ui/DebugOverlay';
 import { TopBarProvider } from '@/components/ui/TopBarContext';
 import { ShiftProvider } from '@/lib/shift-context';
 import StationGate from '@/components/ui/StationGate';
+import KeyboardViewportManager from '@/components/ui/KeyboardViewportManager';
 import RestartListener from '@/components/device/RestartListener';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -43,6 +44,9 @@ export default function RootLayout({
                 while the PIN lock is up (blocks keyboard/AT access, not just
                 visually), while its own lock/bar stay interactive. */}
             <StationGate serverShared={stationShared} />
+            {/* Keeps the focused text field above the on-screen keyboard, portal-wide.
+                Outside the shell so it also serves the PIN lock and other overlays. */}
+            <KeyboardViewportManager />
             {/* Heartbeat for remote restart — outside the shell so it keeps polling
                 even while a PIN lock has the shell inert. */}
             <RestartListener />
