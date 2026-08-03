@@ -452,9 +452,35 @@ class KrawingsTaskListLine(models.Model):
             })
         return {
             'line_id': line.id,
+            'name': line.name,
+            'company_id': company_id,
             'flagged': line.review_flagged,
             'reason': line.review_flag_reason or '',
             'completed_by_id': line.completed_by_id.id or False,
+        }
+
+    @api.model
+    def get_review_photo(self, attachment_id, allowed_company_ids=None):
+        """Serve a proof photo's bytes for the review screen — scoped: the
+        attachment must be a proof photo (res_field empty) on a daily line whose
+        company is allowed. Fails CLOSED. {filename, mimetype, data_base64} or False."""
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed:
+            return False
+        att = self.env['ir.attachment'].sudo().browse(int(attachment_id))
+        if not att.exists() or att.res_model != self._name or att.res_field:
+            return False
+        line = self.sudo().browse(att.res_id)
+        if not line.exists():
+            return False
+        company_id = line.list_id.company_id.id
+        if not company_id or company_id not in allowed:
+            return False
+        raw = att.datas
+        return {
+            'filename': att.name or 'photo-%s.jpg' % att.id,
+            'mimetype': att.mimetype or _guess_image_mime(att.name),
+            'data_base64': raw.decode('ascii') if isinstance(raw, bytes) else (raw or ''),
         }
 
     @api.model

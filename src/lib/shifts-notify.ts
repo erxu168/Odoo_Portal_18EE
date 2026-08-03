@@ -37,16 +37,23 @@ const PUSH_TITLES: Record<string, string> = {
 
 function buildPushPayload(type: string, payload: object): PushPayload {
   const p = payload as Record<string, unknown>;
+  // Explicit title/body/url/tag win — lets non-shift domains (e.g. tasks) send a
+  // correctly-branded push through this same plumbing. Shift callers don't set
+  // these, so they keep the shift summary/branding below unchanged.
+  const explicitTitle = typeof p.title === 'string' ? p.title : '';
+  const explicitBody = typeof p.body === 'string' ? p.body : '';
+  const explicitUrl = typeof p.url === 'string' ? p.url : '';
+  const explicitTag = typeof p.tag === 'string' ? p.tag : '';
   const day = typeof p.day === 'string' ? p.day : '';
   const time = typeof p.time === 'string' ? p.time : '';
   const roleName = typeof p.roleName === 'string' ? p.roleName : '';
   const message = typeof p.message === 'string' ? p.message : '';
   const summary = [day, time, roleName].filter(Boolean).join(' · ');
   return {
-    title: PUSH_TITLES[type] ?? 'Shifts update',
-    body: [summary, message].filter(Boolean).join(' — ') || 'Open the portal for details.',
-    url: '/shifts',
-    tag: `shifts-${type}`,
+    title: explicitTitle || PUSH_TITLES[type] || 'Shifts update',
+    body: explicitBody || [summary, message].filter(Boolean).join(' — ') || 'Open the portal for details.',
+    url: explicitUrl || '/shifts',
+    tag: explicitTag || `shifts-${type}`,
   };
 }
 
