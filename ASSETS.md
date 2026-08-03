@@ -98,6 +98,16 @@ being typed into. Two standing rules:
 |---|---|---|---|
 | `KeyboardViewportManager` | `ui/KeyboardViewportManager.tsx` | Mounted once in the root layout. Detects the keyboard by GEOMETRY plus a focused text control (focus alone misfires on split-screen and Capacitor `adjustResize`; geometry alone mistakes pinch-zoom for a keyboard). Publishes `--keyboard-inset-bottom`, `--visual-viewport-height`, `html[data-keyboard-open]` | 1 |
 
+**There is now exactly ONE keypad.** Five had grown independently and each had
+drifted: `ui/Numpad` (Purchase, WoDetail), `inventory/NumpadModal` (counting +
+waste, 8 consumers), hand-rolled grids inside `recipes/RecipeDetail` and
+`recipes/BatchSize`, and the dead `ui/PurchaseNumpad`. All now route through
+`NumpadCore`; `Numpad.tsx` and `PurchaseNumpad.tsx` are deleted.
+
+⚠️ **A grep for `type="number"` or `inputMode` will NOT find a hand-rolled pad** —
+that is how the two recipe keypads stayed invisible through an earlier audit.
+Look for a digit array being `.map`ped into buttons.
+
 Spec: `docs/superpowers/specs/2026-08-03-android-keyboard-numpad-design.md`
 
 ---
@@ -156,7 +166,6 @@ list told only about the room keeps rendering orphans.
 | `useNumpadField` | `ui/useNumpadField.ts` | Same pad for screens whose number is NOT an input — a tappable quantity on a counting row, a price in a card. Returns `triggerProps` to spread | 0 |
 | `NumpadProvider` / `useNumpad` | `ui/NumpadProvider.tsx` | The ONE pad host, mounted in the root layout. Owns Android Back (history entry, so Back closes the pad instead of leaving the screen), hardware-key capture (a Bluetooth Enter must not submit the form behind it), barcode-scanner burst rejection, async commit (spinner, stays open on failure), focus restore, portal to `<body>` at z-[130] so it never paints behind the sheet that opened it | 1 |
 | `NumpadCore` | `ui/NumpadCore.tsx` | The keypad body — no sheet, no backdrop, controlled buffer. What the shells share. `layout` keeps counting's grid and Purchase's grid both available; the KEYS behave identically either way | 1 |
-| `Numpad` | `ui/Numpad.tsx` | Legacy modal keypad. **Being replaced by NumberField/useNumpadField** — untouched until its importers migrate, then deleted | 2 |
 | `ContainerLevelPicker` / `ContainerLevelGlyph` | `ui/ContainerLevelPicker.tsx` | Mark the open container's level by eye — drawings of the REAL containers (white 10 L bucket, 20 L tub, blue 30 L drum, bottle), quarter steps, 44px zones; glyph = tiny read-only variant for review lines. Feeds the existing loose quantity via `looseFromFraction`/`quarterFromLoose` in `crate-units` | 2 |
 | `PhoneInput` | `ui/PhoneInput.tsx` | Country code + validation | 1 |
 | `RichTextEditor` | `ui/RichTextEditor.tsx` | Formatted-note editor | 2 |

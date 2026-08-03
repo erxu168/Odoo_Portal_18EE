@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import Numpad from '@/components/ui/Numpad';
+import { useNumpad } from '@/components/ui/NumpadProvider';
 import PdfViewer from '@/components/ui/PdfViewer';
 
 interface WoDetailProps {
@@ -34,9 +34,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [worksheetPdf, setWorksheetPdf] = useState<string>('');
   const [worksheetGoogleSlide, setWorksheetGoogleSlide] = useState<string>('');
 
-  const [numpadComp, setNumpadComp] = useState<any>(null);
-  const [numpadSaving, setNumpadSaving] = useState(false);
   const [tolerancePct, setTolerancePct] = useState<number>(5);
+  const numpad = useNumpad();
   const [showPdf, setShowPdf] = useState(false);
 
   useEffect(() => { fetchData(); return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, [woId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -159,26 +158,65 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     } catch (e) { void e; }
   }
 
-  async function handleNumpadConfirm(value: number) {
-    if (!numpadComp) return;
-    setNumpadSaving(true);
-    try {
-      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          component_updates: [{ move_id: numpadComp.id, consumed_qty: value }],
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setNumpadComp(null);
-      await fetchData();
-    } catch (err: any) {
-      setActionError(err.message || 'Failed to update quantity');
-    } finally {
-      setNumpadSaving(false);
-    }
+  /**
+   * Ask for a component's picked quantity on the shared pad.
+   *
+   * The tolerance rule is passed as the caller's own check rather than as
+   * generic min/max, because it carries a deliberate exemption: zero is always
+   * allowed through. "I used none of this" is a real answer on a work order, and
+   * a generic minimum would have started refusing it.
+   */
+  function openComponentPad(c: any) {
+    if (!numpad) return;
+    const demand = c.product_uom_qty || 0;
+    const hasTolerance = tolerancePct !== undefined && demand > 0;
+    const tolMin = hasTolerance ? Math.round(demand * (1 - tolerancePct / 100) * 1000) / 1000 : 0;
+    const tolMax = hasTolerance ? Math.round(demand * (1 + tolerancePct / 100) * 1000) / 1000 : Infinity;
+    const fmtTol = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
+    const uom = c.product_uom?.[1] || 'kg';
+
+    numpad.open({
+      rules: { mode: 'decimal', allowEmpty: false, min: 0 },
+      // Opens on what is already picked. The old pad passed a `value` without an
+      // `onChange`, so it read as uncontrolled and always opened at 0 — staff
+      // re-keyed a quantity that was already correct.
+      //
+      // An unpicked component still opens at an explicit 0, not blank: blank
+      // would leave Confirm disabled, and "I used none" must stay one tap away.
+      initialValue: c.picked ? c.consumed_qty || 0 : 0,
+      label: c.product_id[1],
+      unit: uom,
+      confirmLabel: 'Save quantity',
+      quickActions: demand > 0 ? [{ label: `Match (${fmtTol(demand)})`, value: demand }] : undefined,
+      hint: hasTolerance ? (
+        <div className="px-2 py-2 rounded-lg mb-2 text-[12px] font-semibold bg-gray-50 text-gray-500">
+          {`Target: ${fmtTol(demand)} ${uom} · Allowed: ${fmtTol(tolMin)} — ${fmtTol(tolMax)} (±${tolerancePct}%)`}
+        </div>
+      ) : undefined,
+      extraValidate: (value) => {
+        if (!hasTolerance) return null;
+        const num = typeof value === 'number' ? value : 0;
+        if (num === 0) return null; // The deliberate exemption — see above.
+        if (num < tolMin || num > tolMax) {
+          return `Outside tolerance! Allowed: ${fmtTol(tolMin)} — ${fmtTol(tolMax)} ${uom} (±${tolerancePct}%)`;
+        }
+        return null;
+      },
+      onCommit: async (value) => {
+        const res = await fetch(`/api/manufacturing-orders/${moId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            component_updates: [{ move_id: c.id, consumed_qty: typeof value === 'number' ? value : 0 }],
+          }),
+        });
+        const data = await res.json();
+        // Thrown, not swallowed: the pad stays open with the typed quantity
+        // intact so a failed save is visible where the user is looking.
+        if (data.error) throw new Error(data.error);
+        await fetchData();
+      },
+    });
   }
 
   function sanitizeHtml(html: string) {
@@ -307,7 +345,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               const isPicked = c.picked === true;
               const compUom = c.product_uom?.[1] || 'kg';
               return (
-                <button key={c.id} onClick={() => setNumpadComp(c)}
+                <button key={c.id} onClick={() => openComponentPad(c)}
                   className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
                     isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
                   }`}>
@@ -427,19 +465,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
             {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done ${arrow} ${nextWo.name}` : 'Mark step done'}
           </button>
         </div>
-      )}
-
-      {numpadComp && (
-        <Numpad
-          label={numpadComp.product_id[1]}
-          value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
-          unit={numpadComp.product_uom?.[1] || 'kg'}
-          demandQty={numpadComp.product_uom_qty}
-          tolerancePct={tolerancePct}
-          loading={numpadSaving}
-          onConfirm={handleNumpadConfirm}
-          onClose={() => setNumpadComp(null)}
-        />
       )}
 
       {showPdf && hasPdf && (

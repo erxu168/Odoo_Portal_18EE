@@ -63,6 +63,12 @@ export interface NumpadRequest {
   /** Extra content above the keys — e.g. a tolerance range hint. */
   hint?: React.ReactNode;
   /**
+   * A rule only the caller can express — Manufacturing's demand ± tolerance, for
+   * instance. Return a reason to block Confirm, or null to allow. Runs only
+   * after the generic rules pass, so it never has to re-check the basics.
+   */
+  extraValidate?: (value: NumericValue) => string | null;
+  /**
    * Called with the committed value. May return a Promise: the pad shows a
    * spinner until it settles, closes on success, and stays open showing the
    * error on failure.
@@ -109,7 +115,12 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
   const panelRef = useRef<HTMLDivElement | null>(null);
   /** Did we push a history entry for this opening? */
   const pushedHistoryRef = useRef(false);
-  const burstRef = useRef({ last: 0, count: 0, bufferAtStart: '', tripped: false });
+  const burstRef = useRef<{ last: number; count: number; burstStart: string | null; tripped: boolean }>({
+    last: 0,
+    count: 0,
+    burstStart: null,
+    tripped: false,
+  });
 
   useEffect(() => setMounted(true), []);
 
@@ -154,7 +165,7 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
     setBuffer(bufferFromValue(next.initialValue, next.rules));
     setError(null);
     setSaving(false);
-    burstRef.current = { last: 0, count: 0, bufferAtStart: '', tripped: false };
+    burstRef.current = { last: 0, count: 0, burstStart: null, tripped: false };
 
     // Android Back should dismiss the pad, not the screen.
     try {
@@ -170,6 +181,9 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
     if (!req || savingRef.current) return;
     const value = commitBuffer(bufferRef.current, req.rules);
     if (value === undefined) return; // Not committable — Confirm is disabled anyway.
+    // A caller rule (tolerance, say) can refuse too. Checked here as well as in
+    // the button's disabled state, so hardware Enter cannot slip past it.
+    if (req.extraValidate && req.extraValidate(value)) return;
 
     let result: void | Promise<void>;
     try {
@@ -227,23 +241,28 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
         e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete' || keyFromChar(e.key) !== null;
       if (!isPadKey) return;
 
-      // Barcode-scanner burst: rewind to the buffer as it was before the burst
-      // and swallow the rest, including the scanner's trailing Enter.
+      // Barcode-scanner burst: rewind to the buffer as it was before the FIRST
+      // machine-fast key, and swallow the rest including the scanner's trailing
+      // Enter. Anchoring on the first fast key is the point — anchoring on the
+      // last human-paced key instead would also throw away the digits the user
+      // had already typed before the scan interrupted them.
       const now = performance.now();
       const gap = now - burstRef.current.last;
       burstRef.current.last = now;
       if (gap >= BURST_GAP_MS) {
         burstRef.current.count = 0;
         burstRef.current.tripped = false;
-        burstRef.current.bufferAtStart = bufferRef.current;
+        burstRef.current.burstStart = null;
       } else {
         burstRef.current.count += 1;
+        if (burstRef.current.count === 1) burstRef.current.burstStart = bufferRef.current;
         if (burstRef.current.count >= BURST_TRIP) burstRef.current.tripped = true;
       }
       if (burstRef.current.tripped) {
         e.preventDefault();
         e.stopPropagation();
-        setBuffer(burstRef.current.bufferAtStart);
+        const rewind = burstRef.current.burstStart;
+        if (rewind !== null) setBuffer(rewind);
         return;
       }
 
@@ -276,7 +295,12 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
   const ctx: NumpadContextValue = { open, close: cancel, isOpen: request !== null };
 
   const validity = request ? validate(buffer, request.rules) : null;
-  const canCommit = !!validity?.canCommit && !saving;
+  const committable = request && validity?.canCommit ? commitBuffer(buffer, request.rules) : undefined;
+  const extraReason =
+    request?.extraValidate && validity?.canCommit && committable !== undefined
+      ? request.extraValidate(committable)
+      : null;
+  const canCommit = !!validity?.canCommit && !extraReason && !saving;
 
   return (
     <NumpadContext.Provider value={ctx}>
@@ -331,6 +355,12 @@ export default function NumpadProvider({ children }: { children: React.ReactNode
                   </div>
                 )}
               </NumpadCore>
+
+              {extraReason && (
+                <div className="mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold">
+                  {extraReason}
+                </div>
+              )}
 
               {error && (
                 <div className="mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold">

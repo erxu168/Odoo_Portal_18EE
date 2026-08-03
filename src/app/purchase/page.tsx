@@ -6,7 +6,8 @@ import { useCompany } from '@/lib/company-context';
 import { whatsappLink } from '@/lib/purchase-order-message';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import Numpad from '@/components/ui/Numpad';
+import { useNumpad } from '@/components/ui/NumpadProvider';
+import type { NumericValue } from '@/lib/numeric-input';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
 import ModuleListsSettings from '@/components/settings/ModuleListsSettings';
 import PdfViewer from '@/components/ui/PdfViewer';
@@ -88,8 +89,8 @@ export default function PurchasePage() {
   const [issueLineId, setIssueLineId] = useState(0);
   const [issueLine, setIssueLine] = useState<ReceiptLine | null>(null);
   const [recvOrder, setRecvOrder] = useState<any>(null);
-  const [recvNumpadLineId, setRecvNumpadLineId] = useState<number>(0);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const numpad = useNumpad();
   const [seedMsg, setSeedMsg] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; confirmLabel: string; cancelLabel?: string; variant: 'primary' | 'danger'; onConfirm: () => void; onCancel?: () => void } | null>(null);
   const [taxRates, setTaxRates] = useState<Record<number, number>>({});
@@ -124,10 +125,6 @@ export default function PurchasePage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [orderNote, setOrderNote] = useState('');
 
-  const [numpadOpen, setNumpadOpen] = useState(false);
-  const [numpadProduct, setNumpadProduct] = useState<GuideItem | null>(null);
-  const [numpadValue, setNumpadValue] = useState('');
-  const [cartNumpadItem, setCartNumpadItem] = useState<any>(null);
   const [reviewCart, setReviewCart] = useState<CartSummary | null>(null);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -182,19 +179,39 @@ export default function PurchasePage() {
     debounceRef.current = setTimeout(async () => { await fetch('/api/purchase/cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location_id: locationId, supplier_id: supId, product_id: product.product_id, quantity: qty, product_name: product.product_name, product_uom: product.product_uom, price: product.price }) }); fetchCart(); }, 300);
   }
 
-  function openNumpad(product: GuideItem) { setRecvNumpadLineId(0); setCartNumpadItem(null); setNumpadProduct(product); setNumpadValue(String(quantities[product.product_id] || '')); setNumpadOpen(true); }
+  /**
+   * The three places a quantity is keyed all open the ONE shared pad. They used
+   * to share a single handler that worked out which it was from three pieces of
+   * state; each now carries its own commit, so there is no mode to get wrong.
+   *
+   * Each opens on the CURRENT quantity (0 when unset), which is what the old pad
+   * showed too — so pressing Confirm without typing still means zero, and zero
+   * still removes a line.
+   */
+  const qtyRules = { mode: 'decimal' as const, allowEmpty: false, min: 0 };
 
-  function openCartNumpad(item: any, supplierId: number) {
-    setRecvNumpadLineId(0); setCartNumpadItem({ ...item, supplier_id: supplierId });
-    setNumpadProduct({ id: 0, product_id: item.product_id, product_name: item.product_name, product_uom: item.product_uom, price: item.price, price_source: '', category_name: '' });
-    setNumpadValue(String(item.quantity || '')); setNumpadOpen(true);
+  function openNumpad(product: GuideItem) {
+    numpad?.open({
+      rules: qtyRules,
+      initialValue: quantities[product.product_id] || 0,
+      label: product.product_name,
+      sublabel: product.product_uom,
+      onCommit: (val: NumericValue) => updateCartQty(product, typeof val === 'number' ? val : 0),
+    });
   }
 
-  function handleNumpadConfirm(val: number) {
-    if (recvNumpadLineId) { updateRecvQty(recvNumpadLineId, val); setRecvNumpadLineId(0); }
-    else if (cartNumpadItem) { updateCartQty({ product_id: cartNumpadItem.product_id, product_name: cartNumpadItem.product_name, product_uom: cartNumpadItem.product_uom, price: cartNumpadItem.price }, val, cartNumpadItem.supplier_id); setCartNumpadItem(null); }
-    else if (numpadProduct) { updateCartQty(numpadProduct, val); }
-    setNumpadOpen(false);
+  function openCartNumpad(item: any, supplierId: number) {
+    numpad?.open({
+      rules: qtyRules,
+      initialValue: item.quantity || 0,
+      label: item.product_name,
+      sublabel: item.product_uom,
+      onCommit: (val: NumericValue) => updateCartQty(
+        { product_id: item.product_id, product_name: item.product_name, product_uom: item.product_uom, price: item.price },
+        typeof val === 'number' ? val : 0,
+        supplierId,
+      ),
+    });
   }
 
   function changeTab(t: Tab) { setTab(t); if (t === 'order') setScreen('suppliers'); else if (t === 'cart') { setScreen('cart'); fetchCart(); } else if (t === 'receive') { setScreen('receive-list'); fetchPending(); } else if (t === 'history') { setScreen('history'); fetchOrders(); } }
@@ -259,11 +276,14 @@ export default function PurchasePage() {
   function openIssueReport(line: ReceiptLine) { setIssueLine(line); setIssueLineId(line.id); setScreen('receive-issue'); }
 
   function openRecvNumpadForLine(line: ReceiptLine) {
-    setRecvNumpadLineId(line.id);
-    setCartNumpadItem(null);
-    setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' });
-    setNumpadValue(line.received_qty !== null ? String(line.received_qty) : '');
-    setNumpadOpen(true);
+    numpad?.open({
+      rules: qtyRules,
+      initialValue: line.received_qty ?? 0,
+      label: line.product_name,
+      sublabel: line.product_uom,
+      confirmLabel: 'Save received',
+      onCommit: (val: NumericValue) => updateRecvQty(line.id, typeof val === 'number' ? val : 0),
+    });
   }
 
   async function submitIssue(issueType: string, notes: string, photo?: string) {
@@ -893,7 +913,6 @@ export default function PurchasePage() {
         <PurchaseAlerts suppliers={suppliers} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} awaitingApprovalCount={pendingDeliveries.filter((o) => o.receipt_status === 'submitted').length} isManager={isManager} onNavigate={changeTab} onManageTemplates={() => setScreen('manage')} locationId={locationId} />
       </>)}
-      <Numpad open={numpadOpen} value={numpadValue} onChange={setNumpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onConfirm={handleNumpadConfirm} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
       {notePdf && <PdfViewer fileData={notePdf} fileName="delivery-note.pdf" onClose={() => setNotePdf(null)} />}
     </div>
