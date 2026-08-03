@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import type { Inspection } from '@/types/rentals';
 
 function inspectionBadge(status: string) {
@@ -35,17 +36,15 @@ export default function InspectionsList() {
         subtitle="Move-in / move-out"
         showBack
         onBack={() => router.push('/rentals')}
-        action={
-          <button
-            onClick={() => router.push('/rentals/inspections/new')}
-            className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
-        }
       />
+
+      {/* Primary action — one full-width green button (portal standard). */}
+      <div className="px-4 pt-4 pb-2">
+        <PrimaryButton onClick={() => router.push('/rentals/inspections/new')}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New inspection
+        </PrimaryButton>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -56,14 +55,8 @@ export default function InspectionsList() {
           <div className="text-4xl mb-3">{'\u2705'}</div>
           <div className="text-[15px] font-semibold text-[#1F2933] mb-1">No inspections yet</div>
           <div className="text-[13px] text-gray-500 max-w-[240px] leading-relaxed">
-            Create an inspection protocol when a tenant moves in or out
+            Create an inspection protocol with the button above when a tenant moves in or out
           </div>
-          <button
-            className="mt-4 bg-green-600 text-white font-semibold rounded-xl px-5 py-2.5 text-[13px] active:bg-green-700 transition-colors"
-            onClick={() => router.push('/rentals/inspections/new')}
-          >
-            New Inspection
-          </button>
         </div>
       ) : (
         <div className="px-4 py-4 space-y-2">

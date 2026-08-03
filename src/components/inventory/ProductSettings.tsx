@@ -340,13 +340,18 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
         <span>Set how staff count each product {'\u2014'} in bottles, bunches or crates, whichever they actually pick up. Open one to change it.</span>
       </div>
 
-      <div className="flex items-center gap-2 pr-4">
-        <div className="flex-1 min-w-0">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
-        </div>
-        <button onClick={add.start}
-          className="flex-shrink-0 h-10 px-4 rounded-full bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700">
-          + Add
+      <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
+
+      {/* Standard primary action — one full-width green button (matches the
+          Templates / Guides screens), replacing the inline "+ Add" pill. */}
+      <div className="px-4 pb-2">
+        <button
+          type="button"
+          onClick={add.start}
+          className="w-full min-h-[48px] rounded-xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New product
         </button>
       </div>
 

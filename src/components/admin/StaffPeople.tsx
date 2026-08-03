@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
 import RecordLink from '@/components/ui/RecordLink';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 /**
  * Unified People view for the Staff module.
@@ -96,6 +97,7 @@ export default function StaffPeople() {
   const [links, setLinks] = useState<Record<number, string>>({});
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [pendingRoles, setPendingRoles] = useState<Record<number, string>>({});
+  const [confirmDelete, setConfirmDelete] = useState<Account | null>(null);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -221,11 +223,7 @@ export default function StaffPeople() {
     if (await patchAccount(a.id, { new_password: pw })) flash('Password updated.');
   }
 
-  async function deleteAccount(a: Account) {
-    const ok = window.confirm(
-      `Permanently delete ${a.name}'s account (${a.email})?\n\nThis frees their email to be used again and cannot be undone. Their Odoo employee record is not affected.`,
-    );
-    if (!ok) return;
+  async function performDelete(a: Account) {
     setError(null);
     try {
       const res = await fetch(`/api/admin/users/${a.id}`, { method: 'DELETE' });
@@ -501,7 +499,7 @@ export default function StaffPeople() {
                           className={`px-3 py-1 rounded-lg border text-[12px] ${account.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
                           {account.active ? 'Deactivate' : 'Reactivate'}
                         </button>
-                        <button onClick={() => deleteAccount(account)}
+                        <button onClick={() => setConfirmDelete(account)}
                           className="px-3 py-1 rounded-lg border border-red-300 text-red-700 active:bg-red-50 text-[12px] font-semibold">
                           Delete
                         </button>
@@ -635,7 +633,7 @@ export default function StaffPeople() {
                       className={`px-3 py-1 rounded-lg border text-[12px] ${a.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
                       {a.active ? 'Deactivate' : 'Reactivate'}
                     </button>
-                    <button onClick={() => deleteAccount(a)}
+                    <button onClick={() => setConfirmDelete(a)}
                       className="px-3 py-1 rounded-lg border border-red-300 text-red-700 active:bg-red-50 text-[12px] font-semibold">
                       Delete
                     </button>
@@ -682,6 +680,17 @@ export default function StaffPeople() {
             ))}
           </div>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete this account?"
+          message={`Permanently delete ${confirmDelete.name}'s account (${confirmDelete.email}). This frees their email to be used again and cannot be undone. Their Odoo employee record is not affected.`}
+          confirmLabel="Delete account"
+          variant="danger"
+          onConfirm={() => { const a = confirmDelete; setConfirmDelete(null); performDelete(a); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, SectionTitle } from './ui';
 import RecordLink from '@/components/ui/RecordLink';
 import TemplateForm from './TemplateForm';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useCompany } from '@/lib/company-context';
 
 interface ManageTemplatesProps {
@@ -146,11 +147,15 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      {/* Create button */}
+      {/* Primary action — one full-width green button (matches Task Manager Templates/Guides). */}
       <div className="px-4 pt-3 pb-1">
-        <button onClick={() => setCreating(true)}
-          className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
-          + New counting list
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="w-full min-h-[48px] rounded-xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New counting list
         </button>
       </div>
 
@@ -231,22 +236,14 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
 
       {/* Delete confirmation — destructive + irreversible, so an explicit step. */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-6" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-5">
-            <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Delete this list?</h3>
-            <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
-              <span className="font-semibold text-gray-700">{confirmDelete.name}</span> and all of its counts will be permanently removed. This can{'\''}t be undone.
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirmDelete(null)} disabled={deleting}
-                className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold active:bg-gray-200">Cancel</button>
-              <button onClick={handleDelete} disabled={deleting}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold active:bg-red-700 disabled:opacity-50">
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this list?"
+          message={`${confirmDelete.name} and all of its counts will be permanently removed. This can’t be undone.`}
+          confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+          variant="danger"
+          onConfirm={handleDelete}
+          onCancel={() => { if (!deleting) setConfirmDelete(null); }}
+        />
       )}
     </div>
   );

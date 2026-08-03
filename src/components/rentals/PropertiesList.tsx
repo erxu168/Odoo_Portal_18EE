@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import type { PropertyWithStats } from '@/types/rentals';
 
 function typeLabel(t: string): string {
@@ -46,16 +47,6 @@ export default function PropertiesList() {
         subtitle={`${properties.length} properties`}
         showBack
         onBack={() => router.push('/rentals')}
-        action={
-          <button
-            onClick={() => router.push('/rentals/properties/new')}
-            className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
-        }
       />
 
       {/* Search bar */}
@@ -80,6 +71,14 @@ export default function PropertiesList() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Primary action — one full-width green button (portal standard). */}
+      <div className="px-4 pb-2">
+        <PrimaryButton onClick={() => router.push('/rentals/properties/new')}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New property
+        </PrimaryButton>
       </div>
 
       {loading ? (

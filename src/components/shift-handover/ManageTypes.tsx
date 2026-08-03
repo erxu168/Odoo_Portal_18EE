@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Spinner } from '@/components/inventory/ui';
 import { Sheet, Field, PrimaryButton, ErrorNote, OptionGrid, apiGet, apiSend, useAsync } from './common';
 import { EmojiPicker } from './EmojiPicker';
@@ -49,6 +50,17 @@ function LogTypesTab() {
   return (
     <>
       <p className="text-[var(--fs-sm)] text-gray-500 mb-4">The buttons staff pick from when they add to the log. Rename them, change the symbol, or add your own.</p>
+
+      {/* Primary action — one green button (matches the Templates / Guides screens). */}
+      <button
+        type="button"
+        onClick={() => setEditing('new')}
+        className="w-full min-h-[48px] mb-4 rounded-xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        New type
+      </button>
+
       {types === null ? <Spinner /> : (
         <div className="flex flex-col gap-2">
           {types.map((t) => (
@@ -60,10 +72,6 @@ function LogTypesTab() {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
             </button>
           ))}
-          <button onClick={() => setEditing('new')} className="mt-2 w-full h-12 rounded-2xl border-[1.5px] border-dashed border-green-500 text-green-700 font-semibold text-[var(--fs-sm)] flex items-center justify-center gap-2 active:bg-green-50">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            New type
-          </button>
         </div>
       )}
       {editing && <TypeSheet type={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
@@ -76,6 +84,7 @@ function TypeSheet({ type, onClose, onSaved }: { type: LogType | null; onClose: 
   const [name, setName] = useState(type?.name ?? '');
   const [emoji, setEmoji] = useState(type?.emoji ?? '📝');
   const [isAlert, setIsAlert] = useState(!!type?.is_alert);
+  const [confirmDel, setConfirmDel] = useState(false);
   const { busy, error, setError, run } = useAsync();
 
   async function save() {
@@ -87,12 +96,13 @@ function TypeSheet({ type, onClose, onSaved }: { type: LogType | null; onClose: 
   }
   async function del() {
     if (!type) return;
-    if (!window.confirm(`Remove “${type.name}”? Notes already posted keep their label.`)) return;
+    setConfirmDel(false);
     const res = await run(() => apiSend(`/api/shift-handover/types/${type.id}`, 'DELETE'));
     if (res) onSaved();
   }
 
   return (
+    <>
     <Sheet title={isEdit ? 'Edit type' : 'New type'} onClose={onClose} dismissOnBackdrop={false}
       footer={<PrimaryButton onClick={save} busy={busy}>{isEdit ? 'Save' : 'Add type'}</PrimaryButton>}>
       <ErrorNote>{error}</ErrorNote>
@@ -109,9 +119,20 @@ function TypeSheet({ type, onClose, onSaved }: { type: LogType | null; onClose: 
       </Field>
       {type?.is_storage && <p className="text-[var(--fs-xs)] text-gray-400 -mt-1 mb-2">This type also pins items to “In storage now.”</p>}
       {isEdit && (
-        <button onClick={del} disabled={busy} className="mt-2 w-full h-11 rounded-xl border border-red-200 text-red-600 font-semibold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">Remove this type</button>
+        <button onClick={() => setConfirmDel(true)} disabled={busy} className="mt-2 w-full h-11 rounded-xl border border-red-200 text-red-600 font-semibold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">Remove this type</button>
       )}
     </Sheet>
+    {confirmDel && (
+      <ConfirmDialog
+        title={`Remove “${type?.name}”?`}
+        message="Notes already posted keep their label."
+        confirmLabel="Remove"
+        variant="danger"
+        onConfirm={del}
+        onCancel={() => setConfirmDel(false)}
+      />
+    )}
+    </>
   );
 }
 

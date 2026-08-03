@@ -321,15 +321,6 @@ export default function AdminUsersPage() {
         supertitle="ADMIN"
         title="Manage staff"
         subtitle={pendingUsers.length > 0 ? `${pendingUsers.length} pending approval` : `${users.length} accounts`}
-        action={
-          <button
-            onClick={() => setShowCreate(true)}
-            className="w-11 h-11 rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30"
-            aria-label="Add user"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          </button>
-        }
       />
 
       <div className="flex gap-1.5 px-4 py-3">
@@ -350,6 +341,19 @@ export default function AdminUsersPage() {
             tab === 'rejected' ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
           }`}>
           Rejected {rejectedUsers.length > 0 && <span className="ml-1 text-[11px] font-mono">{rejectedUsers.length}</span>}
+        </button>
+      </div>
+
+      {/* Standard primary action — one full-width green button, visible on every
+          tab (matches Templates / Guides). */}
+      <div className="px-4 pb-1">
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="w-full min-h-[48px] rounded-xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          New user
         </button>
       </div>
 

@@ -24,7 +24,7 @@ test('order guide: editable settings, order method, create-product sheet', async
 
   // Open "Order Templates" (dashboard tile — disambiguated from the header gear).
   await page.getByRole('button', { name: /Build & edit/i }).click();
-  await expect(page.getByRole('button', { name: /add supplier/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: /new supplier/i })).toBeVisible({ timeout: 15_000 });
   await page.screenshot({ path: '/tmp/guide-2-manage.png' });
 
   // Open the first supplier's guide.

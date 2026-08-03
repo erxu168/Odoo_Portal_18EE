@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { PURCHASE_ACCESS_LEVELS } from '@/lib/purchase-permissions';
 
 // Mirrors page.tsx's Supplier so callbacks passing the full record stay assignable.
@@ -65,29 +66,26 @@ export default function ManagePurchasesScreen({
         </ul>
       </div>
 
-      <div className="flex gap-2 mb-3">
-        <button
-          onClick={onAddSupplier}
-          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-[#F5800A] text-white text-[13px] font-bold shadow-sm active:scale-[0.98] transition-transform"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add supplier
-        </button>
-        <button
-          onClick={onInsights}
-          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-bold active:bg-gray-50 transition-colors"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="18" y1="20" x2="18" y2="10" />
-            <line x1="12" y1="20" x2="12" y2="4" />
-            <line x1="6" y1="20" x2="6" y2="14" />
-          </svg>
-          Insights
-        </button>
-      </div>
+      {/* Primary create — one full-width green button (portal standard), matching the Templates/Guides screens. */}
+      <PrimaryButton onClick={onAddSupplier} className="mb-2">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        New supplier
+      </PrimaryButton>
+      {/* Insights is navigation, not a create — kept as a secondary full-width action below the primary. */}
+      <button
+        onClick={onInsights}
+        className="w-full flex items-center justify-center gap-1.5 py-3 mb-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-bold active:bg-gray-50 transition-colors"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+        Insights
+      </button>
 
       {isAdmin && (
         <div className="mb-3 p-3 rounded-xl bg-[#FFF4E6] border border-[#F5800A]">
@@ -112,7 +110,7 @@ export default function ManagePurchasesScreen({
       {suppliers.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-[var(--fs-sm)] text-gray-500 mb-4">
-            No suppliers yet. Tap <span className="font-semibold text-[#F5800A]">Add supplier</span> above
+            No suppliers yet. Tap <span className="font-semibold text-green-700">New supplier</span> above
             {isAdmin ? <>, or use <span className="font-semibold text-[#6B7280]">Auto-import</span> to pull them all from Odoo.</> : '.'}
           </div>
           {isAdmin && (
