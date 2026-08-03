@@ -77,6 +77,12 @@ export default function GuidedCountingFlow({
   const [skipFor, setSkipFor] = useState<number | null>(null);
   // Stops the user re-opened by hand after they auto-collapsed.
   const [reopened, setReopened] = useState<Set<number>>(new Set());
+  // Unit groups (a fridge full of drawers) the user held open after the whole
+  // unit finished and folded to one strip. Mirrors `reopened`. Keyed by the RUN
+  // key (unit id + first stop), not the unit id alone: a unit's children can be
+  // split into two runs by a deeper sub-location between them, and one tap must
+  // not open both runs.
+  const [openUnits, setOpenUnits] = useState<Set<string>>(new Set());
   const [mapSpotId, setMapSpotId] = useState<number | null>(null);
 
   const effStatus = (s: Stop) => statuses[s.bucket_id]?.status ?? s.status ?? 'pending';
@@ -110,6 +116,11 @@ export default function GuidedCountingFlow({
   const toggleReopen = (bucketId: number) => setReopened((p) => {
     const n = new Set(p);
     if (n.has(bucketId)) n.delete(bucketId); else n.add(bucketId);
+    return n;
+  });
+  const toggleUnit = (runKey: string) => setOpenUnits((p) => {
+    const n = new Set(p);
+    if (n.has(runKey)) n.delete(runKey); else n.add(runKey);
     return n;
   });
 
@@ -222,85 +233,206 @@ export default function GuidedCountingFlow({
                   </div>
                 )
               ) : (
-                st.stops.map((s, si) => {
-                  const { shelf, rest } = addressOf(s);
-                  const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
-                  const skipped = effStatus(s) === 'skipped';
-                  const full = total > 0 && counted >= total;
-                  // A finished (or skipped) spot folds into a quiet strip; tapping
-                  // it reopens the full card.
-                  const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
-                  const label = s.location ? typeLabel(s.location.kind) : '';
-                  // Drop the type word when the name already carries it (the icon
-                  // shows the kind); keep it for cryptic names like "D1".
-                  const showLabel = nameIncludesType(shelf, label) ? false : !!label;
-                  const active = !full && !skipped;
-                  const divider = si > 0 ? 'border-t border-gray-100' : '';
+                (() => {
+                  // SAY IT ONCE: consecutive stops sharing the same immediate
+                  // parent (the fridge/freezer they live in) form a UNIT GROUP.
+                  // The unit is named once as a sub-heading; its drawers render
+                  // beneath it as short indented rows with NO repeated trail.
+                  // Pre-order DFS guarantees a parent's children arrive
+                  // consecutively, so grouping on the parent id cannot mislabel
+                  // a run. Stops directly under the room (ancestors.length===1)
+                  // render exactly as before — simple rooms gain no chrome.
+                  type UnitInfo = { id: number; name: string; kind: string };
+                  type Grp = { key: string; unit: UnitInfo | null; between: string[]; own: Stop | null; stops: Stop[] };
+                  const grps: Grp[] = [];
+                  st.stops.forEach((s) => {
+                    const anc = s.ancestors || [];
+                    if (anc.length >= 2) {
+                      const unit = anc[anc.length - 1];
+                      const prev = grps[grps.length - 1];
+                      if (prev?.unit && prev.unit.id === unit.id) { prev.stops.push(s); return; }
+                      // Products placed ON the unit itself: DFS emits the unit's
+                      // own stop right before its children — fold it into the
+                      // group so the unit is never named twice.
+                      if (prev && !prev.unit && prev.stops.length === 1 && prev.stops[0].bucket_id === unit.id) {
+                        grps[grps.length - 1] = { key: `unit-${unit.id}-${prev.stops[0].bucket_id}`, unit, between: anc.slice(1, -1).map((a) => a.name), own: prev.stops[0], stops: [s] };
+                        return;
+                      }
+                      // Key includes the run's first stop: the same unit can be
+                      // split into two runs by a deeper sub-location between its
+                      // children, and each run needs its own key + fold state.
+                      grps.push({ key: `unit-${unit.id}-${s.bucket_id}`, unit, between: anc.slice(1, -1).map((a) => a.name), own: null, stops: [s] });
+                    } else {
+                      grps.push({ key: `plain-${s.bucket_id}`, unit: null, between: [], own: null, stops: [s] });
+                    }
+                  });
 
-                  // DONE / SKIPPED → a quiet folded strip inside the area.
-                  if (collapsed) {
-                    return (
-                      <button key={s.bucket_id} onClick={() => toggleReopen(s.bucket_id)}
-                        className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left active:opacity-70 ${divider} ${skipped ? 'bg-orange-50' : 'bg-green-50'}`}>
-                        <span className={`flex-shrink-0 text-[13px] font-bold ${skipped ? 'text-orange-600' : 'text-green-600'}`} aria-hidden="true">
-                          {skipped ? '⊘' : '✓'}
-                        </span>
-                        <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
-                          {rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
-                          {showLabel && <span className="text-gray-500">{label} </span>}
-                          <span className="font-bold text-gray-900">{shelf}</span>
-                          {' — '}{skipped ? 'skipped' : `${counted} counted`}
-                        </span>
-                        <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${skipped ? 'text-orange-600' : 'text-green-700'}`}>
-                          Tap to view ▸
-                        </span>
-                      </button>
-                    );
-                  }
+                  const stopBits = (s: Stop) => {
+                    const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
+                    const skipped = effStatus(s) === 'skipped';
+                    return { counted, total, skipped, full: total > 0 && counted >= total };
+                  };
+                  const plural = (w: string, n: number) => (n === 1 ? w : w.toLowerCase() === 'shelf' ? `${w.slice(0, -1)}ves` : `${w}s`);
 
-                  // OPEN spot → tinted heading (the lid) + its products + skip, all
-                  // inside the area container.
-                  return (
-                    <div key={s.bucket_id} className={divider}>
-                      <div className={`flex items-start gap-2 px-3.5 py-2.5 ${active ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                        <button onClick={() => toggleReopen(s.bucket_id)}
-                          className="min-w-0 flex-1 flex items-start gap-2 text-left active:opacity-70">
-                          <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
-                            {s.location ? typeIcon(s.location.kind) : '📦'}
+                  // One stop — folded strip or open lid + products. Inside a unit
+                  // the trail is dropped (the heading above already said where we
+                  // are) and the lid/strip indent; product rows keep full width.
+                  const renderStop = (s: Stop, inUnit: boolean, topBorder: boolean) => {
+                    const { shelf, rest } = addressOf(s);
+                    const { counted, total, skipped, full } = stopBits(s);
+                    const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
+                    const label = s.location ? typeLabel(s.location.kind) : '';
+                    const showLabel = nameIncludesType(shelf, label) ? false : !!label;
+                    const active = !full && !skipped;
+                    const divider = topBorder ? 'border-t border-gray-100' : '';
+                    const indent = inUnit ? 'pl-7' : '';
+
+                    if (collapsed) {
+                      return (
+                        <button key={s.bucket_id} onClick={() => toggleReopen(s.bucket_id)}
+                          className={['w-full flex items-center gap-2 px-3.5 py-2.5 text-left active:opacity-70', divider, indent, skipped ? 'bg-orange-50' : 'bg-green-50'].filter(Boolean).join(' ')}>
+                          <span className={`flex-shrink-0 text-[13px] font-bold ${skipped ? 'text-orange-600' : 'text-green-600'}`} aria-hidden="true">
+                            {skipped ? '⊘' : '✓'}
                           </span>
-                          {/* Full path, never cut: ancestor trail small on top, the
-                              exact spot bold underneath. */}
-                          <span className="min-w-0 flex-1 leading-tight">
-                            {rest.length > 0 && (
-                              <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">{rest.join(' › ')}</span>
-                            )}
-                            <span className="block text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
-                              {showLabel && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
-                            </span>
+                          <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
+                            {!inUnit && rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
+                            {showLabel && <span className="text-gray-500">{label} </span>}
+                            <span className="font-bold text-gray-900">{shelf}</span>
+                            {' — '}{skipped ? 'skipped' : `${counted} counted`}
                           </span>
-                          <span className="flex-shrink-0 mt-0.5 flex items-center gap-1.5">
-                            <span className="text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{counted}/{total}</span>
-                            {/* Opened by "Tap to view" — show the way to fold it back. */}
-                            {!active && <span className="text-[var(--fs-xs)] font-bold text-green-700">Hide ▾</span>}
+                          <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${skipped ? 'text-orange-600' : 'text-green-700'}`}>
+                            Tap to view ▸
                           </span>
                         </button>
-                        {s.bucket_id > 0 && (
-                          <button onClick={() => setMapSpotId(s.bucket_id)}
-                            aria-label={`Show ${shelf} on the floorplan`}
-                            className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
-                            🗺️
+                      );
+                    }
+
+                    return (
+                      <div key={s.bucket_id} className={divider}>
+                        <div className={['flex items-start gap-2 px-3.5 py-2.5', indent, active ? 'bg-blue-50' : 'bg-gray-50'].filter(Boolean).join(' ')}>
+                          <button onClick={() => toggleReopen(s.bucket_id)}
+                            className="min-w-0 flex-1 flex items-start gap-2 text-left active:opacity-70">
+                            <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
+                              {s.location ? typeIcon(s.location.kind) : '📦'}
+                            </span>
+                            <span className="min-w-0 flex-1 leading-tight">
+                              {/* Outside a unit the full trail still prints — never
+                                  cut; inside one, the heading already carries it. */}
+                              {!inUnit && rest.length > 0 && (
+                                <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere]">{rest.join(' › ')}</span>
+                              )}
+                              <span className="block text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                                {showLabel && <span className="font-semibold text-gray-500">{label} </span>}{shelf}
+                              </span>
+                            </span>
+                            <span className="flex-shrink-0 mt-0.5 flex items-center gap-1.5">
+                              <span className="text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{counted}/{total}</span>
+                              {/* Opened by "Tap to view" — show the way to fold it back. */}
+                              {!active && <span className="text-[var(--fs-xs)] font-bold text-green-700">Hide ▾</span>}
+                            </span>
                           </button>
+                          {s.bucket_id > 0 && (
+                            <button onClick={() => setMapSpotId(s.bucket_id)}
+                              aria-label={`Show ${shelf} on the floorplan`}
+                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
+                              🗺️
+                            </button>
+                          )}
+                        </div>
+                        <div className="px-3">
+                          {s.product_ids.map((id) => productsById[id] && (
+                            <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
+                          ))}
+                        </div>
+                        {drawerFooter(s, full, skipped)}
+                      </div>
+                    );
+                  };
+
+                  return grps.map((g, gi) => {
+                    if (!g.unit) return renderStop(g.stops[0], false, gi > 0);
+
+                    const members = g.own ? [g.own, ...g.stops] : g.stops;
+                    const bits = members.map(stopBits);
+                    const doneCount = bits.filter((b) => b.full || b.skipped).length;
+                    const countedSum = bits.reduce((n, b) => n + b.counted, 0);
+                    const skippedCount = bits.filter((b) => b.skipped).length;
+                    const allDone = doneCount === members.length && members.length > 0;
+                    const folded = allDone && !openUnits.has(g.key);
+                    const uLabel = typeLabel(g.unit.kind);
+                    const showULabel = nameIncludesType(g.unit.name, uLabel) ? false : !!uLabel;
+                    const kinds = new Set(g.stops.map((s) => s.location?.kind || ''));
+                    const childWord = kinds.size === 1 ? (typeLabel(g.stops[0].location?.kind || '') || 'spot') : 'spot';
+                    // Heavier rule between unit groups than between drawers.
+                    const divider = gi > 0 ? 'border-t border-gray-200' : '';
+                    const ownBits = g.own ? stopBits(g.own) : null;
+
+                    // Whole unit finished → ONE quiet strip. Honest about skips:
+                    // a skipped drawer is a manager-visible fact, not buried.
+                    if (folded) {
+                      return (
+                        <button key={g.key} onClick={() => toggleUnit(g.key)}
+                          className={['w-full flex items-center gap-2 px-3.5 py-2.5 text-left active:opacity-70', divider, 'bg-green-50'].filter(Boolean).join(' ')}>
+                          <span className="flex-shrink-0 text-[13px] font-bold text-green-600" aria-hidden="true">✓</span>
+                          <span className="min-w-0 flex-1 text-[var(--fs-sm)] text-gray-600 leading-tight truncate">
+                            <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
+                            <span className="font-bold text-gray-900">{g.unit.name}</span>
+                            {' — '}{g.stops.length} {plural(childWord, g.stops.length).toLowerCase()} · {countedSum} counted
+                            {skippedCount > 0 && <span className="font-bold text-orange-600"> · {skippedCount} skipped</span>}
+                          </span>
+                          <span className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-green-700">Tap to view ▸</span>
+                        </button>
+                      );
+                    }
+
+                    return (
+                      <div key={g.key} className={divider}>
+                        {/* The unit heading — the fridge is named ONCE here; the
+                            in-between chain prints once too, never per drawer. */}
+                        <div className="px-3.5 pt-3 pb-2">
+                          {g.between.length > 0 && (
+                            <div className="text-[var(--fs-xs)] font-semibold text-gray-400 [overflow-wrap:anywhere] mb-0.5">{g.between.join(' › ')} ›</div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            {allDone ? (
+                              <button onClick={() => toggleUnit(g.key)}
+                                className="min-w-0 flex-1 flex items-center gap-1.5 text-left active:opacity-70">
+                                <span className="text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                                  <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
+                                  {showULabel && <span className="font-semibold text-gray-500">{uLabel} </span>}{g.unit.name}
+                                </span>
+                                <span className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-green-700">Hide ▾</span>
+                              </button>
+                            ) : (
+                              <span className="min-w-0 flex-1 text-[var(--fs-sm)] font-extrabold text-gray-900 [overflow-wrap:anywhere]">
+                                <span aria-hidden="true">{typeIcon(g.unit.kind)} </span>
+                                {showULabel && <span className="font-semibold text-gray-500">{uLabel} </span>}{g.unit.name}
+                              </span>
+                            )}
+                            <span className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-gray-500 tabular-nums">{doneCount} of {members.length} done</span>
+                            <button onClick={() => setMapSpotId(g.unit!.id)}
+                              aria-label={`Show ${g.unit.name} on the floorplan`}
+                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
+                              🗺️
+                            </button>
+                          </div>
+                        </div>
+                        {/* Products stored on the unit itself, before its drawers. */}
+                        {g.own && ownBits && (
+                          <>
+                            <div className="px-3">
+                              {g.own.product_ids.map((id) => productsById[id] && (
+                                <div key={id}>{renderRow(productsById[id], g.own!.bucket_id)}</div>
+                              ))}
+                            </div>
+                            {drawerFooter(g.own, ownBits.full, ownBits.skipped)}
+                          </>
                         )}
+                        {g.stops.map((s) => renderStop(s, true, true))}
                       </div>
-                      <div className="px-3">
-                        {s.product_ids.map((id) => productsById[id] && (
-                          <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
-                        ))}
-                      </div>
-                      {drawerFooter(s, full, skipped)}
-                    </div>
-                  );
-                })
+                    );
+                  });
+                })()
               )}
             </div>
           </div>

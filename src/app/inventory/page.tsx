@@ -31,7 +31,7 @@ type Screen =
   | { type: 'consumption' }
   | { type: 'goods-received' }
   | { type: 'settings' }
-  | { type: 'session'; sessionId: number };
+  | { type: 'session'; sessionId: number; from?: 'dashboard' | 'my-lists' | 'review' };
 
 export default function InventoryPage() {
   const router = useRouter();
@@ -62,6 +62,7 @@ export default function InventoryPage() {
         userRole={userRole}
         capabilities={capabilities}
         onNavigate={(id) => { if (id === 'floorplan') router.push('/inventory/floorplan'); else setScreen({ type: id as any }); }}
+        onOpenSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'dashboard' })}
         onHome={goHome}
       />
     );
@@ -72,12 +73,17 @@ export default function InventoryPage() {
   }
 
   if (screen.type === 'session') {
+    // Leave the count the way you came in: dashboard card -> dashboard,
+    // My Lists -> My Lists, Review -> Review.
+    const backToOrigin = screen.from === 'my-lists' ? () => setScreen({ type: 'my-lists' })
+      : screen.from === 'review' ? () => setScreen({ type: 'review' })
+      : goDashboard;
     return (
       <CountingSession
         sessionId={screen.sessionId}
         userRole={userRole}
-        onBack={() => setScreen({ type: 'my-lists' })}
-        onSubmit={() => setScreen({ type: 'my-lists' })}
+        onBack={backToOrigin}
+        onSubmit={backToOrigin}
       />
     );
   }
@@ -86,7 +92,7 @@ export default function InventoryPage() {
     return (
       <MyLists
         userRole={userRole}
-        onOpenSession={(id) => setScreen({ type: 'session', sessionId: id })}
+        onOpenSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'my-lists' })}
         onHome={goDashboard}
       />
     );
@@ -163,7 +169,7 @@ export default function InventoryPage() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Review" subtitle="Approve or reject submitted counts" showBack onBack={goDashboard} />
         <ReviewSubmissions
-          onViewSession={(id) => setScreen({ type: 'session', sessionId: id })}
+          onViewSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'review' })}
         />
       </div>
     );
@@ -174,6 +180,7 @@ export default function InventoryPage() {
       userRole={userRole}
       capabilities={capabilities}
       onNavigate={(id) => { if (id === 'floorplan') router.push('/inventory/floorplan'); else setScreen({ type: id as any }); }}
+      onOpenSession={(id) => setScreen({ type: 'session', sessionId: id, from: 'dashboard' })}
       onHome={goHome}
     />
   );
