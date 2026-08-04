@@ -79,21 +79,21 @@ export default function SummarySettings() {
 
   return (
     <section>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Notifications</p>
+      <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400 mb-2">Notifications</p>
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-          <p className="font-semibold text-sm text-gray-800">End-of-day summary</p>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="font-semibold text-[var(--fs-sm)] text-gray-800">End-of-day summary</p>
+          <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
             One evening recap (done / missed / photos to review) pushed to each restaurant&apos;s
             managers. More alerts can be added here later.
           </p>
         </div>
 
         {loading ? (
-          <p className="px-4 py-5 text-sm text-gray-400">Loading…</p>
+          <p className="px-4 py-5 text-[var(--fs-sm)] text-gray-400">Loading…</p>
         ) : rows.length === 0 ? (
           !error && (
-            <p className="px-4 py-5 text-sm text-gray-400">
+            <p className="px-4 py-5 text-[var(--fs-sm)] text-gray-400">
               No restaurants with departments found — add a department in Odoo first.
             </p>
           )
@@ -102,7 +102,7 @@ export default function SummarySettings() {
             {rows.map((row, i) => (
               <div key={row.id} className={`px-4 py-3.5 ${i < rows.length - 1 ? 'border-b border-gray-100' : ''}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-sm text-gray-800 min-w-0 truncate">{row.name}</p>
+                  <p className="font-semibold text-[var(--fs-sm)] text-gray-800 min-w-0 truncate">{row.name}</p>
                   <button
                     type="button"
                     role="switch"
@@ -117,17 +117,17 @@ export default function SummarySettings() {
                 </div>
                 {row.enabled && (
                   <div className="mt-2.5 flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Send at</span>
+                    <span className="text-[var(--fs-xs)] text-gray-500">Send at</span>
                     <select
                       value={row.hour}
                       onChange={e => patch(row.id, { hour: Number(e.target.value) })}
                       disabled={saving}
                       aria-label={`Send time for ${row.name}`}
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-[var(--fs-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
                       {HOUR_OPTIONS.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}
                     </select>
-                    <span className="text-xs text-gray-400">Berlin time</span>
+                    <span className="text-[var(--fs-xs)] text-gray-400">Berlin time</span>
                   </div>
                 )}
               </div>
@@ -137,16 +137,16 @@ export default function SummarySettings() {
               <button
                 onClick={save}
                 disabled={saving || !dirty}
-                className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 py-2 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:pointer-events-none"
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              {savedAt && !dirty && <span className="text-xs font-semibold text-green-600">Saved ✓</span>}
+              {savedAt && !dirty && <span className="text-[var(--fs-xs)] font-semibold text-green-600">Saved ✓</span>}
             </div>
           </>
         )}
 
-        {error && <p className="px-4 py-3.5 text-xs font-semibold text-red-600" role="alert">{error}</p>}
+        {error && <p className="px-4 py-3.5 text-[var(--fs-xs)] font-semibold text-red-600" role="alert">{error}</p>}
       </div>
     </section>
   );

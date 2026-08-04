@@ -166,12 +166,12 @@ export default function DeptReviewPage({ params }: PageProps) {
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
           />
           {!isToday && (
             <button
               onClick={() => setDate(today)}
-              className="text-xs font-semibold text-green-700 hover:text-green-800"
+              className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800"
             >
               Today
             </button>
@@ -179,7 +179,7 @@ export default function DeptReviewPage({ params }: PageProps) {
           {!isPast && list && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="ml-auto bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-700"
+              className="ml-auto bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-3 py-2 rounded-lg hover:bg-green-700"
             >
               + Add task
             </button>
@@ -187,12 +187,12 @@ export default function DeptReviewPage({ params }: PageProps) {
         </div>
 
         {isPast && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-xs mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-[var(--fs-xs)] mb-4">
             📖 Read-only history. Use the date picker to view a different day.
           </div>
         )}
         {isFuture && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800 text-xs mb-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800 text-[var(--fs-xs)] mb-4">
             🗓️ Scheduled day — add one-off tasks here. They&apos;ll appear when staff opens this date&apos;s list.
           </div>
         )}
@@ -202,7 +202,7 @@ export default function DeptReviewPage({ params }: PageProps) {
             {[1, 2].map(i => <div key={i} className="h-32 bg-gray-200 rounded-2xl animate-pulse" />)}
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{error}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-[var(--fs-sm)]">{error}</div>
         ) : !list ? (
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2">📋</p>
@@ -211,7 +211,7 @@ export default function DeptReviewPage({ params }: PageProps) {
               <button
                 onClick={handleCreateList}
                 disabled={creating}
-                className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="mt-4 bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {creating ? 'Creating…' : `Create list for ${date}`}
               </button>
@@ -220,10 +220,10 @@ export default function DeptReviewPage({ params }: PageProps) {
         ) : (
           <>
             <div className="flex items-baseline justify-between mb-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400">
                 {list.template_name ? `Template: ${list.template_name}` : 'Ad-hoc list'}
               </p>
-              <p className="text-xs font-semibold text-gray-500">
+              <p className="text-[var(--fs-xs)] font-semibold text-gray-500">
                 {list.completed_count} / {list.line_count} done · {list.completion_rate}%
               </p>
             </div>

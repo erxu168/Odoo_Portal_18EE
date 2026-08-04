@@ -166,7 +166,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" aria-hidden="true" />
       )}
 
-      <div className={`mt-0.5 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all text-xs font-bold ${
+      <div className={`mt-0.5 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all text-[var(--fs-xs)] font-bold ${
         completing ? 'border-green-500 bg-green-500 text-white' :
         isLocked ? 'border-gray-200 bg-gray-50 text-gray-400' :
         task.state === 'overdue' ? 'border-red-400 bg-red-50 text-red-500' :
@@ -180,7 +180,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
 
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className={`font-semibold text-sm leading-snug transition-colors ${completing ? 'text-gray-400 line-through' : task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
+          <p className={`font-semibold text-[var(--fs-sm)] leading-snug transition-colors ${completing ? 'text-gray-400 line-through' : task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
             {task.name}
           </p>
           {task.is_ad_hoc && (
@@ -192,14 +192,14 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
 
         <div className="flex flex-wrap gap-1.5 mt-1.5">
           {task.deadline_datetime && (
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold ${
               task.state === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'
             }`}>
               {task.state === 'overdue' ? `⚠ Overdue ${overdueMinutes} min` : `⏱ By ${formatTime(task.deadline_datetime)}`}
             </span>
           )}
           {task.photo_required && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-blue-50 text-blue-700">
               📸 required
             </span>
           )}
@@ -212,7 +212,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
             Shown on past days too — it is part of what the task said that day.
             whitespace-pre-wrap keeps any line breaks the manager typed. */}
         {task.manager_note && (
-          <div className="mt-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 text-xs leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]">
+          <div className="mt-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 text-[var(--fs-xs)] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]">
             <span aria-hidden="true">📌 </span>
             <span className="font-bold">Note: </span>
             {task.manager_note}
@@ -223,14 +223,14 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           <button
             type="button"
             onClick={e => { e.stopPropagation(); setShowGuide(true); }}
-            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 transition-colors"
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 transition-colors"
           >
             📖 Show me how{task.guide_step_count ? ` · ${task.guide_step_count} step${task.guide_step_count === 1 ? '' : 's'}` : ''}
           </button>
         )}
 
         {subtasks.length > 0 && (
-          <p className={`text-xs mt-1.5 font-medium ${
+          <p className={`text-[var(--fs-xs)] mt-1.5 font-medium ${
             allSubtasksDone ? 'text-green-600' : 'text-gray-400'
           }`}>
             {allSubtasksDone ? 'All subtasks done — tap to complete ✓' : `Complete ${subtasks.filter(s=>!s.done).length} more subtask${subtasks.filter(s=>!s.done).length > 1?'s':''} to unlock`}
@@ -245,7 +245,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
 
         {task.module_link_type !== 'none' && linkHref && (
           <a href={linkHref} onClick={e => e.stopPropagation()}
-            className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:shadow-sm ${MODULE_STYLES[task.module_link_type]}`}>
+            className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold border transition-all hover:shadow-sm ${MODULE_STYLES[task.module_link_type]}`}>
             {MODULE_ICONS[task.module_link_type]} {linkLabel} ↗
           </a>
         )}
@@ -253,18 +253,18 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         {!readOnly && task.photo_required && allSubtasksDone && (
           <>
             {task.photo_instructions && photoCount === 0 && (
-              <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs leading-snug">
+              <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-[var(--fs-xs)] leading-snug">
                 <span className="font-bold">📋 Photo guide: </span>{task.photo_instructions}
               </div>
             )}
             {photoCount > 0 && (
-              <div className="mt-2 flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-semibold">
+              <div className="mt-2 flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-[var(--fs-xs)] font-semibold">
                 <span>✅ {photoCount} photo{photoCount === 1 ? '' : 's'} uploaded</span>
                 <span className="text-green-600/80 font-medium">— tap task to complete, or add more below</span>
               </div>
             )}
             <button onClick={handlePhoto} disabled={uploading}
-              className="mt-2 w-full py-2.5 border-2 border-dashed border-green-600 rounded-lg bg-green-50 text-green-800 text-xs font-semibold text-center hover:bg-green-100 transition-colors disabled:opacity-60">
+              className="mt-2 w-full py-2.5 border-2 border-dashed border-green-600 rounded-lg bg-green-50 text-green-800 text-[var(--fs-xs)] font-semibold text-center hover:bg-green-100 transition-colors disabled:opacity-60">
               {uploading ? '⏳ Uploading...' : photoCount === 0 ? '\u{1F4F8} Tap to take / upload photo' : '\u{1F4F8} Add another photo'}
             </button>
           </>
@@ -276,7 +276,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
               <button
                 type="button"
                 onClick={() => setNoteOpen(true)}
-                className="text-xs font-semibold text-gray-500 hover:text-green-700 inline-flex items-center gap-1"
+                className="text-[var(--fs-xs)] font-semibold text-gray-500 hover:text-green-700 inline-flex items-center gap-1"
               >
                 📝 Add note
               </button>
@@ -287,7 +287,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
                   onChange={e => { setNote(e.target.value); setNoteDirty(true); }}
                   placeholder="e.g. ran out of bleach, fryer making noise…"
                   rows={2}
-                  className="w-full text-xs px-2 py-1.5 border border-yellow-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-y min-h-[44px]"
+                  className="w-full text-[var(--fs-xs)] px-2 py-1.5 border border-yellow-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-y min-h-[44px]"
                 />
                 <div className="flex items-center justify-between gap-2 mt-1.5">
                   <span className="text-[10px] text-yellow-700">
@@ -300,7 +300,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
                       <button
                         type="button"
                         onClick={() => { setNote(''); setNoteOpen(false); }}
-                        className="text-[11px] text-gray-500 px-2 py-1 rounded-md hover:bg-yellow-100"
+                        className="text-[var(--fs-xs)] text-gray-500 px-2 py-1 rounded-md hover:bg-yellow-100"
                       >
                         Cancel
                       </button>
@@ -309,7 +309,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
                       type="button"
                       onClick={handleSaveNote}
                       disabled={noteSaving || !noteDirty}
-                      className="text-[11px] font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-40 px-2.5 py-1 rounded-md"
+                      className="text-[var(--fs-xs)] font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-40 px-2.5 py-1 rounded-md"
                     >
                       {noteSaving ? 'Saving…' : 'Save'}
                     </button>
@@ -320,7 +320,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           </div>
         )}
 
-        {error && <p className="mt-1.5 text-xs font-semibold text-red-600">{error}</p>}
+        {error && <p className="mt-1.5 text-[var(--fs-xs)] font-semibold text-red-600">{error}</p>}
       </div>
     </div>
     {showGuide && (

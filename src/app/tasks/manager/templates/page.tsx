@@ -77,7 +77,7 @@ export default function TemplateListPage() {
       <ManagerTabs />
 
       <div className="max-w-2xl mx-auto px-4 py-4">
-        <p className="text-sm text-gray-500 mb-3 leading-snug">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-3 leading-snug">
           A template is a department&apos;s recurring task list. The daily lists are spawned from the active ones.
         </p>
 
@@ -85,13 +85,13 @@ export default function TemplateListPage() {
         <button
           type="button"
           onClick={() => setShowCreate(true)}
-          className="w-full min-h-[48px] mb-3 rounded-xl bg-green-600 text-white text-sm font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+          className="w-full min-h-[48px] mb-3 rounded-xl bg-green-600 text-white text-[var(--fs-sm)] font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           New template
         </button>
 
-        <label className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+        <label className="flex items-center gap-2 text-[var(--fs-sm)] text-gray-600 mb-3">
           <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
           Show archived
         </label>
@@ -101,12 +101,12 @@ export default function TemplateListPage() {
             {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-200 rounded-2xl animate-pulse" />)}
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{error}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-[var(--fs-sm)]">{error}</div>
         ) : templates.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2">📋</p>
             <p className="font-semibold">No templates yet</p>
-            <p className="text-sm mt-1">Create one with the button above to start spawning daily lists.</p>
+            <p className="text-[var(--fs-sm)] mt-1">Create one with the button above to start spawning daily lists.</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -119,11 +119,11 @@ export default function TemplateListPage() {
                   href={`/tasks/manager/templates/${t.id}`}
                   className="flex-1 min-w-0 px-4 py-3.5 hover:bg-green-50/40 active:bg-green-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-500"
                 >
-                  <p className="font-semibold text-sm text-gray-800 truncate">
+                  <p className="font-semibold text-[var(--fs-sm)] text-gray-800 truncate">
                     {t.name}
-                    {!t.active && <span className="ml-2 text-xs font-normal text-gray-400">(archived)</span>}
+                    {!t.active && <span className="ml-2 text-[var(--fs-xs)] font-normal text-gray-400">(archived)</span>}
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5">{t.department_name} · {t.line_count} task{t.line_count === 1 ? '' : 's'}</p>
+                  <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{t.department_name} · {t.line_count} task{t.line_count === 1 ? '' : 's'}</p>
                 </Link>
                 {t.active ? (
                   <button
@@ -144,7 +144,7 @@ export default function TemplateListPage() {
                     onClick={() => setArchived(t, false)}
                     disabled={busyId === t.id}
                     aria-label={`Restore template ${t.name}`}
-                    className="px-3 flex-shrink-0 flex items-center justify-center text-xs font-semibold text-green-700 hover:text-green-800 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-500 disabled:opacity-50"
+                    className="px-3 flex-shrink-0 flex items-center justify-center text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-500 disabled:opacity-50"
                   >
                     Restore
                   </button>
@@ -210,29 +210,29 @@ function CreateModal({ departments, onClose, onCreated }: {
   return (
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center" onClick={onClose}>
       <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[90dvh]" onClick={e => e.stopPropagation()}>
-        <h2 className="font-bold text-gray-800 text-lg px-5 pt-5 pb-3 flex-shrink-0">New template</h2>
+        <h2 className="font-bold text-gray-800 text-[var(--fs-lg)] px-5 pt-5 pb-3 flex-shrink-0">New template</h2>
         <div className="flex-1 overflow-y-auto px-5 space-y-3 min-h-0">
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Kitchen — Standard Day"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
             <select value={deptId} onChange={e => setDeptId(parseInt(e.target.value, 10))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500">
               {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
             </select>
           </div>
-          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          <p className="text-[var(--fs-xs)] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
             💡 You&apos;ll set the schedule (daily / weekly / monthly / one-off) on each task after creating the template.
           </p>
-          {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+          {error && <p className="text-[var(--fs-xs)] text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-white">
-          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={submit} disabled={submitting} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-[var(--fs-sm)] font-semibold hover:bg-green-700 disabled:opacity-50">
             {submitting ? 'Creating…' : 'Create'}
           </button>
         </div>

@@ -271,15 +271,15 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
       <header className="flex-shrink-0 bg-[#2563EB] text-white px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 lg:pb-4">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="hidden lg:block text-[11px] font-bold uppercase tracking-[0.08em] text-white/70">
+            <p className="hidden lg:block text-[var(--fs-xs)] font-bold uppercase tracking-[0.08em] text-white/70">
               How-to guide
             </p>
-            <h1 id={titleId} className="text-base lg:text-lg font-bold leading-tight truncate">
+            <h1 id={titleId} className="text-[var(--fs-base)] lg:text-[var(--fs-lg)] font-bold leading-tight truncate">
               {guide?.line_name || (isPreview ? 'Guide preview' : 'Guided tutorial')}
             </h1>
           </div>
           {total > 0 && (
-            <span className="lg:hidden flex-shrink-0 text-xs font-bold tabular-nums bg-white/20 px-2.5 py-1 rounded-full" aria-hidden="true">
+            <span className="lg:hidden flex-shrink-0 text-[var(--fs-xs)] font-bold tabular-nums bg-white/20 px-2.5 py-1 rounded-full" aria-hidden="true">
               {index + 1}/{total}
             </span>
           )}
@@ -289,7 +289,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
             aria-label="Close guide"
             className="flex-shrink-0 -mr-1 w-9 h-9 lg:w-10 lg:h-10 flex items-center justify-center rounded-full text-white/90 active:bg-white/15 motion-safe:transition-colors"
           >
-            <span aria-hidden="true" className="text-xl leading-none">
+            <span aria-hidden="true" className="text-[var(--fs-xl)] leading-none">
               &#x2715;
             </span>
           </button>
@@ -297,7 +297,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
 
         {total > 0 && (
           <>
-            <p className="hidden lg:block mt-2 text-sm font-semibold text-white/90" aria-live="polite">
+            <p className="hidden lg:block mt-2 text-[var(--fs-sm)] font-semibold text-white/90" aria-live="polite">
               Step {index + 1} of {total}
             </p>
             {/* phone/tablet: slim segmented progress bar (tap a segment to jump) */}
@@ -354,7 +354,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
       <div className="flex-1 overflow-y-auto px-3 py-3">
         <div className="max-w-md mx-auto">
           {loading && (
-            <div className="py-16 text-center text-sm font-medium text-gray-500">Loading how-to…</div>
+            <div className="py-16 text-center text-[var(--fs-sm)] font-medium text-gray-500">Loading how-to…</div>
           )}
 
           {!loading && error && (
@@ -362,21 +362,21 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
               <div className="text-3xl mb-2" aria-hidden="true">
                 &#x26A0;&#xFE0F;
               </div>
-              <p className="text-sm font-semibold text-gray-700">
+              <p className="text-[var(--fs-sm)] font-semibold text-gray-700">
                 Couldn&rsquo;t load the how-to. Check your connection and try again.
               </p>
               <div className="mt-4 flex items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={() => setReloadTick(t => t + 1)}
-                  className="px-4 py-2 rounded-lg bg-[#16A34A] text-white text-sm font-semibold active:bg-[#15803D]"
+                  className="px-4 py-2 rounded-lg bg-[#16A34A] text-white text-[var(--fs-sm)] font-semibold active:bg-[#15803D]"
                 >
                   Try again
                 </button>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold active:bg-gray-200"
+                  className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-[var(--fs-sm)] font-semibold active:bg-gray-200"
                 >
                   Close
                 </button>
@@ -389,12 +389,12 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
               <div className="text-3xl mb-2" aria-hidden="true">
                 &#x1F4D6;
               </div>
-              <p className="text-sm font-semibold text-gray-700">No how-to yet</p>
-              <p className="mt-1 text-xs text-gray-500">There are no steps to show for this task.</p>
+              <p className="text-[var(--fs-sm)] font-semibold text-gray-700">No how-to yet</p>
+              <p className="mt-1 text-[var(--fs-xs)] text-gray-500">There are no steps to show for this task.</p>
               <button
                 type="button"
                 onClick={onClose}
-                className="mt-4 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold active:bg-gray-200"
+                className="mt-4 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-[var(--fs-sm)] font-semibold active:bg-gray-200"
               >
                 Close
               </button>
@@ -428,7 +428,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                   step as soon as a note has been opened. */}
               {step.media_type === 'photo' && step.pins.length > 0 &&
                 !imgError.has(step.id) && !pinTried.has(step.id) && (
-                <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500">
+                <p className="flex items-center justify-center gap-1.5 text-[var(--fs-xs)] font-medium text-gray-500">
                   <span
                     aria-hidden="true"
                     className="relative flex w-2 h-2"
@@ -443,7 +443,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
               {/* Explanation, always as TEXT (never HTML). Tip steps render the
                   explanation inside their own panel, so don't repeat it here. */}
               {step.media_type !== 'tip' && step.explanation.trim() && (
-                <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
+                <p className="text-[var(--fs-sm)] leading-relaxed text-gray-800 whitespace-pre-wrap">
                   {step.explanation}
                 </p>
               )}
@@ -459,7 +459,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
             {/* Persistent reminder — the guide is instructional only; staff still
                 tick the task off themselves. Hidden in any preview (no task). */}
             {!isPreview && (
-              <p className="mb-2 text-center text-xs font-medium text-gray-500">
+              <p className="mb-2 text-center text-[var(--fs-xs)] font-medium text-gray-500">
                 This just shows you how — you still tick the task off yourself.
               </p>
             )}
@@ -468,14 +468,14 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                 type="button"
                 onClick={goBack}
                 disabled={index === 0}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 active:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none motion-safe:transition-colors"
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-[var(--fs-sm)] font-semibold text-gray-600 active:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none motion-safe:transition-colors"
               >
                 &#x2190; Back
               </button>
               <button
                 type="button"
                 onClick={goNext}
-                className={`flex-[1.4] py-3 rounded-xl text-sm font-semibold motion-safe:transition-colors ${
+                className={`flex-[1.4] py-3 rounded-xl text-[var(--fs-sm)] font-semibold motion-safe:transition-colors ${
                   isLast
                     ? 'border border-gray-300 bg-white text-gray-700 active:bg-gray-100'
                     : 'bg-[#16A34A] text-white active:bg-[#15803D]'
@@ -520,14 +520,14 @@ function StepMedia({
     return (
       <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-lg" aria-hidden="true">
+          <span className="text-[var(--fs-lg)]" aria-hidden="true">
             &#x26A0;&#xFE0F;
           </span>
-          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-amber-700">
+          <span className="text-[var(--fs-xs)] font-bold uppercase tracking-[0.08em] text-amber-700">
             Tip
           </span>
         </div>
-        <p className="text-sm leading-relaxed text-amber-900 whitespace-pre-wrap">
+        <p className="text-[var(--fs-sm)] leading-relaxed text-amber-900 whitespace-pre-wrap">
           {step.explanation.trim() || 'Keep this in mind for this step.'}
         </p>
       </div>
@@ -543,7 +543,7 @@ function StepMedia({
           <div className="text-2xl mb-1" aria-hidden="true">
             &#x1F4F9;
           </div>
-          <p className="text-sm font-medium text-gray-600">
+          <p className="text-[var(--fs-sm)] font-medium text-gray-600">
             Video couldn&rsquo;t load — follow the written steps below; you can still finish the task.
           </p>
         </div>
@@ -567,7 +567,7 @@ function StepMedia({
             href={watch}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-[#16A34A] active:text-[#15803D]"
+            className="mt-2 inline-flex items-center gap-1.5 text-[var(--fs-sm)] font-semibold text-[#16A34A] active:text-[#15803D]"
           >
             Open in YouTube &#x2197;
           </a>
@@ -583,7 +583,7 @@ function StepMedia({
           <div className="text-2xl mb-1" aria-hidden="true">
             &#x1F4C4;
           </div>
-          <p className="text-sm font-medium text-gray-600">
+          <p className="text-[var(--fs-sm)] font-medium text-gray-600">
             PDF couldn&rsquo;t load — follow the written steps below; you can still finish the task.
           </p>
         </div>
@@ -596,14 +596,14 @@ function StepMedia({
         rel="noopener noreferrer"
         className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 active:bg-gray-50 motion-safe:transition-colors"
       >
-        <span className="flex-shrink-0 w-11 h-11 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-xl" aria-hidden="true">
+        <span className="flex-shrink-0 w-11 h-11 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-[var(--fs-xl)]" aria-hidden="true">
           &#x1F4C4;
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-gray-800 truncate">
+          <span className="block text-[var(--fs-sm)] font-semibold text-gray-800 truncate">
             {step.pdf_filename || 'Document.pdf'}
           </span>
-          <span className="block text-xs font-semibold text-[#16A34A]">Open PDF &#x2197;</span>
+          <span className="block text-[var(--fs-xs)] font-semibold text-[#16A34A]">Open PDF &#x2197;</span>
         </span>
       </a>
     );
@@ -616,14 +616,14 @@ function StepMedia({
         <div className="text-2xl mb-1" aria-hidden="true">
           &#x1F5BC;&#xFE0F;
         </div>
-        <p className="text-sm font-medium text-gray-600">
+        <p className="text-[var(--fs-sm)] font-medium text-gray-600">
           Photo couldn&rsquo;t load — follow the written steps below; you can still finish the task.
         </p>
         {broken && (
           <button
             type="button"
             onClick={onRetry}
-            className="mt-3 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 active:bg-gray-100"
+            className="mt-3 px-4 py-2 rounded-lg border border-gray-300 bg-white text-[var(--fs-sm)] font-semibold text-gray-700 active:bg-gray-100"
           >
             Try again
           </button>

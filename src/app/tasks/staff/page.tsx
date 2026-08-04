@@ -217,7 +217,7 @@ export default function StaffPage() {
   const trainingLink = (
     <Link
       href="/tasks/training"
-      className="h-11 px-3 inline-flex items-center rounded-xl bg-white/10 border border-white/10 text-white text-[13px] font-semibold active:bg-white/20 transition-colors"
+      className="h-11 px-3 inline-flex items-center rounded-xl bg-white/10 border border-white/10 text-white text-[var(--fs-sm)] font-semibold active:bg-white/20 transition-colors"
     >
       Training
     </Link>
@@ -256,12 +256,12 @@ export default function StaffPage() {
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 flex-1 min-w-0"
+            className="px-3 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500 flex-1 min-w-0"
           />
           {!isToday && (
             <button
               onClick={() => setDate(today)}
-              className="text-xs font-semibold text-green-700 hover:text-green-800 px-2 flex-shrink-0"
+              className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 flex-shrink-0"
             >
               Today
             </button>
@@ -270,7 +270,7 @@ export default function StaffPage() {
             <button
               onClick={() => setShowAdd(true)}
               disabled={!ctx?.department_id}
-              className="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 flex-shrink-0"
+              className="bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 min-h-[44px] rounded-lg hover:bg-green-700 disabled:opacity-50 flex-shrink-0"
             >
               + Add
             </button>
@@ -284,12 +284,12 @@ export default function StaffPage() {
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
         {isToday && <NotificationsToggle />}
         {showManagerControls && isPast && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-xs mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-[var(--fs-xs)] mb-4">
             📖 Read-only history.
           </div>
         )}
         {showManagerControls && isFuture && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800 text-xs mb-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800 text-[var(--fs-xs)] mb-4">
             🗓️ Scheduled day — add one-off tasks here. They&apos;ll appear when staff opens this date&apos;s list.
           </div>
         )}
@@ -310,7 +310,7 @@ export default function StaffPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2">📋</p>
             <p className="font-semibold text-gray-600">No list for {date}</p>
-            <p className="text-sm mt-1 max-w-xs mx-auto">
+            <p className="text-[var(--fs-sm)] mt-1 max-w-xs mx-auto">
               {isToday
                 ? `No checklist has been published for ${ctx?.department_name ?? 'your department'} today.`
                 : `No list exists for ${ctx?.department_name ?? 'this department'} on this date.`}
@@ -319,7 +319,7 @@ export default function StaffPage() {
               <button
                 onClick={handleCreateList}
                 disabled={creating}
-                className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="mt-4 bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {creating ? 'Creating…' : `Create list for ${date}`}
               </button>
@@ -329,11 +329,11 @@ export default function StaffPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2">📝</p>
             <p className="font-semibold text-gray-600">Empty list</p>
-            <p className="text-sm mt-1">{isToday ? "Today's list has no tasks yet." : 'This list has no tasks yet.'}</p>
+            <p className="text-[var(--fs-sm)] mt-1">{isToday ? "Today's list has no tasks yet." : 'This list has no tasks yet.'}</p>
             {showManagerControls && !isPast && (
               <button
                 onClick={() => setShowAdd(true)}
-                className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700"
+                className="mt-4 bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700"
               >
                 + Add first task
               </button>
@@ -342,10 +342,10 @@ export default function StaffPage() {
         ) : (
           <>
             <div className="flex items-baseline justify-between mb-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400">
                 {isToday ? "Today's tasks" : `Tasks for ${date}`}
               </p>
-              <p className="text-xs font-semibold text-gray-500">
+              <p className="text-[var(--fs-xs)] font-semibold text-gray-500">
                 {list.completed_count} / {list.line_count} done · {list.completion_rate}%
               </p>
             </div>
@@ -389,7 +389,7 @@ function EmptyState({ emoji, title, message }: { emoji: string; title: string; m
     <div className="text-center py-12 text-gray-400">
       <p className="text-3xl mb-2">{emoji}</p>
       <p className="font-semibold text-gray-600">{title}</p>
-      <p className="text-sm mt-1 max-w-xs mx-auto">{message}</p>
+      <p className="text-[var(--fs-sm)] mt-1 max-w-xs mx-auto">{message}</p>
     </div>
   );
 }

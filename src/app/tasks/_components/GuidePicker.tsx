@@ -85,17 +85,17 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
   return (
     <div>
       {confirmElement}
-      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
+      <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
 
       {loading ? (
-        <p className="text-[12px] text-gray-400">Loading…</p>
+        <p className="text-[var(--fs-xs)] text-gray-400">Loading…</p>
       ) : linked ? (
         <div className="rounded-lg border border-gray-200 bg-white p-3">
           <div className="flex items-start gap-2">
-            <span className="text-lg leading-none" aria-hidden="true">📖</span>
+            <span className="text-[var(--fs-lg)] leading-none" aria-hidden="true">📖</span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-gray-800 truncate">{link!.name || 'Guide'}</p>
-              <p className="text-[11px] text-gray-500">
+              <p className="text-[var(--fs-sm)] font-semibold text-gray-800 truncate">{link!.name || 'Guide'}</p>
+              <p className="text-[var(--fs-xs)] text-gray-500">
                 {link!.step_count} step{link!.step_count === 1 ? '' : 's'} ·{' '}
                 <span className={link!.published ? 'text-green-700 font-semibold' : 'text-gray-500'}>
                   {link!.published ? 'Live' : 'Draft'}
@@ -108,7 +108,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
               type="button"
               disabled={busy}
               onClick={() => setEditGuide({ id: link!.guide_id as number, name: link!.name })}
-              className="flex-1 py-2 rounded-lg bg-green-600 text-white text-[13px] font-semibold hover:bg-green-700 disabled:opacity-50"
+              className="flex-1 py-2 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-semibold hover:bg-green-700 disabled:opacity-50"
             >
               Edit guide
             </button>
@@ -116,7 +116,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
               type="button"
               disabled={busy}
               onClick={() => setPicking(true)}
-              className="py-2 px-3 rounded-lg border border-gray-200 text-[13px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              className="py-2 px-3 rounded-lg border border-gray-200 text-[var(--fs-sm)] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
             >
               Change
             </button>
@@ -132,12 +132,12 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
                 })) return;
                 void attach(null);
               }}
-              className="py-2 px-3 rounded-lg border border-gray-200 text-[13px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+              className="py-2 px-3 rounded-lg border border-gray-200 text-[var(--fs-sm)] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
             >
               Unlink
             </button>
           </div>
-          <p className="text-[11px] text-gray-400 mt-2">Edits to this guide apply everywhere it&rsquo;s linked. It never completes the task.</p>
+          <p className="text-[var(--fs-xs)] text-gray-400 mt-2">Edits to this guide apply everywhere it&rsquo;s linked. It never completes the task.</p>
         </div>
       ) : (
         <div className="flex gap-2">
@@ -145,15 +145,15 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
             type="button"
             disabled={busy}
             onClick={() => setPicking(true)}
-            className="flex-1 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="flex-1 py-2.5 rounded-lg border border-gray-300 bg-white text-[var(--fs-sm)] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             📖 Link a guide
           </button>
         </div>
       )}
-      {error && <p className="text-[11px] text-red-600 font-semibold mt-1">{error}</p>}
+      {error && <p className="text-[var(--fs-xs)] text-red-600 font-semibold mt-1">{error}</p>}
       {!linked && !loading && (
-        <p className="text-[11px] text-gray-400 mt-1">Optional — a step-by-step how-to staff can open. It never completes the task.</p>
+        <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Optional — a step-by-step how-to staff can open. It never completes the task.</p>
       )}
 
       {picking && (
@@ -244,16 +244,16 @@ export function GuideAttachModal({
         onClick={e => e.stopPropagation()}
       >
         <div className="bg-white text-gray-900 px-4 py-3 rounded-t-2xl border-b border-gray-200 flex items-center justify-between gap-3 flex-shrink-0">
-          <h2 className="text-base font-bold">Choose a guide</h2>
+          <h2 className="text-[var(--fs-base)] font-bold">Choose a guide</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-            <span aria-hidden="true" className="text-lg leading-none">✕</span>
+            <span aria-hidden="true" className="text-[var(--fs-lg)] leading-none">✕</span>
           </button>
         </div>
 
         <div className="p-3 flex-1 overflow-y-auto min-h-0 space-y-3">
           {/* Create new */}
           <div className="rounded-lg border border-dashed border-gray-300 p-3">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Create a new guide</p>
+            <p className="text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Create a new guide</p>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -261,13 +261,13 @@ export function GuideAttachModal({
                 maxLength={120}
                 onChange={e => setNewName(e.target.value)}
                 placeholder="Guide name"
-                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)] focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
               />
               <button
                 type="button"
                 onClick={createGuide}
                 disabled={creating}
-                className="px-3 py-2 rounded-lg bg-green-600 text-white text-[13px] font-semibold hover:bg-green-700 disabled:opacity-50"
+                className="px-3 py-2 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-semibold hover:bg-green-700 disabled:opacity-50"
               >
                 {creating ? '…' : 'Create'}
               </button>
@@ -281,12 +281,12 @@ export function GuideAttachModal({
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder="Search guides…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)] mb-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
             />
             {guides === null ? (
-              <p className="text-[12px] text-gray-400 py-4 text-center">Loading…</p>
+              <p className="text-[var(--fs-xs)] text-gray-400 py-4 text-center">Loading…</p>
             ) : filtered.length === 0 ? (
-              <p className="text-[12px] text-gray-400 py-4 text-center">
+              <p className="text-[var(--fs-xs)] text-gray-400 py-4 text-center">
                 {guides.length === 0 ? 'No guides yet — create one above.' : 'No guides match your search.'}
               </p>
             ) : (
@@ -299,17 +299,17 @@ export function GuideAttachModal({
                       onClick={() => onPick({ id: g.id, name: g.name })}
                       className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-green-500 hover:bg-green-50 disabled:opacity-50 disabled:cursor-default"
                     >
-                      <span className="text-base" aria-hidden="true">📖</span>
+                      <span className="text-[var(--fs-base)]" aria-hidden="true">📖</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold text-gray-800 truncate">{g.name}</span>
-                        <span className="block text-[11px] text-gray-500">
+                        <span className="block text-[var(--fs-sm)] font-semibold text-gray-800 truncate">{g.name}</span>
+                        <span className="block text-[var(--fs-xs)] text-gray-500">
                           {g.step_count} step{g.step_count === 1 ? '' : 's'} · {g.published ? 'Live' : 'Draft'}
                           {g.template_line_count > 0 ? ` · used by ${g.template_line_count}` : ''}
                         </span>
                       </span>
                       {g.id === currentGuideId
-                        ? <span className="text-[11px] font-semibold text-green-700">Linked</span>
-                        : <span className="text-[11px] font-semibold text-blue-600">Use</span>}
+                        ? <span className="text-[var(--fs-xs)] font-semibold text-green-700">Linked</span>
+                        : <span className="text-[var(--fs-xs)] font-semibold text-blue-600">Use</span>}
                     </button>
                   </li>
                 ))}
@@ -317,7 +317,7 @@ export function GuideAttachModal({
             )}
           </div>
 
-          {error && <p className="text-[12px] text-red-600 font-semibold">{error}</p>}
+          {error && <p className="text-[var(--fs-xs)] text-red-600 font-semibold">{error}</p>}
         </div>
       </div>
     </div>

@@ -105,24 +105,24 @@ export default function NotificationsToggle() {
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-3 mb-3 flex items-center gap-3">
       <span className="text-2xl">🔔</span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800">
+        <p className="text-[var(--fs-sm)] font-semibold text-gray-800">
           {status === 'subscribed' ? 'Notifications on' : 'Get notified'}
         </p>
-        <p className="text-[11px] text-gray-500 leading-tight">
+        <p className="text-[var(--fs-xs)] text-gray-500 leading-tight">
           {status === 'denied' && 'Blocked in browser settings — enable in your site permissions to use this.'}
           {status === 'unsubscribed' && 'Ping when a task is overdue or someone leaves a note.'}
           {status === 'subscribed' && 'You’ll get a buzz for overdue tasks and new notes.'}
           {status === 'busy' && 'Working…'}
         </p>
-        {error && <p className="text-[11px] text-red-600 mt-0.5">{error}</p>}
+        {error && <p className="text-[var(--fs-xs)] text-red-600 mt-0.5">{error}</p>}
       </div>
       {status === 'unsubscribed' && (
-        <button onClick={enable} className="text-xs font-semibold px-3 py-1.5 rounded-full bg-green-600 text-white hover:bg-green-700">
+        <button onClick={enable} className="text-[var(--fs-xs)] font-semibold px-3 py-1.5 rounded-full bg-green-600 text-white hover:bg-green-700">
           Turn on
         </button>
       )}
       {status === 'subscribed' && (
-        <button onClick={disable} className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white text-gray-600 border border-gray-300 hover:bg-gray-50">
+        <button onClick={disable} className="text-[var(--fs-xs)] font-semibold px-3 py-1.5 rounded-full bg-white text-gray-600 border border-gray-300 hover:bg-gray-50">
           Turn off
         </button>
       )}

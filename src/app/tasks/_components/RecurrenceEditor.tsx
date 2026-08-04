@@ -67,11 +67,11 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-3 border border-gray-200 rounded-xl p-3 bg-gray-50">
       <div>
-        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Repeat</label>
+        <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Repeat</label>
         <select
           value={v.type}
           onChange={e => set({ type: e.target.value as RecurrenceType })}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
         >
           {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -79,40 +79,40 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
 
       {v.type === 'once' && (
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Date</label>
+          <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Date</label>
           <input
             type="date"
             value={v.one_off_date || ''}
             onChange={e => set({ one_off_date: e.target.value || null })}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
           />
         </div>
       )}
 
       {v.type !== 'once' && (
         <div className="flex items-center gap-2">
-          <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Every</label>
+          <label className="text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide">Every</label>
           <NumberField
             value={v.interval}
             onValueChange={n => set({ interval: Math.max(1, Number(n) || 1) })}
             onCommit={n => set({ interval: Math.max(1, Number(n) || 1) })}
             mode="integer" min={1}
             aria-label={`Repeat every how many ${UNIT_LABEL[v.type]}s`}
-            inputClassName="w-16 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+            inputClassName="w-16 px-2 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
           />
-          <span className="text-sm text-gray-700">{UNIT_LABEL[v.type]}{v.interval !== 1 ? 's' : ''}</span>
+          <span className="text-[var(--fs-sm)] text-gray-700">{UNIT_LABEL[v.type]}{v.interval !== 1 ? 's' : ''}</span>
         </div>
       )}
 
       {v.type === 'weekly' && (
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">On weekdays</label>
+          <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">On weekdays</label>
           <div className="flex gap-1.5">
             {WEEKDAYS.map((label, i) => (
               <button
                 key={i} type="button"
                 onClick={() => toggleWeekday(i)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`flex-1 min-h-[44px] rounded-lg text-[var(--fs-xs)] font-semibold transition-colors ${
                   v.weekdays.includes(i) ? 'bg-green-600 text-white' : 'bg-white text-gray-400 border border-gray-200'
                 }`}
               >
@@ -126,9 +126,9 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
       {(v.type === 'monthly' || v.type === 'yearly') && (
         <>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Pattern</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Pattern</label>
             <div className="space-y-1.5">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-[var(--fs-sm)]">
                 <input
                   type="radio"
                   checked={v.monthly_mode === 'day_of_month'}
@@ -140,11 +140,11 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
                 <input
                   type="number" min={-1} max={31} value={v.day_of_month}
                   onChange={e => set({ day_of_month: parseInt(e.target.value, 10) || 1 })}
-                  className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                  className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
                 />
-                <span className="text-xs text-gray-500">(use -1 for last day)</span>
+                <span className="text-[var(--fs-xs)] text-gray-500">(use -1 for last day)</span>
               </label>
-              <label className="flex flex-wrap items-center gap-2 text-sm">
+              <label className="flex flex-wrap items-center gap-2 text-[var(--fs-sm)]">
                 <input
                   type="radio"
                   checked={v.monthly_mode === 'weekday_of_month'}
@@ -154,14 +154,14 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
                 <select
                   value={v.weekday_pos}
                   onChange={e => set({ weekday_pos: parseInt(e.target.value, 10) })}
-                  className="px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                  className="px-2 py-1 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
                 >
                   {POS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
                 <select
                   value={v.weekday}
                   onChange={e => set({ weekday: parseInt(e.target.value, 10) })}
-                  className="px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                  className="px-2 py-1 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
                 >
                   {WEEKDAYS.map((label, i) => <option key={i} value={i}>{label}</option>)}
                 </select>
@@ -171,11 +171,11 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
           </div>
           {v.type === 'yearly' && (
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">In month</label>
+              <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">In month</label>
               <select
                 value={v.month}
                 onChange={e => set({ month: parseInt(e.target.value, 10) })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
               >
                 {MONTH_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
@@ -185,32 +185,32 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
       )}
 
       <div>
-        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Starts on</label>
+        <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Starts on</label>
         <input
           type="date" value={v.start_date}
           onChange={e => set({ start_date: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
         />
       </div>
 
       {v.type !== 'once' && (
         <div>
-          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Ends</label>
+          <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Ends</label>
           <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-[var(--fs-sm)]">
               <input type="radio" checked={v.end_type === 'never'} onChange={() => set({ end_type: 'never' as RecurrenceEndType })} />
               Never
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-[var(--fs-sm)]">
               <input type="radio" checked={v.end_type === 'on_date'} onChange={() => set({ end_type: 'on_date' as RecurrenceEndType })} />
               On
               <input
                 type="date" value={v.end_date || ''}
                 onChange={e => set({ end_date: e.target.value || null, end_type: 'on_date' })}
-                className="px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                className="px-2 py-1 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
               />
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-[var(--fs-sm)]">
               <input type="radio" checked={v.end_type === 'after_count'} onChange={() => set({ end_type: 'after_count' as RecurrenceEndType })} />
               After
               <NumberField
@@ -221,7 +221,7 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
                 onValueChange={n => set({ count: Math.max(1, Number(n) || 1), end_type: 'after_count' })}
                 mode="integer" min={1}
                 aria-label="How many times"
-                inputClassName="w-16 px-2 py-1 border border-gray-200 rounded-lg text-sm bg-white"
+                inputClassName="w-16 px-2 py-1 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
               />
               times
             </label>
@@ -230,13 +230,13 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
       )}
 
       <div>
-        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Skip these days</label>
+        <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Skip these days</label>
         {v.exception_dates.length > 0 && (
           <ul className="mb-2 space-y-1">
             {v.exception_dates.map(d => (
-              <li key={d} className="flex items-center gap-2 text-sm text-gray-700 bg-white px-2.5 py-1.5 rounded-lg border border-gray-200">
+              <li key={d} className="flex items-center gap-2 text-[var(--fs-sm)] text-gray-700 bg-white px-2.5 py-1.5 rounded-lg border border-gray-200">
                 <span className="flex-1">{d}</span>
-                <button onClick={() => removeException(d)} className="text-xs text-red-500 hover:text-red-600">Remove</button>
+                <button onClick={() => removeException(d)} className="text-[var(--fs-xs)] text-red-500 hover:text-red-600">Remove</button>
               </li>
             ))}
           </ul>
@@ -245,12 +245,12 @@ export default function RecurrenceEditor({ value, onChange }: Props) {
           <input
             type="date" value={newException}
             onChange={e => setNewException(e.target.value)}
-            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white"
+            className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] bg-white"
           />
           <button
             type="button" onClick={addException}
             disabled={!newException}
-            className="px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+            className="px-3 py-1.5 bg-green-600 text-white text-[var(--fs-xs)] font-semibold rounded-lg disabled:opacity-50"
           >
             + Add
           </button>

@@ -60,7 +60,7 @@ export default function TrainingPage() {
       <AppHeader supertitle="LEARN" title="Training" />
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
-        <p className="text-sm text-gray-500 mb-4">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
           Step-by-step how-tos for common tasks. Watch any time &mdash; this is just for learning.
         </p>
 
@@ -68,7 +68,7 @@ export default function TrainingPage() {
         <div className="relative mb-4">
           <span
             aria-hidden="true"
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[var(--fs-base)]"
           >
             &#x1F50D;
           </span>
@@ -78,7 +78,7 @@ export default function TrainingPage() {
             onChange={e => setQuery(e.target.value)}
             placeholder="Search guides…"
             aria-label="Search training guides"
-            className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-sm)] text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
           />
         </div>
 
@@ -92,10 +92,10 @@ export default function TrainingPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2" aria-hidden="true">&#x26A0;&#xFE0F;</p>
             <p className="font-semibold text-gray-600">Could not load</p>
-            <p className="text-sm mt-1 max-w-xs mx-auto">{error}</p>
+            <p className="text-[var(--fs-sm)] mt-1 max-w-xs mx-auto">{error}</p>
             <button
               onClick={() => load()}
-              className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 active:bg-green-800"
+              className="mt-4 bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 active:bg-green-800"
             >
               Try again
             </button>
@@ -104,7 +104,7 @@ export default function TrainingPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2" aria-hidden="true">&#x1F393;</p>
             <p className="font-semibold text-gray-600">No training guides yet</p>
-            <p className="text-sm mt-1 max-w-xs mx-auto">
+            <p className="text-[var(--fs-sm)] mt-1 max-w-xs mx-auto">
               No training guides yet &mdash; your manager can add them.
             </p>
           </div>
@@ -112,7 +112,7 @@ export default function TrainingPage() {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2" aria-hidden="true">&#x1F50D;</p>
             <p className="font-semibold text-gray-600">No matches</p>
-            <p className="text-sm mt-1 max-w-xs mx-auto">
+            <p className="text-[var(--fs-sm)] mt-1 max-w-xs mx-auto">
               No guides match &ldquo;{query.trim()}&rdquo;.
             </p>
           </div>
@@ -127,19 +127,19 @@ export default function TrainingPage() {
               >
                 <span
                   aria-hidden="true"
-                  className="flex-shrink-0 w-11 h-11 rounded-xl bg-[#F1F3F5] border border-gray-200 flex items-center justify-center text-xl"
+                  className="flex-shrink-0 w-11 h-11 rounded-xl bg-[#F1F3F5] border border-gray-200 flex items-center justify-center text-[var(--fs-xl)]"
                 >
                   &#x1F4D8;
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-bold text-gray-800 truncate">
+                  <span className="block text-[var(--fs-md)] font-bold text-gray-800 truncate">
                     {g.name}
                   </span>
-                  <span className="block text-sm text-gray-500">
+                  <span className="block text-[var(--fs-sm)] text-gray-500">
                     {g.step_count} {g.step_count === 1 ? 'step' : 'steps'}
                   </span>
                 </span>
-                <span aria-hidden="true" className="flex-shrink-0 text-gray-300 text-lg">
+                <span aria-hidden="true" className="flex-shrink-0 text-gray-300 text-[var(--fs-lg)]">
                   &#x203A;
                 </span>
               </button>

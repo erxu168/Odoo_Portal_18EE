@@ -170,7 +170,7 @@ export default function SetupGuideEditor({
     // fire and mutate photos while a save is in flight.
     <div className={`rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}>
       {confirmElement}
-      <p className="text-[11px] text-gray-600 leading-snug">
+      <p className="text-[var(--fs-xs)] text-gray-600 leading-snug">
         📍 Add one or more photos of the finished station, then tap a photo to drop a numbered
         pin for each item — drag a pin to move it. Staff check off each pin as they set it up.
       </p>
@@ -197,7 +197,7 @@ export default function SetupGuideEditor({
               )}
             </button>
           ))}
-          <label className="flex-shrink-0 h-14 w-20 rounded-lg border-2 border-dashed border-green-600 bg-white flex items-center justify-center text-green-700 text-xl font-bold cursor-pointer hover:bg-green-50">
+          <label className="flex-shrink-0 h-14 w-20 rounded-lg border-2 border-dashed border-green-600 bg-white flex items-center justify-center text-green-700 text-[var(--fs-xl)] font-bold cursor-pointer hover:bg-green-50">
             +
             <input
               type="file" className="hidden" accept="image/*" disabled={disabled}
@@ -208,7 +208,7 @@ export default function SetupGuideEditor({
       )}
 
       {photos.length === 0 ? (
-        <label className="flex flex-col items-center justify-center gap-1 px-3 py-6 bg-white border-2 border-dashed border-green-600 rounded-lg text-xs font-semibold text-green-800 cursor-pointer hover:bg-green-50">
+        <label className="flex flex-col items-center justify-center gap-1 px-3 py-6 bg-white border-2 border-dashed border-green-600 rounded-lg text-[var(--fs-xs)] font-semibold text-green-800 cursor-pointer hover:bg-green-50">
           <span className="text-2xl">📷</span>
           Tap to add the reference photo
           <input
@@ -219,7 +219,7 @@ export default function SetupGuideEditor({
       ) : activePhoto && (
         <div className="space-y-2">
           {imgError.has(activePhoto.seq) ? (
-            <div className="px-3 py-6 bg-white border border-red-200 rounded-lg text-xs text-red-600 text-center">
+            <div className="px-3 py-6 bg-white border border-red-200 rounded-lg text-[var(--fs-xs)] text-red-600 text-center">
               Couldn&apos;t load this photo. Replace or remove it below.
             </div>
           ) : (
@@ -249,12 +249,12 @@ export default function SetupGuideEditor({
             </div>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-gray-500">
+            <span className="text-[var(--fs-xs)] text-gray-500">
               {photos.length > 1 ? `Photo ${photoNo(activePhoto.seq)} of ${photos.length} · ` : ''}
               {pins.length} pin{pins.length === 1 ? '' : 's'} total
             </span>
             <div className="flex items-center gap-3">
-              <label className="text-[11px] font-semibold text-green-700 cursor-pointer hover:text-green-800">
+              <label className="text-[var(--fs-xs)] font-semibold text-green-700 cursor-pointer hover:text-green-800">
                 Replace photo
                 <input
                   type="file" className="hidden" accept="image/*" disabled={disabled}
@@ -277,7 +277,7 @@ export default function SetupGuideEditor({
                   })) return;
                   onRemovePhoto(activePhoto.seq);
                 }}
-                className="text-[11px] font-semibold text-red-500 hover:text-red-600 disabled:opacity-50"
+                className="text-[var(--fs-xs)] font-semibold text-red-500 hover:text-red-600 disabled:opacity-50"
               >
                 Remove
               </button>
@@ -295,14 +295,14 @@ export default function SetupGuideEditor({
               onMouseEnter={() => setActiveGlobal(gi)}
               onMouseLeave={() => setActiveGlobal(null)}
               onClick={() => { if (p.pin_photo_seq !== activeSeq) setActiveSeq(p.pin_photo_seq); }}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${activeGlobal === gi ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[var(--fs-xs)] border ${activeGlobal === gi ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
             >
               <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center font-bold flex-shrink-0">{gi + 1}</span>
               <span className="flex-1 min-w-0 truncate text-gray-800">{p.name}</span>
               {photos.length > 1 && (
                 <span className="text-[10px] font-semibold text-gray-400 flex-shrink-0">📷 {photoNo(p.pin_photo_seq)}</span>
               )}
-              <button type="button" disabled={disabled} onClick={(e) => { e.stopPropagation(); removePinGlobal(gi); }} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0 disabled:opacity-50">Remove</button>
+              <button type="button" disabled={disabled} onClick={(e) => { e.stopPropagation(); removePinGlobal(gi); }} className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 flex-shrink-0 disabled:opacity-50">Remove</button>
             </li>
           ))}
         </ul>
@@ -311,22 +311,22 @@ export default function SetupGuideEditor({
       {/* Item picker sheet — appears after tapping the photo */}
       {pending && !disabled && (
         <div className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2">
-          <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">Label this pin</p>
+          <p className="text-[var(--fs-xs)] font-bold text-gray-600 uppercase tracking-wide">Label this pin</p>
           <input
             autoFocus
             value={newName}
             onChange={e => setNewName(e.target.value)}
             placeholder="Search or type a new item…"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
           />
           <div className="max-h-40 overflow-y-auto space-y-1">
-            {loadingItems && <p className="text-[11px] text-gray-400 px-1">Loading items…</p>}
+            {loadingItems && <p className="text-[var(--fs-xs)] text-gray-400 px-1">Loading items…</p>}
             {filtered.map(item => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => placePinFromItem(item)}
-                className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-gray-800 hover:bg-green-50 border border-transparent hover:border-green-200"
+                className="w-full text-left px-3 py-1.5 rounded-lg text-[var(--fs-sm)] text-gray-800 hover:bg-green-50 border border-transparent hover:border-green-200"
               >
                 {item.name}
               </button>
@@ -336,19 +336,19 @@ export default function SetupGuideEditor({
                 type="button"
                 onClick={addNewItem}
                 disabled={adding}
-                className="w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold text-green-800 bg-green-50 border border-green-200 hover:bg-green-100 disabled:opacity-50"
+                className="w-full text-left px-3 py-1.5 rounded-lg text-[var(--fs-sm)] font-semibold text-green-800 bg-green-50 border border-green-200 hover:bg-green-100 disabled:opacity-50"
               >
                 {adding ? 'Adding…' : `+ Add "${newName.trim()}"`}
               </button>
             )}
             {!loadingItems && filtered.length === 0 && !newName.trim() && (
-              <p className="text-[11px] text-gray-400 px-1">No items yet — type one above to create it.</p>
+              <p className="text-[var(--fs-xs)] text-gray-400 px-1">No items yet — type one above to create it.</p>
             )}
           </div>
           <button
             type="button"
             onClick={() => { setPending(null); setNewName(''); }}
-            className="text-[11px] text-gray-500 hover:text-gray-700"
+            className="text-[var(--fs-xs)] text-gray-500 hover:text-gray-700"
           >
             Cancel
           </button>

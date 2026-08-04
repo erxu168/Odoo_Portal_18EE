@@ -71,11 +71,11 @@ export default function ManagerDashboard() {
             {[1, 2, 3, 4].map(i => <div key={i} className="h-[58px] bg-gray-200 rounded-xl animate-pulse" />)}
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{error}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-[var(--fs-sm)]">{error}</div>
         ) : data ? (
           <>
             <StatGrid data={data} />
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2.5">
+            <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400 mb-2.5">
               Today&apos;s lists
             </p>
             <DeptList lists={data.lists} />
@@ -84,7 +84,7 @@ export default function ManagerDashboard() {
                 It used to be a small "Spawn" pill in the blue header — ERP
                 jargon, and styled as header chrome rather than an action. */}
             {spawnError && (
-              <div role="alert" className="mt-5 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              <div role="alert" className="mt-5 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-[var(--fs-sm)]">
                 {spawnError}
               </div>
             )}
@@ -95,7 +95,7 @@ export default function ManagerDashboard() {
             >
               {spawning ? 'Creating…' : "Create today's lists"}
             </PrimaryButton>
-            <p className="text-xs text-gray-400 mt-1.5 text-center">
+            <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5 text-center">
               Builds today&apos;s checklists from the active templates. Safe to tap again — it won&apos;t duplicate.
             </p>
           </>
@@ -147,8 +147,8 @@ function DeptList({ lists }: { lists: TaskListSummary[] }) {
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
         <p className="text-3xl mb-2">📋</p>
-        <p className="font-semibold text-gray-700 text-sm">No lists for today</p>
-        <p className="text-xs text-gray-400 mt-1">Use “Create today&apos;s lists” below to build them from the active templates.</p>
+        <p className="font-semibold text-gray-700 text-[var(--fs-sm)]">No lists for today</p>
+        <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Use “Create today&apos;s lists” below to build them from the active templates.</p>
       </div>
     );
   }
@@ -166,11 +166,11 @@ function DeptList({ lists }: { lists: TaskListSummary[] }) {
               l.state === 'in_progress' ? 'bg-amber-400' : 'bg-gray-300'
             }`} aria-hidden="true" />
             <div className="min-w-0">
-              <p className="font-semibold text-sm text-gray-800 truncate">{l.department_name}</p>
+              <p className="font-semibold text-[var(--fs-sm)] text-gray-800 truncate">{l.department_name}</p>
               {/* The dot alone said nothing — a colour is not a status. The word
                   carries it now, and the photo count says what it counts
                   instead of leaving a bare camera glyph to be guessed at. */}
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
                 {LIST_STATE_LABEL[l.state] || 'Not started'}
                 {' · '}{l.line_count} task{l.line_count === 1 ? '' : 's'}
                 {l.overdue_count > 0 ? ` · ${l.overdue_count} overdue` : ''}
@@ -180,7 +180,7 @@ function DeptList({ lists }: { lists: TaskListSummary[] }) {
               </p>
             </div>
           </div>
-          <span className={`text-sm font-bold ${
+          <span className={`text-[var(--fs-sm)] font-bold ${
             l.completion_rate === 100 ? 'text-green-600' :
             l.completion_rate >= 50 ? 'text-amber-500' : 'text-gray-400'
           }`}>

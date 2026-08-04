@@ -21,9 +21,9 @@ export default function AdminPage() {
 
         <SpawnTimeSettings />
 
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-[var(--fs-sm)] text-blue-700">
           <p className="font-semibold mb-1">⚙️ Stored in Odoo</p>
-          <p className="text-xs">These settings are saved on each company record in Odoo, so they stay in sync everywhere.</p>
+          <p className="text-[var(--fs-xs)]">These settings are saved on each company record in Odoo, so they stay in sync everywhere.</p>
         </div>
       </div>
     </div>

@@ -120,7 +120,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
         {others.map(att => (
           <li
             key={att.id}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-[var(--fs-xs)]"
           >
             <span className="flex-shrink-0">{isPdf(att.mimetype) ? '📄' : '📎'}</span>
             <button
@@ -137,7 +137,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
               <button
                 onClick={() => deleteAttachment(att)}
                 disabled={deleting === att.id}
-                className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
+                className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 flex-shrink-0 disabled:opacity-50"
               >
                 {deleting === att.id ? '…' : 'Remove'}
               </button>
@@ -151,7 +151,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
       {imgOpen && (
         <div className="fixed inset-0 bg-black/90 z-[70] flex flex-col" onClick={() => setImgOpen(null)}>
           <div className="flex justify-between items-center px-4 py-3 text-white">
-            <span className="text-sm truncate">{imgOpen.name}</span>
+            <span className="text-[var(--fs-sm)] truncate">{imgOpen.name}</span>
             <button onClick={() => setImgOpen(null)} className="text-2xl px-3 -mr-3" aria-label="Close">×</button>
           </div>
           <div className="flex-1 overflow-auto flex items-center justify-center p-2">
@@ -171,7 +171,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
       {open && isImage(open.mimetype) && (
         <div className="fixed inset-0 bg-black/90 z-[70] flex flex-col" onClick={() => setOpen(null)}>
           <div className="flex justify-between items-center px-4 py-3 text-white">
-            <span className="text-sm truncate">{open.name}</span>
+            <span className="text-[var(--fs-sm)] truncate">{open.name}</span>
             <button onClick={() => setOpen(null)} className="text-2xl px-3 -mr-3">×</button>
           </div>
           <div className="flex-1 overflow-auto flex items-center justify-center p-2">
@@ -187,15 +187,15 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-6" onClick={() => setOpen(null)}>
           <div className="bg-white rounded-2xl p-5 max-w-sm w-full" onClick={e => e.stopPropagation()}>
             <p className="font-semibold text-gray-800">{open.name}</p>
-            <p className="text-sm text-gray-500 mt-2">This file type ({open.mimetype || 'unknown'}) can&apos;t be previewed in the app. Tap below to download.</p>
+            <p className="text-[var(--fs-sm)] text-gray-500 mt-2">This file type ({open.mimetype || 'unknown'}) can&apos;t be previewed in the app. Tap below to download.</p>
             <a
               href={`data:${open.mimetype || 'application/octet-stream'};base64,${open.data_base64}`}
               download={open.name}
-              className="mt-4 block w-full text-center py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold"
+              className="mt-4 block w-full text-center py-2.5 bg-green-600 text-white rounded-lg text-[var(--fs-sm)] font-semibold"
             >
               Download
             </a>
-            <button onClick={() => setOpen(null)} className="mt-2 w-full py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600">Close</button>
+            <button onClick={() => setOpen(null)} className="mt-2 w-full py-2.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] text-gray-600">Close</button>
           </div>
         </div>
       )}

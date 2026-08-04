@@ -148,7 +148,7 @@ export default function PhotoReviewPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader supertitle="TASK MANAGER" title="Photo review" showBack onBack={() => router.push('/tasks/manager')} />
-        <div className="max-w-2xl mx-auto px-4 py-10 text-center text-sm text-gray-400">
+        <div className="max-w-2xl mx-auto px-4 py-10 text-center text-[var(--fs-sm)] text-gray-400">
           {authState === 'denied' ? 'Redirecting…' : 'Loading…'}
         </div>
       </div>
@@ -163,22 +163,22 @@ export default function PhotoReviewPage() {
       <ManagerTabs />
 
       <div className="max-w-2xl mx-auto px-4 py-4">
-        <p className="text-sm text-gray-500 mb-3 leading-snug">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-3 leading-snug">
           Spot-check the proof photos staff submitted. Tap a photo to enlarge; flag one that looks wrong and the staff member is told to redo it — the task stays done.
         </p>
 
         {/* Stat chips */}
         <div className="grid grid-cols-3 gap-2 mb-3">
           <div className="bg-white rounded-xl border border-gray-200 py-2.5 text-center">
-            <div className="text-xl font-extrabold text-gray-800">{stats?.submitted ?? 0}</div>
+            <div className="text-[var(--fs-xl)] font-extrabold text-gray-800">{stats?.submitted ?? 0}</div>
             <div className="text-[10.5px] font-semibold uppercase tracking-wide text-gray-400">Submitted</div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 py-2.5 text-center">
-            <div className="text-xl font-extrabold text-green-600">{stats?.looks_good ?? 0}</div>
+            <div className="text-[var(--fs-xl)] font-extrabold text-green-600">{stats?.looks_good ?? 0}</div>
             <div className="text-[10.5px] font-semibold uppercase tracking-wide text-gray-400">Looks good</div>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 py-2.5 text-center">
-            <div className="text-xl font-extrabold text-amber-600">{stats?.flagged ?? 0}</div>
+            <div className="text-[var(--fs-xl)] font-extrabold text-amber-600">{stats?.flagged ?? 0}</div>
             <div className="text-[10.5px] font-semibold uppercase tracking-wide text-gray-400">Flagged</div>
           </div>
         </div>
@@ -191,13 +191,13 @@ export default function PhotoReviewPage() {
             max={berlinTodayStr()}
             onChange={e => setDate(e.target.value)}
             aria-label="Review date"
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 h-11 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 h-11 text-[var(--fs-sm)] text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
           />
           <select
             value={staffId}
             onChange={e => setStaffId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
             aria-label="Filter by staff"
-            className="rounded-lg border border-gray-200 bg-white px-3 h-11 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="rounded-lg border border-gray-200 bg-white px-3 h-11 text-[var(--fs-sm)] text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
           >
             <option value="all">All staff</option>
             {staffOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
@@ -208,14 +208,14 @@ export default function PhotoReviewPage() {
           <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-200 rounded-2xl animate-pulse" />)}</div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center space-y-3">
-            <p className="text-sm text-red-700 font-semibold">{error}</p>
-            <button type="button" onClick={load} className="min-h-[44px] px-4 text-sm font-semibold text-green-700 hover:text-green-800">Try again</button>
+            <p className="text-[var(--fs-sm)] text-red-700 font-semibold">{error}</p>
+            <button type="button" onClick={load} className="min-h-[44px] px-4 text-[var(--fs-sm)] font-semibold text-green-700 hover:text-green-800">Try again</button>
           </div>
         ) : !feed || feed.items.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
             <p className="text-3xl mb-2">📸</p>
-            <p className="font-semibold text-gray-700 text-sm">No photos {isToday ? 'yet today' : 'on this day'}</p>
-            <p className="text-xs text-gray-400 mt-1">Proof photos staff submit will show up here.</p>
+            <p className="font-semibold text-gray-700 text-[var(--fs-sm)]">No photos {isToday ? 'yet today' : 'on this day'}</p>
+            <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Proof photos staff submit will show up here.</p>
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -242,11 +242,11 @@ export default function PhotoReviewPage() {
             onClick={e => e.stopPropagation()}
             className="max-w-[88vw] max-h-[70vh] rounded-xl object-contain shadow-2xl"
           />
-          <div className="text-white text-center text-sm">
+          <div className="text-white text-center text-[var(--fs-sm)]">
             {lightbox.item.name}<br />
             <span className="opacity-70">{lightbox.item.completed_by_name}</span>
           </div>
-          <button type="button" onClick={() => setLightbox(null)} className="px-5 py-2.5 rounded-xl bg-white text-gray-900 text-sm font-bold">Close</button>
+          <button type="button" onClick={() => setLightbox(null)} className="px-5 py-2.5 rounded-xl bg-white text-gray-900 text-[var(--fs-sm)] font-bold">Close</button>
         </div>
       )}
 
@@ -269,9 +269,9 @@ function ReviewCard({
     <div className={`bg-white rounded-2xl border shadow-sm p-3 ${item.flagged ? 'border-amber-300 bg-amber-50/60' : 'border-gray-200'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-bold text-gray-800 truncate">{item.name}</p>
-          <p className="text-[11.5px] text-gray-400">{DAY_PART_LABEL[item.day_part] ?? item.day_part}</p>
-          <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
+          <p className="text-[var(--fs-sm)] font-bold text-gray-800 truncate">{item.name}</p>
+          <p className="text-[var(--fs-xs)] text-gray-400">{DAY_PART_LABEL[item.day_part] ?? item.day_part}</p>
+          <p className="text-[var(--fs-xs)] text-gray-500 mt-1 flex items-center gap-1.5">
             <span className="w-[18px] h-[18px] rounded-full bg-green-600 text-white text-[9px] font-bold flex items-center justify-center">{initials(item.completed_by_name)}</span>
             {item.completed_by_name || 'Unknown'}{when ? ` · ${when}` : ''}
           </p>
@@ -300,7 +300,7 @@ function ReviewCard({
           onClick={onFlag}
           disabled={busy || !canFlag}
           title={!canFlag ? 'Past days are read-only' : undefined}
-          className={`min-h-[38px] px-3 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 border disabled:opacity-50 ${
+          className={`min-h-[38px] px-3 rounded-lg text-[var(--fs-xs)] font-bold inline-flex items-center gap-1.5 border disabled:opacity-50 ${
             item.flagged ? 'bg-amber-100 border-amber-300 text-amber-700' : 'bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:text-amber-600'
           }`}
         >
@@ -309,7 +309,7 @@ function ReviewCard({
       </div>
 
       {item.flagged && (
-        <div className="mt-2 text-xs text-amber-800 bg-amber-100/70 border border-amber-200 rounded-lg px-2.5 py-1.5">
+        <div className="mt-2 text-[var(--fs-xs)] text-amber-800 bg-amber-100/70 border border-amber-200 rounded-lg px-2.5 py-1.5">
           <b className="text-amber-700">⚑ Flagged</b> — {item.flag_reason || 'Please redo this one.'}{' '}
           <span className="opacity-70">Sent back to {item.completed_by_name || 'the staff member'}.</span>
         </div>

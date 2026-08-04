@@ -299,8 +299,8 @@ export default function TemplateEditPage({ params }: PageProps) {
   if (error || !tpl) {
     return (
       <div className="min-h-screen bg-gray-50 px-4 py-4">
-        <Link href="/tasks/manager/templates" className="text-sm text-gray-400">← Templates</Link>
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm mt-4">{error || 'Not found'}</div>
+        <Link href="/tasks/manager/templates" className="text-[var(--fs-sm)] text-gray-400">← Templates</Link>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-[var(--fs-sm)] mt-4">{error || 'Not found'}</div>
       </div>
     );
   }
@@ -320,7 +320,7 @@ export default function TemplateEditPage({ params }: PageProps) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPreviewMode(v => !v)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              className={`text-[var(--fs-xs)] font-semibold px-3 py-1.5 rounded-full border transition-colors ${
                 previewMode
                   ? 'bg-green-600 text-white border-green-600'
                   : 'bg-white/15 text-white border-white/20 active:bg-white/25'
@@ -330,7 +330,7 @@ export default function TemplateEditPage({ params }: PageProps) {
             </button>
             <button
               onClick={archive}
-              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25"
+              className="text-[var(--fs-xs)] font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25"
             >
               Archive
             </button>
@@ -340,28 +340,28 @@ export default function TemplateEditPage({ params }: PageProps) {
 
       {previewMode && (
         <div className="max-w-[430px] mx-auto bg-gray-50">
-          <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 text-center text-[11px] font-semibold text-gray-600">
+          <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 text-center text-[var(--fs-xs)] font-semibold text-gray-600">
             👁 Staff preview · interactions disabled
           </div>
           <div className="bg-[#2563EB] px-5 pt-5 pb-4">
-            <p className="text-white/70 text-xs font-medium">
+            <p className="text-white/70 text-[var(--fs-xs)] font-medium">
               {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
-            <p className="text-white text-lg font-bold mt-0.5">Good day 👋</p>
-            <p className="text-white/70 text-sm mt-0.5">{tpl.department_name}</p>
+            <p className="text-white text-[var(--fs-lg)] font-bold mt-0.5">Good day 👋</p>
+            <p className="text-white/70 text-[var(--fs-sm)] mt-0.5">{tpl.department_name}</p>
           </div>
           <div className="px-4 pt-4 pb-8">
             {tpl.lines.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <p className="text-3xl mb-2">📝</p>
                 <p className="font-semibold text-gray-600">Empty list</p>
-                <p className="text-sm mt-1">Add tasks in edit mode to see them here.</p>
+                <p className="text-[var(--fs-sm)] mt-1">Add tasks in edit mode to see them here.</p>
               </div>
             ) : (
               <>
                 <div className="flex items-baseline justify-between mb-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Today&apos;s tasks</p>
-                  <p className="text-xs font-semibold text-gray-500">0 / {tpl.lines.length} done · 0%</p>
+                  <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400">Today&apos;s tasks</p>
+                  <p className="text-[var(--fs-xs)] font-semibold text-gray-500">0 / {tpl.lines.length} done · 0%</p>
                 </div>
                 <ChecklistCard
                   taskList={previewListFromTemplate(tpl)}
@@ -379,15 +379,15 @@ export default function TemplateEditPage({ params }: PageProps) {
       {!previewMode && (
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-5">
         <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Settings</p>
+          <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400 mb-3">Settings</p>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
+              <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
               <input value={tpl.name} onChange={e => setTpl({ ...tpl, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
+              <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
               {(() => {
                 // Always keep the current department in the option list so the select isn't blank
                 // when viewing a template belonging to a company other than the active one.
@@ -403,22 +403,22 @@ export default function TemplateEditPage({ params }: PageProps) {
                       const match = options.find(d => d.id === newId);
                       setTpl({ ...tpl, department_id: newId, department_name: match?.name ?? tpl.department_name });
                     }}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                    className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                   >
                     {options.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
                   </select>
                 );
               })()}
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-1">
                 Showing departments for the active company. Switch company in the header to pick from a different one.
                 Lists already spawned for the old department stay there — only future spawns move.
               </p>
             </div>
-            <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+            <p className="text-[var(--fs-xs)] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               💡 Each task carries its own schedule (daily / weekly / monthly / one-off). Open a task to edit its repeat pattern.
             </p>
             <button onClick={saveHeader} disabled={saving}
-              className="w-full py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
+              className="w-full py-2.5 bg-green-600 text-white rounded-lg text-[var(--fs-sm)] font-semibold hover:bg-green-700 disabled:opacity-50">
               {saving ? 'Saving…' : 'Save settings'}
             </button>
           </div>
@@ -426,8 +426,8 @@ export default function TemplateEditPage({ params }: PageProps) {
 
         <section>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Tasks</p>
-            <button onClick={() => setShowAddLine(true)} className="text-sm font-semibold text-green-700 hover:text-green-800">
+            <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400">Tasks</p>
+            <button onClick={() => setShowAddLine(true)} className="text-[var(--fs-sm)] font-semibold text-green-700 hover:text-green-800">
               + Add task
             </button>
           </div>
@@ -437,34 +437,34 @@ export default function TemplateEditPage({ params }: PageProps) {
               if (lines.length === 0) return null;
               return (
                 <div key={part} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                  <p className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200">
+                  <p className="px-4 py-2 text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200">
                     {DAY_PART_OPTIONS.find(o => o.value === part)?.label}
                   </p>
                   {lines.map((l, i) => (
                     <div key={l.id} className={`px-4 py-3 ${i < lines.length - 1 ? 'border-b border-gray-100' : ''}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-sm text-gray-800">{l.name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">
+                          <p className="font-semibold text-[var(--fs-sm)] text-gray-800">{l.name}</p>
+                          <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
                             {l.deadline_time != null ? `By ${floatToHHMM(l.deadline_time)} · ` : ''}
                             {l.photo_required ? '\u{1F4F8} required · ' : ''}
                             {l.module_link_type !== 'none' ? `${l.module_link_type} · ` : ''}
                             {l.subtasks.length > 0 ? `${l.subtasks.length} subtask${l.subtasks.length === 1 ? '' : 's'}` : 'no subtasks'}
                           </p>
-                          <p className="text-[11px] font-semibold text-green-700 mt-1">
+                          <p className="text-[var(--fs-xs)] font-semibold text-green-700 mt-1">
                             🔁 {recurrenceSummary(l.recurrence)}
                           </p>
                           {l.guide_step_count > 0 && (
                             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
                                 📖 Guide · {l.guide_step_count} step{l.guide_step_count === 1 ? '' : 's'}
                               </span>
                               {l.guide_published ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-green-50 text-green-700 border border-green-200">
                                   ● Live
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
                                   ● Draft
                                 </span>
                               )}
@@ -473,7 +473,7 @@ export default function TemplateEditPage({ params }: PageProps) {
                           {l.subtasks.length > 0 && (
                             <ul className="mt-1.5 space-y-0.5">
                               {l.subtasks.map(s => (
-                                <li key={s.id} className="text-xs text-gray-600 flex items-start gap-1.5">
+                                <li key={s.id} className="text-[var(--fs-xs)] text-gray-600 flex items-start gap-1.5">
                                   <span className="text-gray-300 mt-0.5">•</span>
                                   <span className="flex-1">{s.name}</span>
                                 </li>
@@ -481,10 +481,10 @@ export default function TemplateEditPage({ params }: PageProps) {
                             </ul>
                           )}
                           {l.photo_instructions && (
-                            <p className="text-xs text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
+                            <p className="text-[var(--fs-xs)] text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
                           )}
                           {l.manager_note && (
-                            <p className="text-xs text-gray-500 mt-1.5 whitespace-pre-wrap">📌 {l.manager_note}</p>
+                            <p className="text-[var(--fs-xs)] text-gray-500 mt-1.5 whitespace-pre-wrap">📌 {l.manager_note}</p>
                           )}
                           {l.attachments.length > 0 && (
                             <div className="mt-1.5">
@@ -493,8 +493,8 @@ export default function TemplateEditPage({ params }: PageProps) {
                           )}
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
-                          <button onClick={() => setEditingLine(l)} className="text-xs text-gray-500 hover:text-green-700 px-2 py-1">Edit</button>
-                          <button onClick={() => deleteLine(l.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-1">Delete</button>
+                          <button onClick={() => setEditingLine(l)} className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-gray-500 hover:text-green-700">Edit</button>
+                          <button onClick={() => deleteLine(l.id)} className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-red-500 hover:text-red-700">Delete</button>
                         </div>
                       </div>
                     </div>
@@ -505,8 +505,8 @@ export default function TemplateEditPage({ params }: PageProps) {
             {tpl.lines.length === 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
                 <p className="text-3xl mb-2">📋</p>
-                <p className="font-semibold text-gray-700 text-sm">No tasks yet</p>
-                <p className="text-xs text-gray-400 mt-1">Add your first task to start using this template.</p>
+                <p className="font-semibold text-gray-700 text-[var(--fs-sm)]">No tasks yet</p>
+                <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Add your first task to start using this template.</p>
               </div>
             )}
           </div>
@@ -857,7 +857,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
     <>
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center" onClick={handleClose}>
       <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[90dvh]" onClick={e => e.stopPropagation()}>
-        <h2 className="font-bold text-gray-800 text-lg px-5 pt-5 pb-3 flex-shrink-0">{line ? 'Edit task' : 'Add task'}</h2>
+        <h2 className="font-bold text-gray-800 text-[var(--fs-lg)] px-5 pt-5 pb-3 flex-shrink-0">{line ? 'Edit task' : 'Add task'}</h2>
         <div className="flex-1 overflow-y-auto px-5 space-y-3 min-h-0">
           {/* Freeze EVERY control while a save is in flight: fieldset[disabled]
               natively disables all descendant inputs/selects/buttons, so no
@@ -865,64 +865,64 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
               subtask list — can mutate state the submit already snapshotted. */}
           <fieldset disabled={submitting} className="space-y-3 min-w-0 border-0 p-0 m-0">
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Inspect restrooms"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Section</label>
+              <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Section</label>
               <select value={dayPart} onChange={e => setDayPart(e.target.value as DayPart)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500">
                 {DAY_PART_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="flex items-baseline justify-between text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+              <label className="flex items-baseline justify-between text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">
                 <span>Deadline</span>
                 <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
               </label>
               <div className="flex items-center gap-2">
                 <input type="time" value={deadline} onChange={e => setDeadline(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  className="flex-1 px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
                 {deadline && (
                   <button type="button" onClick={() => setDeadline('')}
-                    className="text-[11px] font-semibold text-gray-500 hover:text-red-600 px-2 py-1 rounded-md hover:bg-gray-100">
+                    className="text-[var(--fs-xs)] font-semibold text-gray-500 hover:text-red-600 px-2 py-1 rounded-md hover:bg-gray-100">
                     Clear
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-1">
                 Leave empty if it just needs to be done sometime during the {DAY_PART_OPTIONS.find(o => o.value === dayPart)?.label.toLowerCase()} section.
               </p>
             </div>
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Module link</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Module link</label>
             <select value={moduleLink} onChange={e => setModuleLink(e.target.value as ModuleLink)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+              className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500">
               {MODULE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-[var(--fs-sm)]">
             <input type="checkbox" checked={photoRequired} onChange={e => setPhotoReq(e.target.checked)} />
             Photo required
           </label>
           {photoRequired && (
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Photo instructions (optional)</label>
+              <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Photo instructions (optional)</label>
               <textarea
                 value={photoInstructions}
                 onChange={e => setPhotoInstr(e.target.value)}
                 placeholder="e.g. Take picture of the toilet bowl showing the connectors/screws"
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
               />
-              <p className="text-[11px] text-gray-400 mt-1">Shown to staff above the photo upload button.</p>
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Shown to staff above the photo upload button.</p>
             </div>
           )}
           <div>
-            <label className="flex items-baseline justify-between text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+            <label className="flex items-baseline justify-between text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">
               <span>Note for staff</span>
               <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
             </label>
@@ -932,9 +932,9 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
               placeholder="e.g. Check the walk-in AND the dry store. Order if under 2 trays."
               rows={2}
               maxLength={MAX_MANAGER_NOTE}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[var(--fs-xs)] text-gray-400 mt-1">
               Shown to staff every day this task runs, when they open it.
               {managerNote.length > MAX_MANAGER_NOTE - 100 && (
                 <span className="text-gray-500"> · {MAX_MANAGER_NOTE - managerNote.length} characters left</span>
@@ -942,19 +942,19 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             </p>
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
             <div className="space-y-1.5">
               {subtasks.map((s, i) => (
                 <div key={i} className="flex gap-2">
                   <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
                     placeholder="Subtask name"
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    className="flex-1 px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
                   <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
-                    className="text-xs text-red-500 hover:text-red-600 px-2">Remove</button>
+                    className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 px-2">Remove</button>
                 </div>
               ))}
               <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0 }])}
-                className="text-xs font-semibold text-green-700 hover:text-green-800">
+                className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800">
                 + Add subtask
               </button>
             </div>
@@ -973,32 +973,32 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             />
           ) : (
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
+              <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
               {pendingGuide ? (
                 <div className="rounded-lg border border-gray-200 bg-white p-3 flex items-center gap-2">
-                  <span className="text-lg leading-none" aria-hidden="true">📖</span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-gray-800 truncate">{pendingGuide.name}</span>
-                  <button type="button" onClick={() => setPendingGuide(null)} className="text-xs font-semibold text-red-600 hover:text-red-700">Remove</button>
+                  <span className="text-[var(--fs-lg)] leading-none" aria-hidden="true">📖</span>
+                  <span className="min-w-0 flex-1 text-[var(--fs-sm)] font-semibold text-gray-800 truncate">{pendingGuide.name}</span>
+                  <button type="button" onClick={() => setPendingGuide(null)} className="text-[var(--fs-xs)] font-semibold text-red-600 hover:text-red-700">Remove</button>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => setGuidePicking(true)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-[var(--fs-sm)] font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   📖 Link a guide
                 </button>
               )}
-              <p className="text-[11px] text-gray-400 mt-1">Optional — a step-by-step how-to. It links when you save the task.</p>
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Optional — a step-by-step how-to. It links when you save the task.</p>
             </div>
           )}
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</label>
             <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Reference files · quick single files</label>
-            <p className="text-[11px] text-gray-400 mb-1.5">One-off PDFs or images to open. For a step-by-step how-to, use the guided tutorial above.</p>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Reference files · quick single files</label>
+            <p className="text-[var(--fs-xs)] text-gray-400 mb-1.5">One-off PDFs or images to open. For a step-by-step how-to, use the guided tutorial above.</p>
             <AttachmentList
               attachments={attachments}
               canDelete
@@ -1008,11 +1008,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             {pendingAtts.length > 0 && (
               <ul className="mt-1 space-y-1">
                 {pendingAtts.map(p => (
-                  <li key={p.tempId} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs">
+                  <li key={p.tempId} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-[var(--fs-xs)]">
                     <span>📎</span>
                     <span className="flex-1 min-w-0 truncate text-gray-800">{p.name}</span>
                     <span className="text-[10px] text-gray-500 flex-shrink-0">will upload on save</span>
-                    <button onClick={() => removePending(p.tempId)} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
+                    <button onClick={() => removePending(p.tempId)} className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
                   </li>
                 ))}
               </ul>
@@ -1022,7 +1022,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
                 rejected exactly the PDFs the button offers. */}
             <DropZone onFiles={(fs) => { if (fs[0] && !uploadingFile) uploadAttachment(fs[0]); }}
               accept="" disabled={uploadingFile} hint="Drop the file here">
-            <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-50 border-2 border-dashed border-green-600 rounded-lg text-xs font-semibold text-green-800 cursor-pointer hover:bg-green-100">
+            <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-50 border-2 border-dashed border-green-600 rounded-lg text-[var(--fs-xs)] font-semibold text-green-800 cursor-pointer hover:bg-green-100">
               {uploadingFile ? '⏳ Reading file…' : '+ Add file (PDF / image)'}
               <input
                 type="file"
@@ -1042,12 +1042,12 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             </DropZone>
           </div>
           </fieldset>
-          {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+          {error && <p className="text-[var(--fs-xs)] text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-white">
-          <button onClick={handleClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={submit} disabled={submitting || photoBusy > 0 || uploadingFile} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
+          <button onClick={handleClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={submit} disabled={submitting || photoBusy > 0 || uploadingFile} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-[var(--fs-sm)] font-semibold hover:bg-green-700 disabled:opacity-50">
             {submitting ? 'Saving…' : photoBusy > 0 ? 'Processing photo…' : uploadingFile ? 'Reading file…' : 'Save'}
           </button>
         </div>

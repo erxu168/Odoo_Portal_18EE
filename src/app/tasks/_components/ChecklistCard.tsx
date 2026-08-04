@@ -111,15 +111,15 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
         className="w-full px-4 pt-3.5 pb-2 flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base flex-shrink-0">{DAY_PART_ICON[part]}</span>
-          <p className="font-bold text-sm text-gray-800">{DAY_PART_LABEL[part]}</p>
-          <span className="text-xs font-semibold text-gray-400 truncate">
+          <span className="text-[var(--fs-base)] flex-shrink-0">{DAY_PART_ICON[part]}</span>
+          <p className="font-bold text-[var(--fs-sm)] text-gray-800">{DAY_PART_LABEL[part]}</p>
+          <span className="text-[var(--fs-xs)] font-semibold text-gray-400 truncate">
             {remaining > 0 ? `${remaining} remaining` : 'All done'}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-xs font-bold ${rate === 100 ? 'text-green-600' : 'text-gray-500'}`}>{rate}%</span>
-          <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
+          <span className={`text-[var(--fs-xs)] font-bold ${rate === 100 ? 'text-green-600' : 'text-gray-500'}`}>{rate}%</span>
+          <span className="text-gray-400 text-[var(--fs-xs)]">{open ? '▲' : '▼'}</span>
         </div>
       </button>
       <div className="h-1 bg-gray-100 mx-4 rounded-full overflow-hidden mb-2">
@@ -150,7 +150,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
           ) : (
             <div className="py-6 text-center">
               <div className="text-3xl mb-1">🎉</div>
-              <p className="font-bold text-green-600 text-sm">All {DAY_PART_LABEL[part].toLowerCase()} tasks complete</p>
+              <p className="font-bold text-green-600 text-[var(--fs-sm)]">All {DAY_PART_LABEL[part].toLowerCase()} tasks complete</p>
             </div>
           )}
 
@@ -159,13 +159,13 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
               <button
                 type="button"
                 onClick={() => setShowCompleted(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700"
+                className="w-full flex items-center justify-between px-4 py-3 text-[var(--fs-sm)] font-semibold text-gray-700"
               >
                 <span className="flex items-center gap-2">
                   <span>✅ Completed</span>
-                  <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{completed.length}</span>
+                  <span className="bg-green-100 text-green-700 text-[var(--fs-xs)] font-bold px-2 py-0.5 rounded-full">{completed.length}</span>
                 </span>
-                <span className="text-gray-400 text-xs">{showCompleted ? '▲' : '▼'}</span>
+                <span className="text-gray-400 text-[var(--fs-xs)]">{showCompleted ? '▲' : '▼'}</span>
               </button>
               {showCompleted && (
                 <ul className="border-t border-gray-100">
@@ -189,8 +189,8 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
                           )}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className={`block text-sm font-medium transition-colors ${busy ? 'text-gray-700' : 'text-gray-500 line-through'}`}>{task.name}</span>
-                          <span className="block text-xs text-gray-400 mt-0.5">
+                          <span className={`block text-[var(--fs-sm)] font-medium transition-colors ${busy ? 'text-gray-700' : 'text-gray-500 line-through'}`}>{task.name}</span>
+                          <span className="block text-[var(--fs-xs)] text-gray-400 mt-0.5">
                             Done at {task.completed_at ? formatTime(task.completed_at) : '—'}
                             {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
                             {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
@@ -199,7 +199,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
                         </span>
                       </Row>
                       {task.note && (
-                        <div className="mt-1.5 ml-8 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-900">
+                        <div className="mt-1.5 ml-8 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-[var(--fs-xs)] text-yellow-900">
                           <span className="font-semibold">📝 Note: </span>{task.note}
                           {task.note_by_name && (
                             <span className="block text-[10px] text-yellow-700 mt-0.5">— {task.note_by_name}</span>

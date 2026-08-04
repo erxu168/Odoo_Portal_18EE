@@ -68,7 +68,7 @@ export default function SetupGuideView({
         <button
           type="button"
           onClick={() => setCollapsed(c => !c)}
-          className="text-xs font-semibold text-green-700 hover:text-green-800 inline-flex items-center gap-1"
+          className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 inline-flex items-center gap-1"
         >
           🧭 {collapsed ? 'Review / adjust setup' : 'Hide setup'}
         </button>
@@ -107,7 +107,7 @@ export default function SetupGuideView({
           })}
 
           <div className="flex items-center justify-between px-0.5">
-            <p className={`text-xs font-semibold ${allDone ? 'text-green-600' : 'text-gray-500'}`}>
+            <p className={`text-[var(--fs-xs)] font-semibold ${allDone ? 'text-green-600' : 'text-gray-500'}`}>
               {allDone ? '✅ All items placed' : `${doneCount} / ${total} placed`}
             </p>
           </div>
@@ -128,7 +128,7 @@ export default function SetupGuideView({
                   onClick={() => toggle(s.id, !s.done)}
                   // 28px visible circle inside a 44px touch target — this is the
                   // guide's primary repeated action on a mobile/gloved-hands view.
-                  className={`relative w-7 h-7 my-1.5 rounded-full flex items-center justify-center flex-shrink-0 border-2 text-xs font-bold transition-colors disabled:opacity-60 ${
+                  className={`relative w-7 h-7 my-1.5 rounded-full flex items-center justify-center flex-shrink-0 border-2 text-[var(--fs-xs)] font-bold transition-colors disabled:opacity-60 ${
                     s.done ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-gray-300 text-gray-400'
                   }`}
                   aria-label={s.done ? `Uncheck ${s.name}` : `Check ${s.name}`}
@@ -136,12 +136,12 @@ export default function SetupGuideView({
                   <span className="absolute -inset-2" aria-hidden="true" />
                   {s.done ? '✓' : i + 1}
                 </button>
-                <span className={`flex-1 text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{s.name}</span>
+                <span className={`flex-1 text-[var(--fs-sm)] ${s.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{s.name}</span>
               </li>
             ))}
           </ul>
 
-          {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
+          {error && <p className="text-[var(--fs-xs)] font-semibold text-red-600">{error}</p>}
         </div>
       )}
     </div>

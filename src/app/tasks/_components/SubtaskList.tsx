@@ -30,7 +30,7 @@ export default function SubtaskList({ subtasks, onToggle, readOnly = false }: Pr
               </svg>
             )}
           </div>
-          <span className={`text-sm transition-colors ${sub.done ? 'line-through text-gray-400' : 'text-gray-600'}`}>
+          <span className={`text-[var(--fs-sm)] transition-colors ${sub.done ? 'line-through text-gray-400' : 'text-gray-600'}`}>
             {sub.name}
           </span>
         </li>

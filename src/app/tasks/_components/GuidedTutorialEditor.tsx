@@ -693,10 +693,10 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         {/* Header — portal blue */}
         <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-start gap-3 flex-shrink-0">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Guide</p>
-            <h2 className="text-base font-bold leading-tight truncate">{name || guideName}</h2>
+            <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-blue-100">Guide</p>
+            <h2 className="text-[var(--fs-base)] font-bold leading-tight truncate">{name || guideName}</h2>
             {usedCount > 0 && (
-              <p className="text-[11px] text-blue-100 leading-snug">
+              <p className="text-[var(--fs-xs)] text-blue-100 leading-snug">
                 Used by {usedCount} task{usedCount === 1 ? '' : 's'} — edits apply to all of them.
               </p>
             )}
@@ -717,24 +717,24 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         {/* Body */}
         <div className="flex-1 overflow-y-auto min-h-0 px-4 py-3">
           {loading ? (
-            <p className="text-sm text-gray-500 py-8 text-center">Loading…</p>
+            <p className="text-[var(--fs-sm)] text-gray-500 py-8 text-center">Loading…</p>
           ) : loadError ? (
             <div className="py-8 text-center space-y-3">
-              <p className="text-sm text-red-600 font-semibold">{loadError}</p>
-              <button type="button" onClick={() => load()} className="text-sm font-semibold text-green-700 hover:text-green-800">
+              <p className="text-[var(--fs-sm)] text-red-600 font-semibold">{loadError}</p>
+              <button type="button" onClick={() => load()} className="text-[var(--fs-sm)] font-semibold text-green-700 hover:text-green-800">
                 Try again
               </button>
             </div>
           ) : (
             <fieldset disabled={frozen} className="border-0 p-0 m-0 space-y-3 min-w-0">
-              <p className="text-[12px] text-gray-500 leading-snug">
+              <p className="text-[var(--fs-xs)] text-gray-500 leading-snug">
                 Build a reusable step-by-step how-to. Link it to any task, or let staff find it in Training.
                 It only shows staff how to do the job — it never ticks a task off.
               </p>
 
               {/* Guide name */}
               <div>
-                <label htmlFor="guide-name" className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+                <label htmlFor="guide-name" className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">
                   Guide name
                 </label>
                 <input
@@ -744,7 +744,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                   maxLength={120}
                   onChange={(e) => { setName(e.target.value); markDirty(); }}
                   placeholder="e.g. Turn on the smoker"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)] text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
                 />
               </div>
 
@@ -752,7 +752,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                   direction unmistakable: OFF (left) = Draft, ON (right) = Published. */}
               <div className="rounded-xl border border-gray-200 p-3">
                 <div className="flex items-center gap-3">
-                  <span className={`text-sm font-semibold ${!published ? 'text-gray-800' : 'text-gray-400'}`}>Draft</span>
+                  <span className={`text-[var(--fs-sm)] font-semibold ${!published ? 'text-gray-800' : 'text-gray-400'}`}>Draft</span>
                   <button
                     type="button"
                     role="switch"
@@ -763,9 +763,9 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                   >
                     <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${published ? 'translate-x-5' : ''}`} />
                   </button>
-                  <span className={`text-sm font-semibold ${published ? 'text-green-700' : 'text-gray-400'}`}>Published</span>
+                  <span className={`text-[var(--fs-sm)] font-semibold ${published ? 'text-green-700' : 'text-gray-400'}`}>Published</span>
                 </div>
-                <p className="text-[11px] text-gray-500 leading-snug mt-2">
+                <p className="text-[var(--fs-xs)] text-gray-500 leading-snug mt-2">
                   {published
                     ? (dirty ? 'Turned on — staff can open it once you save.' : 'On — staff can open this guide. Flip left to make it a draft.')
                     : 'Off — a draft, hidden from staff. Flip the switch right to publish.'}
@@ -774,18 +774,18 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
 
               {stale && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
-                  <p className="text-[12px] text-red-700 font-semibold">
+                  <p className="text-[var(--fs-xs)] text-red-700 font-semibold">
                     This guide was changed somewhere else. Reload the latest version before saving, or your
                     changes will keep being rejected.
                   </p>
-                  <button type="button" onClick={reloadStale} className="text-[12px] font-bold text-red-700 underline">
+                  <button type="button" onClick={reloadStale} className="text-[var(--fs-xs)] font-bold text-red-700 underline">
                     Reload latest
                   </button>
                 </div>
               )}
 
               {steps.length === 0 ? (
-                <p className="text-[13px] text-gray-500 text-center py-4">No steps yet — add your first below.</p>
+                <p className="text-[var(--fs-sm)] text-gray-500 text-center py-4">No steps yet — add your first below.</p>
               ) : (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                   <SortableContext items={steps.map(s => s.key)} strategy={verticalListSortingStrategy}>
@@ -817,7 +817,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
 
               {/* Add-step control */}
               <div className="rounded-xl border-2 border-dashed border-gray-300 p-3">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">Add a step</p>
+                <p className="text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-2">Add a step</p>
                 <div className="grid grid-cols-2 gap-2">
                   {STEP_TYPES.map(t => (
                     <button
@@ -826,9 +826,9 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                       onClick={() => addStep(t.type)}
                       className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-green-500 hover:bg-green-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
                     >
-                      <span className="text-lg leading-none" aria-hidden="true">{t.emoji}</span>
+                      <span className="text-[var(--fs-lg)] leading-none" aria-hidden="true">{t.emoji}</span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-gray-800">{t.label}</span>
+                        <span className="block text-[var(--fs-sm)] font-semibold text-gray-800">{t.label}</span>
                         <span className="block text-[10px] text-gray-500 leading-tight">{t.hint}</span>
                       </span>
                     </button>
@@ -839,7 +839,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
               <button
                 type="button"
                 onClick={handleDelete}
-                className="w-full text-[13px] font-semibold text-red-600 hover:text-red-700 py-2"
+                className="w-full text-[var(--fs-sm)] font-semibold text-red-600 hover:text-red-700 py-2"
               >
                 Delete guide
               </button>
@@ -850,14 +850,14 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         {/* Footer */}
         {!loading && !loadError && (
           <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-2 rounded-b-2xl sm:rounded-b-2xl">
-            {error && <p className="text-[12px] font-semibold text-red-600" role="alert">{error}</p>}
-            {notice && !error && <p className="text-[12px] font-semibold text-green-700">{notice}</p>}
+            {error && <p className="text-[var(--fs-xs)] font-semibold text-red-600" role="alert">{error}</p>}
+            {notice && !error && <p className="text-[var(--fs-xs)] font-semibold text-green-700">{notice}</p>}
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={requestClose}
                 disabled={frozen}
-                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
               >
                 Close
               </button>
@@ -866,7 +866,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                 onClick={() => setPreviewOpen(true)}
                 disabled={frozen || dirty || steps.length === 0}
                 title={dirty ? 'Save to preview' : undefined}
-                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
               >
                 Preview
               </button>
@@ -874,7 +874,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                 type="button"
                 onClick={handleSave}
                 disabled={frozen || stale}
-                className="flex-[2] py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 disabled:opacity-50"
+                className="flex-[2] py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-bold hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save guide'}
               </button>
@@ -960,17 +960,17 @@ function StepCard({
             <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
           </svg>
         </button>
-        <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-[12px] font-bold flex items-center justify-center flex-shrink-0">
+        <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-[var(--fs-xs)] font-bold flex items-center justify-center flex-shrink-0">
           {index + 1}
         </span>
-        <span className="flex-1 min-w-0 text-[12px] font-semibold text-gray-500 flex items-center gap-1">
+        <span className="flex-1 min-w-0 text-[var(--fs-xs)] font-semibold text-gray-500 flex items-center gap-1">
           <span aria-hidden="true">{meta.emoji}</span>{meta.label}
           <span className="text-gray-500"> · Step {index + 1} of {total}</span>
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="min-h-[44px] px-2 -mr-1 flex items-center flex-shrink-0 text-[12px] font-semibold text-red-600 hover:text-red-700"
+          className="min-h-[44px] px-2 -mr-1 flex items-center flex-shrink-0 text-[var(--fs-xs)] font-semibold text-red-600 hover:text-red-700"
         >
           Remove
         </button>
@@ -988,7 +988,7 @@ function StepCard({
 
         {step.media_type === 'youtube' && (
           <div>
-            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">YouTube link</label>
+            <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">YouTube link</label>
             <input
               type="url"
               inputMode="url"
@@ -997,12 +997,12 @@ function StepCard({
               onFocus={() => setYtFocused(true)}
               onBlur={() => setYtFocused(false)}
               placeholder="https://www.youtube.com/watch?v=…"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${ytShowError ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-green-500'}`}
+              className={`w-full px-3 py-2 border rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 ${ytShowError ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-green-500'}`}
             />
             {ytShowError ? (
-              <p className="text-[11px] text-red-600 mt-1">That is not a valid YouTube link.</p>
+              <p className="text-[var(--fs-xs)] text-red-600 mt-1">That is not a valid YouTube link.</p>
             ) : ytUrl && !ytInvalid ? (
-              <p className="text-[11px] text-green-700 mt-1">Valid YouTube link.</p>
+              <p className="text-[var(--fs-xs)] text-green-700 mt-1">Valid YouTube link.</p>
             ) : null}
           </div>
         )}
@@ -1010,35 +1010,35 @@ function StepCard({
         {step.media_type === 'pdf' && (
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
             {hasPdf(step) ? (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-[var(--fs-sm)]">
                 <span aria-hidden="true">📄</span>
                 <span className="flex-1 min-w-0 truncate text-gray-800">
                   {step.pdfFilename || 'document.pdf'}
                   {step.pdfSize ? <span className="text-gray-500"> · {formatFileSize(step.pdfSize)}</span> : null}
                 </span>
                 {step.pdfUrl ? (
-                  <a href={step.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-green-700 hover:text-green-800 flex-shrink-0">Open</a>
+                  <a href={step.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 flex-shrink-0">Open</a>
                 ) : (
-                  <span className="text-[11px] text-gray-400 flex-shrink-0">New — save to view</span>
+                  <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">New — save to view</span>
                 )}
               </div>
             ) : (
-              <p className="text-[12px] text-gray-500">No document attached yet.</p>
+              <p className="text-[var(--fs-xs)] text-gray-500">No document attached yet.</p>
             )}
-            <label className={`mt-2 inline-block text-[12px] font-semibold text-green-700 hover:text-green-800 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className={`mt-2 inline-block text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
               {hasPdf(step) ? 'Replace PDF' : 'Choose PDF'}
               <input
                 type="file" accept="application/pdf" className="hidden" disabled={disabled}
                 onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPickPdf(f); }}
               />
             </label>
-            {busy && <span className="ml-2 text-[11px] text-gray-400">Reading…</span>}
+            {busy && <span className="ml-2 text-[var(--fs-xs)] text-gray-400">Reading…</span>}
           </div>
         )}
 
         {/* Explanation — required for every step */}
         <div>
-          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+          <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">
             {step.media_type === 'tip' ? 'Tip / warning' : 'Explanation'}
           </label>
           <textarea
@@ -1046,14 +1046,14 @@ function StepCard({
             onChange={e => onPatch({ explanation: e.target.value })}
             rows={step.media_type === 'tip' ? 3 : 2}
             placeholder={step.media_type === 'tip' ? 'e.g. Never put water on a grease fire.' : 'Explain what to do in this step.'}
-            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+            className={`w-full px-3 py-2 border rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 ${
               step.media_type === 'tip'
                 ? 'border-amber-300 bg-amber-50 text-amber-900 placeholder-amber-400 focus:ring-amber-400'
                 : 'border-gray-200 focus:ring-green-500'
             }`}
           />
           {step.media_type === 'tip' && (
-            <p className="text-[11px] text-amber-600 mt-1 flex items-center gap-1">
+            <p className="text-[var(--fs-xs)] text-amber-600 mt-1 flex items-center gap-1">
               <span aria-hidden="true">⚠️</span> Shown to staff as a highlighted warning.
             </p>
           )}
@@ -1078,7 +1078,7 @@ function ToolButton({ label, active = false, disabled, onClick }: {
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
-      className={`min-h-[38px] px-2.5 rounded-lg text-[12px] font-semibold border disabled:opacity-40 ${
+      className={`min-h-[38px] px-2.5 rounded-lg text-[var(--fs-xs)] font-semibold border disabled:opacity-40 ${
         active
           ? 'bg-green-600 border-green-600 text-white'
           : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
@@ -1196,7 +1196,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
         hint={photo ? 'Drop to replace' : 'Drop the photo here'}>
       {!photo ? (
         <button type="button" onClick={() => setChooser(true)} disabled={disabled}
-          className={`w-full flex flex-col items-center justify-center gap-1 px-3 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-[12px] font-semibold text-gray-500 hover:bg-gray-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+          className={`w-full flex flex-col items-center justify-center gap-1 px-3 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-[var(--fs-xs)] font-semibold text-gray-500 hover:bg-gray-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
           <span className="text-2xl" aria-hidden="true">📷</span>
           {busy ? 'Processing…' : 'Add a photo'}
         </button>
@@ -1204,9 +1204,9 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
         // Corrupt stored photo — offer a replacement input right here so the step
         // isn't a dead-end (deleting the whole step used to be the only way out).
         <div className="px-3 py-5 bg-white border border-red-200 rounded-lg text-center space-y-2">
-          <p className="text-[12px] text-red-600">Couldn&apos;t load this photo. Replace it below.</p>
+          <p className="text-[var(--fs-xs)] text-red-600">Couldn&apos;t load this photo. Replace it below.</p>
           <button type="button" onClick={() => setChooser(true)} disabled={disabled}
-            className={`min-h-[44px] inline-flex items-center justify-center text-[12px] font-semibold text-green-700 hover:text-green-800 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            className={`min-h-[44px] inline-flex items-center justify-center text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
             {busy ? 'Processing…' : 'Choose a new photo'}
           </button>
         </div>
@@ -1325,12 +1325,12 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             }}
           />
           {capHit && (
-            <span className="w-full text-[11px] font-semibold text-red-600 mt-0.5">
+            <span className="w-full text-[var(--fs-xs)] font-semibold text-red-600 mt-0.5">
               That is the most marks one photo can hold ({MAX_DRAWINGS}). Erase one first.
             </span>
           )}
           {tool && !capHit && (
-            <span className="w-full text-[11px] text-gray-500 mt-0.5">
+            <span className="w-full text-[var(--fs-xs)] text-gray-500 mt-0.5">
               {selectedMark != null
                 ? 'Drag the mark to move it, or its white handles to stretch it. Colour and thickness restyle it; Erase deletes it.'
                 : 'Drag on the photo to draw. Tap a mark to move, stretch, restyle or erase it.'}
@@ -1342,7 +1342,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
 
       {photo && !imgError && (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-gray-500 min-w-0">
+          <span className="text-[var(--fs-xs)] text-gray-500 min-w-0">
             {step.pins.length} note-pin{step.pins.length === 1 ? '' : 's'} · tap the photo or Add pin
           </span>
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -1352,12 +1352,12 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
               type="button"
               onClick={() => placePin(0.5, 0.5)}
               disabled={disabled}
-              className="min-h-[44px] flex items-center px-1 text-[11px] font-semibold text-green-700 hover:text-green-800 disabled:opacity-50"
+              className="min-h-[44px] flex items-center px-1 text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 disabled:opacity-50"
             >
               + Add pin
             </button>
             <button type="button" onClick={() => setChooser(true)} disabled={disabled}
-              className={`min-h-[44px] flex items-center text-[11px] font-semibold text-green-700 hover:text-green-800 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              className={`min-h-[44px] flex items-center text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
               {busy ? 'Processing…' : 'Replace photo'}
             </button>
           </div>
@@ -1373,19 +1373,19 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
               key={i}
               className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border ${activeIndex === i ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
             >
-              <span className="w-5 h-5 rounded-full bg-green-600 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+              <span className="w-5 h-5 rounded-full bg-green-600 text-white text-[var(--fs-xs)] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
               <input
                 ref={el => { noteRefs.current[i] = el; }}
                 value={p.note}
                 onChange={e => onPins(step.pins.map((pp, idx) => (idx === i ? { ...pp, note: e.target.value } : pp)))}
                 onFocus={() => onSetActive(i)}
                 placeholder="What is this pin pointing at?"
-                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-md text-[13px] focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-md text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               <button
                 type="button"
                 onClick={() => { onPins(step.pins.filter((_, idx) => idx !== i)); onSetActive(null); }}
-                className="text-[11px] font-semibold text-red-500 hover:text-red-600 flex-shrink-0"
+                className="text-[var(--fs-xs)] font-semibold text-red-500 hover:text-red-600 flex-shrink-0"
               >
                 Remove
               </button>
