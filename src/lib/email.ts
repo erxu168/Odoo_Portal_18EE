@@ -10,8 +10,30 @@
  *   PORTAL_URL=http://89.167.124.0:3000
  */
 import nodemailer from 'nodemailer';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { resolveCompanySetting } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+
+/**
+ * A per-company email logo for the header, as an inline (CID) attachment so it
+ * renders in Gmail/Outlook (unlike SVG or remote images). Drop a raster PNG at
+ * `public/email-logos/<companyId>.png` to give a restaurant its own logo; absent
+ * → null and the email falls back to the KRAWINGS wordmark. Cached per process.
+ */
+const logoCache = new Map<number, Buffer | null>();
+function companyEmailLogo(companyId?: number): { filename: string; content: Buffer; cid: string } | null {
+  if (!companyId) return null;
+  if (!logoCache.has(companyId)) {
+    try {
+      logoCache.set(companyId, readFileSync(join(process.cwd(), 'public', 'email-logos', `${companyId}.png`)));
+    } catch {
+      logoCache.set(companyId, null);
+    }
+  }
+  const buf = logoCache.get(companyId) ?? null;
+  return buf ? { filename: 'logo.png', content: buf, cid: `logo-${companyId}` } : null;
+}
 
 /**
  * Restaurant display name for a company, used for email branding under the
@@ -407,6 +429,7 @@ export async function sendDayBeforeShiftReminderEmail(
 ): Promise<void> {
   const brand = await getCompanyBrandName(companyId);
   const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
+  const logo = companyEmailLogo(companyId);
   const name = escapeHtml(toName || 'there');
   const rows = shifts
     .map(s => `  ${s.time}${s.roleName ? ` (${s.roleName})` : ''}`)
@@ -439,8 +462,9 @@ export async function sendDayBeforeShiftReminderEmail(
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px;">${escapeHtml(location)}</div>
+          ${logo
+            ? `<img src="cid:${logo.cid}" alt="${escapeHtml(location)}" width="180" style="display:block; margin:0 auto; width:180px; max-width:70%; height:auto;" />`
+            : `<div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div><div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px;">${escapeHtml(location)}</div>`}
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Just a reminder — you're scheduled <b>tomorrow (${escapeHtml(dateLabel)})</b>:</p>
@@ -450,6 +474,7 @@ export async function sendDayBeforeShiftReminderEmail(
         <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${escapeHtml(location)} &middot; Krawings Staff Portal</p>
       </div>
     `,
+    attachments: logo ? [{ filename: logo.filename, content: logo.content, cid: logo.cid }] : undefined,
   });
 }
 
