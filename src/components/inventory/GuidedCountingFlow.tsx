@@ -532,7 +532,7 @@ export default function GuidedCountingFlow({
         <FloorplanOverlay locationId={mapSpotId} onClose={() => setMapSpotId(null)} />
       )}
       {photoSpot && (
-        <div className="fixed inset-0 z-[110] bg-black/90 flex flex-col" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[130] bg-black flex flex-col" role="dialog" aria-modal="true">
           <div className="flex items-center gap-2 px-3 py-2 text-white">
             <span className="min-w-0 flex-1 truncate text-[var(--fs-sm)] font-bold">{photoSpot.name}</span>
             <button onClick={() => setPhotoSpot(null)} aria-label="Close the photo"
