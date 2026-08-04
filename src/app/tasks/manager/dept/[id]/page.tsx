@@ -66,6 +66,13 @@ export default function DeptReviewPage({ params }: PageProps) {
     await load();
   }
 
+  async function handleUncomplete(lineId: number) {
+    const res = await fetch(`/api/tasks/lines/${lineId}/complete`, { method: 'DELETE' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.ok === false) throw new Error(body.error || 'Failed');
+    await load();
+  }
+
   async function handleSubtaskToggle(lineId: number, subtaskId: number, done: boolean) {
     const res = await fetch(`/api/tasks/lines/${lineId}/subtasks/${subtaskId}`, {
       method: 'PATCH',
@@ -219,6 +226,7 @@ export default function DeptReviewPage({ params }: PageProps) {
             <ChecklistCard
               taskList={list}
               onComplete={handleComplete}
+              onUncomplete={handleUncomplete}
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
               onNoteSave={handleNoteSave}

@@ -7,6 +7,8 @@ import TaskRow from './TaskRow';
 interface Props {
   taskList: TaskList;
   onComplete: (taskId: number) => Promise<void>;
+  /** Undo a completion (tap a done task to un-check it). Today's list only. */
+  onUncomplete?: (taskId: number) => Promise<void>;
   onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<SubtaskToggleResult | void>;
   onPhotoUpload: (taskId: number) => Promise<void>;
   onNoteSave?: (taskId: number, note: string) => Promise<void>;
@@ -33,7 +35,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
+export default function ChecklistCard({ taskList, onComplete, onUncomplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
   const grouped: Record<DayPart, TaskListLine[]> = { opening: [], mid_day: [], closing: [] };
   for (const line of taskList.lines) grouped[line.day_part].push(line);
 
@@ -49,6 +51,7 @@ export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, o
             lines={lines}
             taskListId={taskList.id}
             onComplete={onComplete}
+            onUncomplete={onUncomplete}
             onSubtaskToggle={onSubtaskToggle}
             onPhotoUpload={onPhotoUpload}
             onNoteSave={onNoteSave}
@@ -66,6 +69,7 @@ interface SectionProps {
   lines: TaskListLine[];
   taskListId: number;
   onComplete: Props['onComplete'];
+  onUncomplete: Props['onUncomplete'];
   onSubtaskToggle: Props['onSubtaskToggle'];
   onPhotoUpload: Props['onPhotoUpload'];
   onNoteSave: Props['onNoteSave'];
@@ -73,9 +77,18 @@ interface SectionProps {
   readOnly: boolean;
 }
 
-function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly }: SectionProps) {
+function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly }: SectionProps) {
   const [open, setOpen] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [undoing, setUndoing] = useState<Set<number>>(new Set());
+  const canUndo = !readOnly && !!onUncomplete;
+
+  async function undo(taskId: number) {
+    if (!onUncomplete || undoing.has(taskId)) return;
+    setUndoing(prev => new Set(prev).add(taskId));
+    try { await onUncomplete(taskId); }
+    finally { setUndoing(prev => { const n = new Set(prev); n.delete(taskId); return n; }); }
+  }
 
   const active    = lines.filter(t => t.state !== 'done');
   const completed = lines.filter(t => t.state === 'done');
@@ -148,31 +161,43 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
               </button>
               {showCompleted && (
                 <ul className="border-t border-gray-100">
-                  {completed.map(task => (
-                    <li key={task.id} className="flex items-start gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
-                      <div className="mt-0.5 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                        <svg className="w-3 h-3 text-white" viewBox="0 0 10 10" fill="none">
-                          <path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-500 line-through">{task.name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          Done at {task.completed_at ? formatTime(task.completed_at) : '—'}
-                          {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
-                          {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
-                        </p>
-                        {task.note && (
-                          <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-900">
-                            <span className="font-semibold">📝 Note: </span>{task.note}
-                            {task.note_by_name && (
-                              <span className="block text-[10px] text-yellow-700 mt-0.5">— {task.note_by_name}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                  {completed.map(task => {
+                    const busy = undoing.has(task.id);
+                    // The check + title toggle completion OFF (tap a done task to
+                    // un-check it). Read-only (past) days show it flat, not tappable.
+                    const Row = canUndo ? 'button' : 'div';
+                    return (
+                    <li key={task.id} className="px-4 py-3 border-b border-gray-50 last:border-0">
+                      <Row
+                        {...(canUndo ? { type: 'button' as const, onClick: () => undo(task.id), disabled: busy, 'aria-label': `Undo “${task.name}” — mark it not done`, title: 'Tap to un-check' } : {})}
+                        className={`flex items-start gap-3 w-full text-left ${canUndo ? 'active:opacity-60 rounded-lg' : ''} ${busy ? 'opacity-50' : ''}`}
+                      >
+                        <span className="mt-0.5 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-3 h-3 text-white" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                            <path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-gray-500 line-through">{task.name}</span>
+                          <span className="block text-xs text-gray-400 mt-0.5">
+                            Done at {task.completed_at ? formatTime(task.completed_at) : '—'}
+                            {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
+                            {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
+                            {canUndo ? <span className="text-blue-600 font-semibold"> · {busy ? 'undoing…' : 'tap to undo'}</span> : ''}
+                          </span>
+                        </span>
+                      </Row>
+                      {task.note && (
+                        <div className="mt-1.5 ml-8 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-900">
+                          <span className="font-semibold">📝 Note: </span>{task.note}
+                          {task.note_by_name && (
+                            <span className="block text-[10px] text-yellow-700 mt-0.5">— {task.note_by_name}</span>
+                          )}
+                        </div>
+                      )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>
