@@ -223,7 +223,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           <button
             type="button"
             onClick={e => { e.stopPropagation(); setShowGuide(true); }}
-            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 transition-colors"
           >
             📖 Show me how{task.guide_step_count ? ` · ${task.guide_step_count} step${task.guide_step_count === 1 ? '' : 's'}` : ''}
           </button>
@@ -264,7 +264,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
               </div>
             )}
             <button onClick={handlePhoto} disabled={uploading}
-              className="mt-2 w-full py-2.5 border-2 border-dashed border-green-600 rounded-lg bg-amber-50 text-amber-800 text-xs font-semibold text-center hover:bg-amber-100 transition-colors disabled:opacity-60">
+              className="mt-2 w-full py-2.5 border-2 border-dashed border-green-600 rounded-lg bg-green-50 text-green-800 text-xs font-semibold text-center hover:bg-green-100 transition-colors disabled:opacity-60">
               {uploading ? '⏳ Uploading...' : photoCount === 0 ? '\u{1F4F8} Tap to take / upload photo' : '\u{1F4F8} Add another photo'}
             </button>
           </>

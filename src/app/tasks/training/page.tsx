@@ -127,7 +127,7 @@ export default function TrainingPage() {
               >
                 <span
                   aria-hidden="true"
-                  className="flex-shrink-0 w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-xl"
+                  className="flex-shrink-0 w-11 h-11 rounded-xl bg-[#F1F3F5] border border-gray-200 flex items-center justify-center text-xl"
                 >
                   &#x1F4D8;
                 </span>

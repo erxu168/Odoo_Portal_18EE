@@ -117,7 +117,7 @@ export default function TemplateListPage() {
               >
                 <Link
                   href={`/tasks/manager/templates/${t.id}`}
-                  className="flex-1 min-w-0 px-4 py-3.5 hover:bg-blue-50/40 active:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                  className="flex-1 min-w-0 px-4 py-3.5 hover:bg-green-50/40 active:bg-green-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-500"
                 >
                   <p className="font-semibold text-sm text-gray-800 truncate">
                     {t.name}
@@ -144,7 +144,7 @@ export default function TemplateListPage() {
                     onClick={() => setArchived(t, false)}
                     disabled={busyId === t.id}
                     aria-label={`Restore template ${t.name}`}
-                    className="px-3 flex-shrink-0 flex items-center justify-center text-xs font-semibold text-blue-600 hover:text-blue-700 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 disabled:opacity-50"
+                    className="px-3 flex-shrink-0 flex items-center justify-center text-xs font-semibold text-green-700 hover:text-green-800 border-l border-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-500 disabled:opacity-50"
                   >
                     Restore
                   </button>
@@ -224,7 +224,7 @@ function CreateModal({ departments, onClose, onCreated }: {
               {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
             </select>
           </div>
-          <p className="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
             💡 You&apos;ll set the schedule (daily / weekly / monthly / one-off) on each task after creating the template.
           </p>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}

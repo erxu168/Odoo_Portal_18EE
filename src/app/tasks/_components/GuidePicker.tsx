@@ -105,7 +105,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
               type="button"
               disabled={busy}
               onClick={() => setEditGuide({ id: link!.guide_id as number, name: link!.name })}
-              className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-semibold hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 py-2 rounded-lg bg-green-600 text-white text-[13px] font-semibold hover:bg-green-700 disabled:opacity-50"
             >
               Edit guide
             </button>
@@ -232,9 +232,9 @@ export function GuideAttachModal({
         className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[85dvh] shadow-xl"
         onClick={e => e.stopPropagation()}
       >
-        <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-center justify-between gap-3 flex-shrink-0">
+        <div className="bg-white text-gray-900 px-4 py-3 rounded-t-2xl border-b border-gray-200 flex items-center justify-between gap-3 flex-shrink-0">
           <h2 className="text-base font-bold">Choose a guide</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-full flex items-center justify-center text-white/90 hover:bg-white/15">
+          <button type="button" onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600">
             <span aria-hidden="true" className="text-lg leading-none">✕</span>
           </button>
         </div>
@@ -250,7 +250,7 @@ export function GuideAttachModal({
                 maxLength={120}
                 onChange={e => setNewName(e.target.value)}
                 placeholder="Guide name"
-                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
               />
               <button
                 type="button"
@@ -270,7 +270,7 @@ export function GuideAttachModal({
               value={q}
               onChange={e => setQ(e.target.value)}
               placeholder="Search guides…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
             />
             {guides === null ? (
               <p className="text-[12px] text-gray-400 py-4 text-center">Loading…</p>
@@ -286,7 +286,7 @@ export function GuideAttachModal({
                       type="button"
                       disabled={g.id === currentGuideId}
                       onClick={() => onPick({ id: g.id, name: g.name })}
-                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-blue-400 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-default"
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-green-500 hover:bg-green-50 disabled:opacity-50 disabled:cursor-default"
                     >
                       <span className="text-base" aria-hidden="true">📖</span>
                       <span className="min-w-0 flex-1">
@@ -297,7 +297,7 @@ export function GuideAttachModal({
                         </span>
                       </span>
                       {g.id === currentGuideId
-                        ? <span className="text-[11px] font-semibold text-blue-600">Linked</span>
+                        ? <span className="text-[11px] font-semibold text-green-700">Linked</span>
                         : <span className="text-[11px] font-semibold text-blue-600">Use</span>}
                     </button>
                   </li>

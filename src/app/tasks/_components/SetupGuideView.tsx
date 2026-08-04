@@ -68,7 +68,7 @@ export default function SetupGuideView({
         <button
           type="button"
           onClick={() => setCollapsed(c => !c)}
-          className="text-xs font-semibold text-green-700 hover:text-amber-800 inline-flex items-center gap-1"
+          className="text-xs font-semibold text-green-700 hover:text-green-800 inline-flex items-center gap-1"
         >
           🧭 {collapsed ? 'Review / adjust setup' : 'Hide setup'}
         </button>

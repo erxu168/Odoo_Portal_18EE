@@ -171,7 +171,7 @@ export default function DeptReviewPage({ params }: PageProps) {
           {!isToday && (
             <button
               onClick={() => setDate(today)}
-              className="text-xs font-semibold text-green-700 hover:text-amber-800"
+              className="text-xs font-semibold text-green-700 hover:text-green-800"
             >
               Today
             </button>

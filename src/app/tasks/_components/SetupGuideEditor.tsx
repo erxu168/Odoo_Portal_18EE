@@ -166,7 +166,7 @@ export default function SetupGuideEditor({
     // pointer-events-none blocks mouse/touch; the interactive controls below also
     // get `disabled={disabled}` so a KEYBOARD-focused file input or button can't
     // fire and mutate photos while a save is in flight.
-    <div className={`rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}>
+    <div className={`rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}>
       <p className="text-[11px] text-gray-600 leading-snug">
         📍 Add one or more photos of the finished station, then tap a photo to drop a numbered
         pin for each item — drag a pin to move it. Staff check off each pin as they set it up.
@@ -194,7 +194,7 @@ export default function SetupGuideEditor({
               )}
             </button>
           ))}
-          <label className="flex-shrink-0 h-14 w-20 rounded-lg border-2 border-dashed border-green-600 bg-white flex items-center justify-center text-green-700 text-xl font-bold cursor-pointer hover:bg-amber-50">
+          <label className="flex-shrink-0 h-14 w-20 rounded-lg border-2 border-dashed border-green-600 bg-white flex items-center justify-center text-green-700 text-xl font-bold cursor-pointer hover:bg-green-50">
             +
             <input
               type="file" className="hidden" accept="image/*" disabled={disabled}
@@ -205,7 +205,7 @@ export default function SetupGuideEditor({
       )}
 
       {photos.length === 0 ? (
-        <label className="flex flex-col items-center justify-center gap-1 px-3 py-6 bg-white border-2 border-dashed border-green-600 rounded-lg text-xs font-semibold text-amber-800 cursor-pointer hover:bg-amber-100">
+        <label className="flex flex-col items-center justify-center gap-1 px-3 py-6 bg-white border-2 border-dashed border-green-600 rounded-lg text-xs font-semibold text-green-800 cursor-pointer hover:bg-green-50">
           <span className="text-2xl">📷</span>
           Tap to add the reference photo
           <input
@@ -251,7 +251,7 @@ export default function SetupGuideEditor({
               {pins.length} pin{pins.length === 1 ? '' : 's'} total
             </span>
             <div className="flex items-center gap-3">
-              <label className="text-[11px] font-semibold text-green-700 cursor-pointer hover:text-amber-800">
+              <label className="text-[11px] font-semibold text-green-700 cursor-pointer hover:text-green-800">
                 Replace photo
                 <input
                   type="file" className="hidden" accept="image/*" disabled={disabled}
@@ -284,7 +284,7 @@ export default function SetupGuideEditor({
               onMouseEnter={() => setActiveGlobal(gi)}
               onMouseLeave={() => setActiveGlobal(null)}
               onClick={() => { if (p.pin_photo_seq !== activeSeq) setActiveSeq(p.pin_photo_seq); }}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${activeGlobal === gi ? 'bg-amber-100 border-amber-200' : 'bg-white border-gray-200'}`}
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${activeGlobal === gi ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
             >
               <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center font-bold flex-shrink-0">{gi + 1}</span>
               <span className="flex-1 min-w-0 truncate text-gray-800">{p.name}</span>
@@ -299,7 +299,7 @@ export default function SetupGuideEditor({
 
       {/* Item picker sheet — appears after tapping the photo */}
       {pending && !disabled && (
-        <div className="rounded-lg border border-amber-200 bg-white p-2.5 space-y-2">
+        <div className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2">
           <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">Label this pin</p>
           <input
             autoFocus
@@ -315,7 +315,7 @@ export default function SetupGuideEditor({
                 key={item.id}
                 type="button"
                 onClick={() => placePinFromItem(item)}
-                className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-gray-800 hover:bg-amber-50 border border-transparent hover:border-amber-200"
+                className="w-full text-left px-3 py-1.5 rounded-lg text-sm text-gray-800 hover:bg-green-50 border border-transparent hover:border-green-200"
               >
                 {item.name}
               </button>
@@ -325,7 +325,7 @@ export default function SetupGuideEditor({
                 type="button"
                 onClick={addNewItem}
                 disabled={adding}
-                className="w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 disabled:opacity-50"
+                className="w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold text-green-800 bg-green-50 border border-green-200 hover:bg-green-100 disabled:opacity-50"
               >
                 {adding ? 'Adding…' : `+ Add "${newName.trim()}"`}
               </button>

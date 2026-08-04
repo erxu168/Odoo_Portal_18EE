@@ -433,8 +433,8 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                     aria-hidden="true"
                     className="relative flex w-2 h-2"
                   >
-                    <span className="absolute inline-flex w-full h-full rounded-full bg-orange-400 opacity-75 motion-safe:animate-ping" />
-                    <span className="relative inline-flex w-2 h-2 rounded-full bg-orange-500" />
+                    <span className="absolute inline-flex w-full h-full rounded-full bg-green-500 opacity-75 motion-safe:animate-ping" />
+                    <span className="relative inline-flex w-2 h-2 rounded-full bg-green-600" />
                   </span>
                   Tap the flashing {step.pins.length > 1 ? 'circles' : 'circle'} to read the {step.pins.length > 1 ? 'notes' : 'note'}
                 </p>

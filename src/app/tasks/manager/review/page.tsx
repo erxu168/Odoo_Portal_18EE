@@ -191,13 +191,13 @@ export default function PhotoReviewPage() {
             max={berlinTodayStr()}
             onChange={e => setDate(e.target.value)}
             aria-label="Review date"
-            className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 h-11 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 h-11 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
           />
           <select
             value={staffId}
             onChange={e => setStaffId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
             aria-label="Filter by staff"
-            className="rounded-lg border border-gray-200 bg-white px-3 h-11 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded-lg border border-gray-200 bg-white px-3 h-11 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500"
           >
             <option value="all">All staff</option>
             {staffOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
@@ -209,7 +209,7 @@ export default function PhotoReviewPage() {
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center space-y-3">
             <p className="text-sm text-red-700 font-semibold">{error}</p>
-            <button type="button" onClick={load} className="min-h-[44px] px-4 text-sm font-semibold text-blue-600 hover:text-blue-700">Try again</button>
+            <button type="button" onClick={load} className="min-h-[44px] px-4 text-sm font-semibold text-green-700 hover:text-green-800">Try again</button>
           </div>
         ) : !feed || feed.items.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">

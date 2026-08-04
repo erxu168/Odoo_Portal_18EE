@@ -328,7 +328,7 @@ export default function TemplateEditPage({ params }: PageProps) {
 
       {previewMode && (
         <div className="max-w-[430px] mx-auto bg-gray-50">
-          <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 text-center text-[11px] font-semibold text-amber-800">
+          <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 text-center text-[11px] font-semibold text-gray-600">
             👁 Staff preview · interactions disabled
           </div>
           <div className="bg-[#2563EB] px-5 pt-5 pb-4">
@@ -402,7 +402,7 @@ export default function TemplateEditPage({ params }: PageProps) {
                 Lists already spawned for the old department stay there — only future spawns move.
               </p>
             </div>
-            <p className="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               💡 Each task carries its own schedule (daily / weekly / monthly / one-off). Open a task to edit its repeat pattern.
             </p>
             <button onClick={saveHeader} disabled={saving}
@@ -415,7 +415,7 @@ export default function TemplateEditPage({ params }: PageProps) {
         <section>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Tasks</p>
-            <button onClick={() => setShowAddLine(true)} className="text-sm font-semibold text-green-700 hover:text-amber-800">
+            <button onClick={() => setShowAddLine(true)} className="text-sm font-semibold text-green-700 hover:text-green-800">
               + Add task
             </button>
           </div>
@@ -452,7 +452,7 @@ export default function TemplateEditPage({ params }: PageProps) {
                                   ● Live
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
                                   ● Draft
                                 </span>
                               )}
@@ -941,7 +941,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
                 </div>
               ))}
               <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0 }])}
-                className="text-xs font-semibold text-green-700 hover:text-amber-800">
+                className="text-xs font-semibold text-green-700 hover:text-green-800">
                 + Add subtask
               </button>
             </div>
@@ -995,10 +995,10 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
             {pendingAtts.length > 0 && (
               <ul className="mt-1 space-y-1">
                 {pendingAtts.map(p => (
-                  <li key={p.tempId} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs">
+                  <li key={p.tempId} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs">
                     <span>📎</span>
                     <span className="flex-1 min-w-0 truncate text-gray-800">{p.name}</span>
-                    <span className="text-[10px] text-amber-700 flex-shrink-0">will upload on save</span>
+                    <span className="text-[10px] text-gray-500 flex-shrink-0">will upload on save</span>
                     <button onClick={() => removePending(p.tempId)} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
                   </li>
                 ))}
@@ -1009,7 +1009,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
                 rejected exactly the PDFs the button offers. */}
             <DropZone onFiles={(fs) => { if (fs[0] && !uploadingFile) uploadAttachment(fs[0]); }}
               accept="" disabled={uploadingFile} hint="Drop the file here">
-            <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-amber-50 border-2 border-dashed border-green-600 rounded-lg text-xs font-semibold text-amber-800 cursor-pointer hover:bg-amber-100">
+            <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-50 border-2 border-dashed border-green-600 rounded-lg text-xs font-semibold text-green-800 cursor-pointer hover:bg-green-100">
               {uploadingFile ? '⏳ Reading file…' : '+ Add file (PDF / image)'}
               <input
                 type="file"

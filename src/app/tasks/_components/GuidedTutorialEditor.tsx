@@ -696,7 +696,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
           ) : loadError ? (
             <div className="py-8 text-center space-y-3">
               <p className="text-sm text-red-600 font-semibold">{loadError}</p>
-              <button type="button" onClick={() => load()} className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+              <button type="button" onClick={() => load()} className="text-sm font-semibold text-green-700 hover:text-green-800">
                 Try again
               </button>
             </div>
@@ -719,7 +719,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                   maxLength={120}
                   onChange={(e) => { setName(e.target.value); markDirty(); }}
                   placeholder="e.g. Turn on the smoker"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
                 />
               </div>
 
@@ -734,7 +734,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                     aria-checked={published}
                     aria-label="Publish this guide to staff"
                     onClick={() => { setPublished(v => !v); markDirty(); }}
-                    className={`relative w-11 h-6 flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${published ? 'bg-green-600' : 'bg-gray-300'}`}
+                    className={`relative w-11 h-6 flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 ${published ? 'bg-green-600' : 'bg-gray-300'}`}
                   >
                     <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${published ? 'translate-x-5' : ''}`} />
                   </button>
@@ -799,7 +799,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                       key={t.type}
                       type="button"
                       onClick={() => addStep(t.type)}
-                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-blue-400 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-green-500 hover:bg-green-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
                     >
                       <span className="text-lg leading-none" aria-hidden="true">{t.emoji}</span>
                       <span className="min-w-0">
@@ -926,7 +926,7 @@ function StepCard({
           {...attributes}
           {...listeners}
           aria-label={`Reorder step ${index + 1}`}
-          className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
@@ -934,7 +934,7 @@ function StepCard({
             <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
           </svg>
         </button>
-        <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-[12px] font-bold flex items-center justify-center flex-shrink-0">
+        <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-700 text-[12px] font-bold flex items-center justify-center flex-shrink-0">
           {index + 1}
         </span>
         <span className="flex-1 min-w-0 text-[12px] font-semibold text-gray-500 flex items-center gap-1">
@@ -971,7 +971,7 @@ function StepCard({
               onFocus={() => setYtFocused(true)}
               onBlur={() => setYtFocused(false)}
               placeholder="https://www.youtube.com/watch?v=…"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${ytShowError ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${ytShowError ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-green-500'}`}
             />
             {ytShowError ? (
               <p className="text-[11px] text-red-600 mt-1">That is not a valid YouTube link.</p>
@@ -991,7 +991,7 @@ function StepCard({
                   {step.pdfSize ? <span className="text-gray-500"> · {formatFileSize(step.pdfSize)}</span> : null}
                 </span>
                 {step.pdfUrl ? (
-                  <a href={step.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 flex-shrink-0">Open</a>
+                  <a href={step.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-green-700 hover:text-green-800 flex-shrink-0">Open</a>
                 ) : (
                   <span className="text-[11px] text-gray-400 flex-shrink-0">New — save to view</span>
                 )}
@@ -999,7 +999,7 @@ function StepCard({
             ) : (
               <p className="text-[12px] text-gray-500">No document attached yet.</p>
             )}
-            <label className={`mt-2 inline-block text-[12px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className={`mt-2 inline-block text-[12px] font-semibold text-green-700 hover:text-green-800 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
               {hasPdf(step) ? 'Replace PDF' : 'Choose PDF'}
               <input
                 type="file" accept="application/pdf" className="hidden" disabled={disabled}
@@ -1023,7 +1023,7 @@ function StepCard({
             className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
               step.media_type === 'tip'
                 ? 'border-amber-300 bg-amber-50 text-amber-900 placeholder-amber-400 focus:ring-amber-400'
-                : 'border-gray-200 focus:ring-blue-400'
+                : 'border-gray-200 focus:ring-green-500'
             }`}
           />
           {step.media_type === 'tip' && (
@@ -1054,7 +1054,7 @@ function ToolButton({ label, active = false, disabled, onClick }: {
       aria-pressed={active}
       className={`min-h-[38px] px-2.5 rounded-lg text-[12px] font-semibold border disabled:opacity-40 ${
         active
-          ? 'bg-blue-600 border-blue-600 text-white'
+          ? 'bg-green-600 border-green-600 text-white'
           : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
       }`}
     >
@@ -1174,7 +1174,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
         <div className="px-3 py-5 bg-white border border-red-200 rounded-lg text-center space-y-2">
           <p className="text-[12px] text-red-600">Couldn&apos;t load this photo. Replace it below.</p>
           <button type="button" onClick={() => setChooser(true)} disabled={disabled}
-            className={`min-h-[44px] inline-flex items-center justify-center text-[12px] font-semibold text-blue-600 hover:text-blue-700 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            className={`min-h-[44px] inline-flex items-center justify-center text-[12px] font-semibold text-green-700 hover:text-green-800 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
             {busy ? 'Processing…' : 'Choose a new photo'}
           </button>
         </div>
@@ -1315,12 +1315,12 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
               type="button"
               onClick={() => placePin(0.5, 0.5)}
               disabled={disabled}
-              className="min-h-[44px] flex items-center px-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+              className="min-h-[44px] flex items-center px-1 text-[11px] font-semibold text-green-700 hover:text-green-800 disabled:opacity-50"
             >
               + Add pin
             </button>
             <button type="button" onClick={() => setChooser(true)} disabled={disabled}
-              className={`min-h-[44px] flex items-center text-[11px] font-semibold text-blue-600 hover:text-blue-700 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              className={`min-h-[44px] flex items-center text-[11px] font-semibold text-green-700 hover:text-green-800 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
               {busy ? 'Processing…' : 'Replace photo'}
             </button>
           </div>
@@ -1334,7 +1334,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           {step.pins.map((p, i) => (
             <li
               key={i}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border ${activeIndex === i ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border ${activeIndex === i ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200'}`}
             >
               <span className="w-5 h-5 rounded-full bg-green-600 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
               <input
