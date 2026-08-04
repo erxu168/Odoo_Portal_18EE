@@ -9,6 +9,7 @@ from .task_template_line import (
     GUIDE_MAX_IMAGE_B64,
     GUIDE_MAX_PDF_B64,
 )
+from .task_guide_step import normalize_drawings
 
 GUIDE_MAX_NAME = 120
 
@@ -159,6 +160,7 @@ class KrawingsTaskGuide(models.Model):
                 'has_pdf': bool(s.pdf_file),
                 'pdf_filename': s.pdf_filename or '',
                 'youtube_url': s.youtube_url or '',
+                'drawings': s.drawings or '',
                 'pins': [
                     {'id': p.id, 'pin_x': p.pin_x, 'pin_y': p.pin_y, 'note': p.note or ''}
                     for p in s.pin_ids.sorted('sequence')
@@ -216,6 +218,7 @@ class KrawingsTaskGuide(models.Model):
             s.id: {
                 'image': s.image, 'image_filename': s.image_filename,
                 'pdf_file': s.pdf_file, 'pdf_filename': s.pdf_filename,
+                'drawings': s.drawings,
             }
             for s in guide.step_ids
         }
@@ -255,8 +258,18 @@ class KrawingsTaskGuide(models.Model):
                 'image': False, 'image_filename': False,
                 'pdf_file': False, 'pdf_filename': False,
                 'youtube_url': False,
+                'drawings': False,
             }
             if mt == 'photo':
+                # Author's drawn marks over the photo (validated + clamped here,
+                # so nothing unsafe can reach the SVG the portal renders).
+                # An ABSENT key means "keep what's stored" — the legacy per-task
+                # client predates drawings and must not wipe them; a client that
+                # sends '' is deliberately clearing.
+                vals['drawings'] = (
+                    normalize_drawings(st['drawings']) if 'drawings' in st
+                    else prev.get('drawings')
+                )
                 if st.get('image_base64'):
                     b64 = st['image_base64']
                     if len(b64) > GUIDE_MAX_IMAGE_B64:

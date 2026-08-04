@@ -24,7 +24,19 @@ import PinnableImage from '@/components/ui/PinnableImage';
 import GuidedTutorialPlayer from './GuidedTutorialPlayer';
 import { useTopBar } from '@/components/ui/TopBarContext';
 import { isValidYoutubeUrl, canonicalYoutubeUrl } from '@/lib/youtube-url';
-import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
+import {
+  parseDrawings,
+  serializeDrawings,
+  hitTestDrawing,
+  DRAWING_COLORS,
+  MAX_DRAWINGS,
+  type GuideStepRead,
+  type GuideStepSave,
+  type GuidePin,
+  type GuideMediaType,
+  type GuideDrawing,
+  type GuideDrawingType,
+} from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 
@@ -71,6 +83,8 @@ interface EditorStep {
   explanation: string;
   // photo
   pins: GuidePin[];
+  /** Author-drawn marks over the photo (arrow/circle/box/pen), fractions 0..1. */
+  drawings: GuideDrawing[];
   /** Base64 (NO data: prefix) for a NEW/replaced photo — sent as image_base64. */
   photoBase64?: string;
   photoFilename?: string;
@@ -214,6 +228,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       pins: r.media_type === 'photo'
         ? (r.pins || []).map(p => ({ id: p.id, pin_x: p.pin_x, pin_y: p.pin_y, note: p.note || '' }))
         : [],
+      drawings: r.media_type === 'photo' ? parseDrawings(r.drawings) : [],
       photoFilename: r.image_filename || undefined,
       photoUrl: r.has_image ? media : undefined,
       hasExistingPhoto: !!r.has_image,
@@ -340,6 +355,12 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
     markDirty();
   }, [markDirty]);
 
+  const setDrawings = useCallback((key: string, drawings: GuideDrawing[]) => {
+    if (savingRef.current) return;
+    setSteps(prev => prev.map(s => (s.key === key ? { ...s, drawings } : s)));
+    markDirty();
+  }, [markDirty]);
+
   function addStep(type: GuideMediaType) {
     if (savingRef.current) return;
     setSteps(prev => [...prev, {
@@ -347,6 +368,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       media_type: type,
       explanation: '',
       pins: [],
+      drawings: [],
       hasExistingPhoto: false,
       hasExistingPdf: false,
       youtube_url: '',
@@ -357,7 +379,8 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
   /** True when a step holds work worth confirming before it is thrown away. */
   function stepHasContent(s: EditorStep): boolean {
     return !!(hasPhoto(s) || hasPdf(s) || s.explanation.trim() ||
-      (s.pins && s.pins.length > 0) || (s.youtube_url || '').trim());
+      (s.pins && s.pins.length > 0) || (s.drawings && s.drawings.length > 0) ||
+      (s.youtube_url || '').trim());
   }
 
   function removeStep(key: string) {
@@ -404,15 +427,16 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
     try {
       const { base64, filename } = await compressImage(file, 1280, 0.85);
       setImgError(prev => { const n = new Set(prev); n.delete(key); return n; });
-      // Install the replacement AND clear pins atomically — pins point at the old
-      // photo's coordinates and would be wrong on the new one. Only reached on a
-      // SUCCESSFUL compression, so a failed replace never loses the old pins.
+      // Install the replacement AND clear pins + drawings atomically — both point
+      // at the old photo's coordinates and would be wrong on the new one. Only
+      // reached on a SUCCESSFUL compression, so a failed replace loses nothing.
       applyMedia(key, token, {
         photoBase64: base64,
         photoFilename: filename,
         photoUrl: `data:image/jpeg;base64,${base64}`,
         hasExistingPhoto: false,
         pins: [],
+        drawings: [],
       });
     } catch (e: unknown) {
       applyMedia(key, token, null);
@@ -513,6 +537,9 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
           if (p.id) pin.id = p.id;
           return pin;
         });
+        // Drawings ride the step payload like pins (always sent, so clearing
+        // them actually clears them server-side).
+        out.drawings = serializeDrawings(s.drawings || []);
         // Send base64 ONLY for a new/replaced photo; a kept photo (id, no base64)
         // makes the server carry its prior bytes forward.
         if (s.photoBase64) { out.image_base64 = s.photoBase64; out.image_filename = s.photoFilename || 'photo.jpg'; }
@@ -751,6 +778,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                           onSetActive={(idx) => setActivePin(idx === null ? null : { key: s.key, index: idx })}
                           onPatch={(patch) => patchStep(s.key, patch)}
                           onPins={(pins) => setPins(s.key, pins)}
+                          onDrawings={(d) => setDrawings(s.key, d)}
                           onPickPhoto={(f) => pickPhoto(s.key, f)}
                           onPickPdf={(f) => pickPdf(s.key, f)}
                           onImgError={() => setImgError(prev => { const n = new Set(prev); n.add(s.key); return n; })}
@@ -854,6 +882,7 @@ interface StepCardProps {
   onSetActive: (index: number | null) => void;
   onPatch: (patch: Partial<EditorStep>) => void;
   onPins: (pins: GuidePin[]) => void;
+  onDrawings: (shapes: GuideDrawing[]) => void;
   onPickPhoto: (file: File) => void;
   onPickPdf: (file: File) => void;
   onImgError: () => void;
@@ -862,7 +891,7 @@ interface StepCardProps {
 
 function StepCard({
   step, index, total, frozen, busy, imgError, activeIndex,
-  onSetActive, onPatch, onPins, onPickPhoto, onPickPdf, onImgError, onRemove,
+  onSetActive, onPatch, onPins, onDrawings, onPickPhoto, onPickPdf, onImgError, onRemove,
 }: StepCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.key, disabled: frozen });
   const style = {
@@ -927,7 +956,7 @@ function StepCard({
           <PhotoStep
             step={step} stepNo={index + 1} disabled={disabled} busy={busy} imgError={imgError} activeIndex={activeIndex}
             noteRefs={noteRefs}
-            onSetActive={onSetActive} onPins={onPins} onPickPhoto={onPickPhoto} onImgError={onImgError}
+            onSetActive={onSetActive} onPins={onPins} onDrawings={onDrawings} onPickPhoto={onPickPhoto} onImgError={onImgError}
           />
         )}
 
@@ -1008,7 +1037,32 @@ function StepCard({
   );
 }
 
-// ── Photo step body: image + editable note-pins ───────────────────────────────
+// ── Photo step body: image + editable note-pins + drawings ────────────────────
+
+const DRAWING_COLOR_NAMES: Record<string, string> = {
+  '#DC2626': 'red', '#2563EB': 'blue', '#16A34A': 'green', '#FFFFFF': 'white',
+};
+
+function ToolButton({ label, active = false, disabled, onClick }: {
+  label: string; active?: boolean; disabled: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={`min-h-[38px] px-2.5 rounded-lg text-[12px] font-semibold border disabled:opacity-40 ${
+        active
+          ? 'bg-blue-600 border-blue-600 text-white'
+          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 
 interface PhotoStepProps {
   step: EditorStep;
@@ -1020,13 +1074,26 @@ interface PhotoStepProps {
   noteRefs: MutableRefObject<Record<number, HTMLInputElement | null>>;
   onSetActive: (index: number | null) => void;
   onPins: (pins: GuidePin[]) => void;
+  onDrawings: (shapes: GuideDrawing[]) => void;
   onPickPhoto: (file: File) => void;
   onImgError: () => void;
 }
 
-function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onPickPhoto, onImgError }: PhotoStepProps) {
+function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onDrawings, onPickPhoto, onImgError }: PhotoStepProps) {
   const [chooser, setChooser] = useState(false);   // Camera·Photos·Files (photo-inputs skill)
+  /** Active drawing tool — null means "place note-pins" (the default). */
+  const [tool, setTool] = useState<GuideDrawingType | 'erase' | null>(null);
+  const [color, setColor] = useState<string>(DRAWING_COLORS[0]);
+  /** True when the author tried to add a mark beyond the cap (so we can say so). */
+  const [capHit, setCapHit] = useState(false);
   const photo = hasPhoto(step);
+  const shapes = step.drawings;
+  // Erasing the last mark leaves Erase selected with nothing to act on — taps
+  // would do nothing and pins couldn't be placed. Fall back to Dots.
+  useEffect(() => {
+    if (tool === 'erase' && shapes.length === 0) setTool(null);
+  }, [tool, shapes.length]);
+
 
   /**
    * ONE path in for picker AND drop. Routing the drop through here matters: a
@@ -1035,9 +1102,11 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
    */
   function acceptPhoto(f: File | null | undefined) {
     if (!f) return;
-    // Replacing a photo that carries pins wipes them (coords go stale) — confirm.
-    if (photo && step.pins.length > 0 &&
-        !confirm('Replace this photo? Its note-pins will be removed because they point to the old photo.')) return;
+    // Replacing a photo wipes its pins AND drawings — both point at the old
+    // image, so their coordinates go stale. Confirm before discarding either.
+    const marks = step.pins.length + shapes.length;
+    if (photo && marks > 0 &&
+        !confirm('Replace this photo? Its note-pins and drawings will be removed because they point to the old photo.')) return;
     onPickPhoto(f);
   }
 
@@ -1092,7 +1161,78 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             onPinMove={(i, x, y) => onPins(step.pins.map((p, idx) => (idx === i ? { ...p, pin_x: x, pin_y: y } : p)))}
             onPinClick={(i) => onSetActive(activeIndex === i ? null : i)}
             onImageError={onImgError}
+            drawings={shapes}
+            drawTool={tool}
+            drawColor={color}
+            onDrawAdd={(shape) => {
+              // Never swallow the mark the author just drew: if we're at the cap,
+              // say so instead of silently dropping it.
+              if (shapes.length >= MAX_DRAWINGS) { setCapHit(true); return; }
+              setCapHit(false);
+              onDrawings([...shapes, shape]);
+            }}
+            onDrawEraseAt={(x, y) => {
+              const i = hitTestDrawing(shapes, x, y);
+              if (i >= 0) { onDrawings(shapes.filter((_, idx) => idx !== i)); setCapHit(false); }
+            }}
           />
+        </div>
+      )}
+
+      {/* Drawing tools — circle a button, arrow to a dial, or scribble freehand.
+          "Dots" is the default so the long-standing tap-to-place-a-pin behaviour
+          is unchanged until a drawing tool is deliberately picked. */}
+      {photo && !imgError && (
+        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+          <ToolButton label="● Dots" active={tool === null} disabled={disabled} onClick={() => setTool(null)} />
+          <ToolButton label="↗ Arrow" active={tool === 'arrow'} disabled={disabled} onClick={() => setTool('arrow')} />
+          <ToolButton label="◯ Circle" active={tool === 'circle'} disabled={disabled} onClick={() => setTool('circle')} />
+          <ToolButton label="▭ Box" active={tool === 'box'} disabled={disabled} onClick={() => setTool('box')} />
+          <ToolButton label="✎ Pen" active={tool === 'pen'} disabled={disabled} onClick={() => setTool('pen')} />
+          <ToolButton label="⌫ Erase" active={tool === 'erase'} disabled={disabled || shapes.length === 0} onClick={() => setTool('erase')} />
+          <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
+          {DRAWING_COLORS.map(c => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(c)}
+              disabled={disabled}
+              aria-label={`Draw in ${DRAWING_COLOR_NAMES[c]}`}
+              aria-pressed={color === c}
+              title={DRAWING_COLOR_NAMES[c]}
+              style={{ background: c }}
+              className={`w-7 h-7 rounded-full border-2 border-white disabled:opacity-50 ${
+                color === c ? 'ring-2 ring-gray-800 scale-110' : 'ring-1 ring-gray-300'
+              }`}
+            />
+          ))}
+          <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
+          <ToolButton
+            label="↶ Undo"
+            disabled={disabled || shapes.length === 0}
+            onClick={() => { setCapHit(false); onDrawings(shapes.slice(0, -1)); }}
+          />
+          <ToolButton
+            label="Clear"
+            disabled={disabled || shapes.length === 0}
+            onClick={() => {
+              if (!confirm('Remove all drawings from this photo?')) return;
+              setCapHit(false);
+              onDrawings([]);
+            }}
+          />
+          {capHit && (
+            <span className="w-full text-[11px] font-semibold text-red-600 mt-0.5">
+              That is the most marks one photo can hold ({MAX_DRAWINGS}). Erase one first.
+            </span>
+          )}
+          {tool && !capHit && (
+            <span className="w-full text-[11px] text-gray-500 mt-0.5">
+              {tool === 'erase'
+                ? 'Tap a mark to remove just that one.'
+                : 'Drag on the photo to draw.'} Pick <strong>Dots</strong> to place numbered notes again.
+            </span>
+          )}
         </div>
       )}
 

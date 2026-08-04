@@ -213,6 +213,7 @@ class KrawingsTaskTemplate(models.Model):
                             'pdf_file': s.pdf_file,
                             'pdf_filename': s.pdf_filename or False,
                             'youtube_url': s.youtube_url or False,
+                            'drawings': s.drawings or False,
                             'source_guide_step_id': s.id,
                             'pin_ids': [
                                 (0, 0, {

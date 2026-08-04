@@ -36,6 +36,9 @@ export async function GET(_req: NextRequest, { params }: { params: { guideId: st
         has_pdf: s.has_pdf,
         pdf_filename: s.pdf_filename,
         youtube_url: s.youtube_url,
+        // The author's drawn marks belong to the photo — a staff member reading
+        // this in Training must see exactly what the daily task shows.
+        drawings: s.drawings,
         pins: s.pins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, note: p.note })),
       })),
     });

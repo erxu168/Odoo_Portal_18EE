@@ -11,7 +11,7 @@
 
 import { AuthError } from '@/lib/auth';
 import { isValidYoutubeUrl } from '@/lib/youtube-url';
-import type { GuideStepSave } from '@/lib/task-guide';
+import { parseDrawings, serializeDrawings, type GuideStepSave } from '@/lib/task-guide';
 
 export const GUIDE_MEDIA_TYPES = new Set(['photo', 'youtube', 'tip', 'pdf']);
 
@@ -59,6 +59,17 @@ export function sanitizeSteps(raw: unknown, published: boolean): GuideStepSave[]
       })) : [];
       if (pins.some((p: { note: string }) => !p.note)) throw new AuthError(`Step ${i + 1}: every note-pin needs a note`, 400);
       out.pins = pins;
+      // Author's drawn marks. Re-serialise from the PARSED shapes rather than
+      // passing the client string through: anything malformed is dropped here
+      // (and the Odoo model validates again before it is stored).
+      //
+      // ALWAYS send the key when the client sent one — including '' — because
+      // the server treats an ABSENT key as "keep what's stored" (so an older
+      // client that has never heard of drawings can't wipe them). Omitting ''
+      // here would make "Clear" silently do nothing.
+      if (s?.drawings !== undefined) {
+        out.drawings = serializeDrawings(parseDrawings(typeof s.drawings === 'string' ? s.drawings : ''));
+      }
     } else if (mt === 'pdf') {
       if (s?.pdf_base64) {
         if (!isPdf(s.pdf_base64)) throw new AuthError(`Step ${i + 1}: not a valid PDF`, 415);

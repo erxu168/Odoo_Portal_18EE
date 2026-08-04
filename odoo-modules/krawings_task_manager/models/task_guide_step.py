@@ -1,3 +1,4 @@
+import json
 import re
 from urllib.parse import urlparse, parse_qs
 
@@ -5,6 +6,21 @@ from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
 from .task_template_line import _guess_image_mime
+
+# Drawn-shape limits. Caps keep one step's overlay bounded (a runaway pen stroke
+# is the only realistic way this field grows) and match the portal's client-side
+# caps, so the client never green-lights what the server rejects.
+DRAWING_TYPES = ('arrow', 'circle', 'box', 'pen')
+MAX_DRAWINGS = 40
+MAX_POINTS_PER_SHAPE = 400
+# Byte budget, mirroring the other guide fields. Unlike a photo (filestore
+# checksum-deduped), this text is deep-copied into EVERY daily snapshot, so an
+# unbounded blob would compound day after day.
+MAX_DRAWINGS_JSON = 64 * 1024
+# Coordinates are fractions of the image; 4 decimals is far finer than a finger
+# can aim (~0.03 px on a 320 px-wide photo) and keeps the stored JSON compact.
+COORD_DECIMALS = 4
+_HEX_COLOR = re.compile(r'\A#[0-9A-Fa-f]{6}\Z')
 
 MEDIA_TYPES = [
     ('photo', 'Photo'),
@@ -38,6 +54,74 @@ def youtube_video_id(url):
     elif host == 'youtu.be':
         vid = u.path.lstrip('/').split('/')[0]
     return vid if vid and _YT_ID.match(vid) else None
+
+
+def normalize_drawings(raw):
+    """Validate + normalise drawn shapes into the canonical JSON string, or None
+    when there is nothing to store.
+
+    Accepts a JSON string or an already-decoded list, and always returns what is
+    safe to persist. Coordinates are clamped to 0..1 (the same fraction space as
+    pins) and colours must be a plain #RRGGBB — the value is rendered into an SVG
+    attribute in the portal, so anything else is rejected rather than escaped.
+    Raises ValidationError on input that cannot be salvaged, so a bad direct Odoo
+    write fails loudly instead of silently storing junk staff would later see."""
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return None
+        # Check the budget BEFORE parsing, so an oversized blob is rejected
+        # cheaply instead of being decoded first.
+        if len(raw) > MAX_DRAWINGS_JSON:
+            raise ValidationError('There are too many drawings on one photo — undo a few and save again.')
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            raise ValidationError('Drawings must be valid JSON.')
+    if not isinstance(raw, list):
+        raise ValidationError('Drawings must be a list of shapes.')
+    if len(raw) > MAX_DRAWINGS:
+        raise ValidationError('Too many drawings on one photo (max %d).' % MAX_DRAWINGS)
+
+    out = []
+    for shape in raw:
+        if not isinstance(shape, dict):
+            raise ValidationError('Each drawing must be an object.')
+        kind = shape.get('type')
+        if kind not in DRAWING_TYPES:
+            raise ValidationError('Unknown drawing type: %s' % (kind,))
+        color = (shape.get('color') or '').strip()
+        if not _HEX_COLOR.match(color):
+            raise ValidationError('A drawing colour must look like #RRGGBB.')
+        points = shape.get('points')
+        if not isinstance(points, (list, tuple)) or not points:
+            raise ValidationError('A drawing needs points.')
+        if len(points) > MAX_POINTS_PER_SHAPE:
+            points = points[:MAX_POINTS_PER_SHAPE]
+        # arrow/circle/box are defined by exactly two points (start, end).
+        if kind != 'pen' and len(points) != 2:
+            raise ValidationError('An %s needs exactly two points.' % kind)
+        clean_points = []
+        for p in points:
+            if not isinstance(p, (list, tuple)) or len(p) != 2:
+                raise ValidationError('Each drawing point must be [x, y].')
+            try:
+                x, y = float(p[0]), float(p[1])
+            except (TypeError, ValueError):
+                raise ValidationError('Drawing coordinates must be numbers.')
+            # Reject NaN/inf outright: they survive float() and would poison the
+            # SVG (and JSON) rather than clamp to anything sensible.
+            if x != x or y != y or x in (float('inf'), float('-inf')) or y in (float('inf'), float('-inf')):
+                raise ValidationError('Drawing coordinates must be real numbers.')
+            clean_points.append([
+                round(min(1.0, max(0.0, x)), COORD_DECIMALS),
+                round(min(1.0, max(0.0, y)), COORD_DECIMALS),
+            ])
+        out.append({'type': kind, 'color': color.upper(), 'points': clean_points})
+
+    return json.dumps(out) if out else None
 
 
 class KrawingsTaskGuideStep(models.Model):
@@ -96,6 +180,19 @@ class KrawingsTaskGuideStep(models.Model):
 
     pin_ids = fields.One2many('krawings.task.guide.pin', 'step_id')
 
+    # photo steps only — freehand/shape marks the AUTHOR draws over the photo to
+    # emphasise something ("circle this button", "arrow to that dial"). Stored as
+    # a JSON array of vector shapes in the SAME 0..1 fraction space as pins, so
+    # they survive any screen size and never touch the photo bytes:
+    #   [{"type": "arrow"|"circle"|"box"|"pen",
+    #     "color": "#DC2626", "points": [[x, y], ...]}]
+    # Geometry is polymorphic (2 points for arrow/circle/box, many for pen), so
+    # this is a JSON text column rather than a relational child model like pins —
+    # there is nothing to query or reference per shape.
+    drawings = fields.Text(
+        help='JSON array of drawn shapes over the photo; coordinates are fractions 0..1.',
+    )
+
     _sql_constraints = [
         ('one_parent',
          'CHECK(('
@@ -111,7 +208,7 @@ class KrawingsTaskGuideStep(models.Model):
          'Step sequence numbers must be unique per list line.'),
     ]
 
-    @api.constrains('media_type', 'image', 'pdf_file', 'youtube_url', 'pin_ids')
+    @api.constrains('media_type', 'image', 'pdf_file', 'youtube_url', 'pin_ids', 'drawings')
     def _check_media(self):
         """STRUCTURAL integrity only — enforced on every step, incl. drafts.
         Completeness (a non-empty explanation and the step's own media) is a
@@ -126,6 +223,12 @@ class KrawingsTaskGuideStep(models.Model):
             # Forbidden combinations — keep each step type clean.
             if mt != 'photo' and s.pin_ids:
                 raise ValidationError('Only photo steps can have note-pins.')
+            if mt != 'photo' and s.drawings:
+                raise ValidationError('Only photo steps can have drawings.')
+            # Re-validate stored geometry on every write, so a direct Odoo write
+            # can't seed shapes the portal would later render.
+            if s.drawings:
+                normalize_drawings(s.drawings)
             if mt != 'photo' and s.image:
                 raise ValidationError('Only a photo step can carry a photo.')
             if mt != 'pdf' and s.pdf_file:
@@ -153,6 +256,7 @@ class KrawingsTaskGuideStep(models.Model):
                 'pdf_file': step.pdf_file,
                 'pdf_filename': step.pdf_filename,
                 'youtube_url': step.youtube_url,
+                'drawings': step.drawings,
             })
             for pin in step.pin_ids.sorted('sequence'):
                 Pin.create({

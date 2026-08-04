@@ -115,6 +115,7 @@ class KrawingsTaskListLine(models.Model):
                 'has_pdf': bool(s.pdf_file),
                 'pdf_filename': s.pdf_filename or '',
                 'youtube_url': s.youtube_url or '',
+                'drawings': s.drawings or '',
                 'pins': [
                     {'pin_x': p.pin_x, 'pin_y': p.pin_y, 'note': p.note or ''}
                     for p in s.pin_ids.sorted('sequence')

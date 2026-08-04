@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import PinnableImage from '@/components/ui/PinnableImage';
 import { useTopBar } from '@/components/ui/TopBarContext';
 import { youtubeEmbedUrl, youtubeWatchUrl } from '@/lib/youtube-url';
-import type { StaffGuide, StaffGuideStep, TemplateGuide, LibraryGuide } from '@/lib/task-guide';
+import { parseDrawings, type StaffGuide, type StaffGuideStep, type TemplateGuide, type LibraryGuide } from '@/lib/task-guide';
 
 /**
  * GuidedTutorialPlayer — STAFF full-screen player for a task's guided tutorial.
@@ -69,6 +69,9 @@ function normalizeLibrary(data: { name?: string; steps: TemplateGuide['steps'] }
       has_pdf: s.has_pdf,
       pdf_filename: s.pdf_filename,
       youtube_url: s.youtube_url,
+      // Carry the author's drawn marks through, so a manager's PREVIEW shows
+      // exactly what staff will see.
+      drawings: s.drawings || '',
       pins: s.pins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, note: p.note })),
     })),
   };
@@ -611,6 +614,7 @@ function StepMedia({
         mode="view"
         imgClassName="max-h-[64vh]"
         notePopover
+        drawings={parseDrawings(step.drawings)}
         pins={step.pins.map((p, i) => ({
           pin_x: p.pin_x,
           pin_y: p.pin_y,

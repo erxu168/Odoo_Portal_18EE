@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import DrawingLayer from './DrawingLayer';
+import type { GuideDrawing, GuideDrawingType } from '@/lib/task-guide';
 
 export interface ImagePin {
   /** Fraction across the image, 0–1. */
@@ -41,6 +43,17 @@ interface Props {
   onClearActive?: () => void;
   /** Extra classes for the <img> (e.g. a max-height so the photo fills more space). */
   imgClassName?: string;
+  /** Author-drawn marks over the photo (arrow/circle/box/pen), rendered under the pins. */
+  drawings?: GuideDrawing[];
+  /** edit: the active drawing tool — when set, drawing captures the gesture
+   * INSTEAD of placing pins (so a drag can't also drop a pin). */
+  drawTool?: GuideDrawingType | 'erase' | null;
+  /** edit: stroke colour for new marks. */
+  drawColor?: string;
+  /** edit: a mark was finished. */
+  onDrawAdd?: (shape: GuideDrawing) => void;
+  /** edit: erase tool — the author tapped here; remove the mark under it. */
+  onDrawEraseAt?: (x: number, y: number) => void;
 }
 
 /** Movement below this (px) counts as a tap, not a drag. */
@@ -61,7 +74,11 @@ const DRAG_THRESHOLD = 5;
 export default function PinnableImage({
   src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '', alt,
   notePopover = false, onClearActive, imgClassName = '',
+  drawings, drawTool = null, drawColor = '#DC2626', onDrawAdd, onDrawEraseAt,
 }: Props) {
+  // While a drawing tool is active the drawing layer owns the gesture, so a
+  // drag can't also drop a pin underneath it.
+  const drawingActive = mode === 'edit' && !!drawTool;
   const wrapRef = useRef<HTMLDivElement>(null);
   // Live position of the pin being dragged (render-only; committed on drop).
   const [drag, setDrag] = useState<{ index: number; x: number; y: number } | null>(null);
@@ -126,6 +143,8 @@ export default function PinnableImage({
   function handleWrapClick(e: React.MouseEvent<HTMLDivElement>) {
     // View mode: a tap on the photo background dismisses an open note.
     if (mode === 'view') { onClearActive?.(); return; }
+    // A drawing tool is active — the tap belongs to the drawing layer.
+    if (drawingActive) return;
     if (!onPlace || disabled) return;
     if (justDragged.current) { justDragged.current = false; return; }
     const f = fractions(e);
@@ -134,6 +153,9 @@ export default function PinnableImage({
 
   function onPinPointerDown(index: number) {
     return (e: React.PointerEvent<HTMLButtonElement>) => {
+      // A drawing tool owns every gesture on the photo: without this, starting a
+      // stroke on top of a pin would DRAG THE PIN instead of drawing.
+      if (drawingActive) return;
       if (mode !== 'edit' || !onPinMove || disabled) return;
       // Clear any stale suppression flag: on touch a drag's pointerup fires no
       // synthetic click, so the flag set on the previous drop could otherwise
@@ -177,7 +199,7 @@ export default function PinnableImage({
     <div
       ref={wrapRef}
       onClick={handleWrapClick}
-      className={`relative inline-block leading-none select-none ${mode === 'edit' ? 'cursor-crosshair' : ''} ${className}`}
+      className={`relative inline-block leading-none select-none ${mode === 'edit' && !drawingActive ? 'cursor-crosshair' : ''} ${className}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -187,6 +209,19 @@ export default function PinnableImage({
         className={`block max-w-full h-auto rounded-lg ${imgClassName}`}
         draggable={false}
       />
+      {/* Drawn marks sit ABOVE the photo but BELOW the pins, so a numbered dot
+          is never hidden by a scribble. */}
+      {((drawings && drawings.length > 0) || drawingActive) && (
+        <DrawingLayer
+          shapes={drawings || []}
+          mode={drawingActive ? 'draw' : 'view'}
+          tool={drawTool || 'arrow'}
+          color={drawColor}
+          onAdd={onDrawAdd}
+          onEraseAt={onDrawEraseAt}
+          disabled={disabled}
+        />
+      )}
       {pins.map((p, i) => {
         const active = activeIndex === i;
         const dragging = drag?.index === i;
@@ -198,7 +233,9 @@ export default function PinnableImage({
             type="button"
             title={p.label}
             aria-label={p.label ? `Pin ${p.number ?? i + 1}: ${p.label}` : `Pin ${p.number ?? i + 1}`}
+            tabIndex={drawingActive ? -1 : undefined}
             onClick={(e) => {
+              if (drawingActive) return;
               e.stopPropagation();
               if (justDragged.current) { justDragged.current = false; return; }
               onPinClick?.(i);
@@ -229,6 +266,9 @@ export default function PinnableImage({
               top: `${y * 100}%`,
               // Disable scroll/zoom gestures ON the pin only, so a finger can drag it.
               touchAction: mode === 'edit' ? 'none' : undefined,
+              // While drawing, pins are decorative: let the gesture fall straight
+              // through to the drawing layer beneath them.
+              pointerEvents: drawingActive ? 'none' : undefined,
             }}
             className={`absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border-2 border-white shadow-md font-bold text-xs ${
               dragging ? 'scale-125 cursor-grabbing z-10' : mode === 'edit' ? 'cursor-grab transition-transform' : 'transition-transform'
