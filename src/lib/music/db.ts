@@ -357,7 +357,7 @@ export function startPlayback(pick: { videoId: string; source: 'manual' | 'radio
  * `next: null` when the queue is drained (caller falls back to radio), and
  * `stale` when the observed version doesn't match (duplicate/racing event).
  */
-export function advancePlayback(observedVersion: number, event: 'ended' | 'skip' | 'error', errorCode?: string):
+export function advancePlayback(observedVersion: number, event: 'ended' | 'skip' | 'error', errorCode?: string, by?: string):
   { ok: true; next: Playback | null } | { ok: false; reason: 'stale' } {
   initMusicTables();
   const db = getDb();
@@ -370,9 +370,9 @@ export function advancePlayback(observedVersion: number, event: 'ended' | 'skip'
     const outcome = event === 'ended' ? 'played' : event === 'skip' ? 'skipped' : 'failed';
     if (cur.video_id) {
       db.prepare(`
-        INSERT INTO music_play_history (video_id, title, genre, source, outcome, error_code, played_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(cur.video_id, cur.title ?? '', cur.genre, cur.source ?? 'radio', outcome, errorCode ?? null, ts);
+        INSERT INTO music_play_history (video_id, title, genre, source, outcome, error_code, played_by, played_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(cur.video_id, cur.title ?? '', cur.genre, cur.source ?? 'radio', outcome, errorCode ?? null, by ?? null, ts);
     }
     if (cur.queue_id != null) {
       db.prepare(`UPDATE music_queue SET status = ?, finished_at = ?, failure_code = ? WHERE id = ?`)
@@ -497,6 +497,56 @@ export function listManualAllowFallback(): RadioPick[] {
     WHERE md.decision = 'allow' AND md.genre IS NOT NULL
   `).all() as Array<{ video_id: string; genre: MusicGenre; title: string; channel: string }>;
   return rows.map((r) => ({ videoId: r.video_id, genre: r.genre, title: r.title, channel: r.channel }));
+}
+
+/** Player hit an embed error — remember the video is unplayable so it never comes back. */
+export function markUnplayable(videoId: string): void {
+  initMusicTables();
+  getDb().prepare(`UPDATE music_video_metadata SET embeddable = 0 WHERE video_id = ?`).run(videoId);
+}
+
+export interface ManualDecisionRow extends ManualDecision { title: string; channel: string }
+
+/** Manual decisions with best-effort titles for the manager's history screen. */
+export function listManualDecisions(): ManualDecisionRow[] {
+  initMusicTables();
+  return getDb().prepare(`
+    SELECT md.*, COALESCE(r.title, m.title, md.video_id) AS title,
+           COALESCE(r.channel, m.channel_title, '') AS channel
+    FROM music_manual_decisions md
+    LEFT JOIN music_requests r ON r.video_id = md.video_id
+    LEFT JOIN music_video_metadata m ON m.video_id = md.video_id
+    ORDER BY md.updated_at DESC LIMIT 300
+  `).all() as ManualDecisionRow[];
+}
+
+export interface StationDeviceOption { id: number; name: string | null; label: string | null; company_id: number }
+
+/** Active shared-tablet devices a manager can pin as THE player. */
+export function stationDeviceOptions(): StationDeviceOption[] {
+  initMusicTables();
+  return getDb().prepare(`SELECT id, name, label, company_id FROM station_devices WHERE revoked = 0 AND disabled = 0 ORDER BY company_id, id`).all() as StationDeviceOption[];
+}
+
+export function stationDeviceExists(id: number): boolean {
+  initMusicTables();
+  return !!getDb().prepare(`SELECT 1 AS x FROM station_devices WHERE id = ? AND revoked = 0 AND disabled = 0`).get(id);
+}
+
+/** Radio pool depth per genre — the settings screen's health view. */
+export function poolDepths(): Record<MusicGenre, number> {
+  initMusicTables();
+  const rows = getDb().prepare(`SELECT genre, COUNT(DISTINCT video_id) AS c FROM music_radio_pool GROUP BY genre`).all() as Array<{ genre: string; c: number }>;
+  const out = { hip_hop_rap: 0, reggae_dancehall_dub: 0, afrobeats_afro: 0, rnb_soul_funk: 0 } as Record<MusicGenre, number>;
+  for (const r of rows) if (r.genre in out) out[r.genre as MusicGenre] = r.c;
+  return out;
+}
+
+/** Songs played today (Berlin-agnostic 24h window is fine for a KPI chip). */
+export function playsToday(): number {
+  initMusicTables();
+  const r = getDb().prepare(`SELECT COUNT(*) AS c FROM music_play_history WHERE played_at > datetime('now', '-24 hours') AND outcome = 'played'`).get() as { c: number };
+  return r.c;
 }
 
 // ── Settings ──
