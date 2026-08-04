@@ -736,7 +736,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
    */
   async function saveNotFound(product: any, loc: number, on: boolean) {
     const k = K(product.id, loc);
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     const wasQty = entries[k];
     const wasNf = notFound.has(k);
     setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
@@ -760,7 +760,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   }
 
   async function saveOutOfStock(product: any, loc: number, on: boolean, note?: string) {
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     const k = K(product.id, loc);
     // "None here" is a statement about the whole line, so the remembered crate
     // split goes with it — otherwise the row keeps displaying the old count.
@@ -803,7 +803,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     const k = K(product.id, loc);
     setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
     const size = crateSizes[product.id] || 0;
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     const total = crateTotal(crates, loose, size);
     setCrateSheet({ open: false, product: null, loc: 0 });
 
@@ -829,12 +829,25 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     if (res.queued) void sync.refresh();
   }
 
+  /**
+   * The unit a product is COUNTED in — the word staff see and the word stored
+   * with the number. Normally the product's own unit; when a count unit was
+   * named ("piece") without a conversion, that word instead, so the settings
+   * and the phone can never disagree.
+   */
+  function countUomOf(product: any): string {
+    const uom = countUomOf(product);
+    const w = unitWords(uom, crateLabels[product.id], looseLabels[product.id]);
+    const named = w.measure && !hasCrate(crateSizes[product.id]) && !!crateLabels[product.id];
+    return named ? pluralizePack(w.pack, 2) : uom;
+  }
+
   function stepQty(product: any, loc: number, delta: number) {
     const current = entries[K(product.id, loc)];
     const val = current !== undefined ? current : 0;
     const next = Math.max(0, val + delta);
     if (next === 0 && (current === undefined || current === 0) && delta < 0) return;
-    saveCount(product.id, loc, next, product.uom_id?.[1] || 'Units');
+    saveCount(product.id, loc, next, countUomOf(product));
   }
 
   // Step WHOLE packs (bunches/crates) for a product measured in something else.
@@ -856,7 +869,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     // typing 0 anywhere else. saveCrateCount deletes a zero line, which would
     // leave the product UNCOUNTED and block the submit.
     if (next === 0 && loose === 0) {
-      void saveCount(product.id, loc, 0, product.uom_id?.[1] || 'Units');
+      void saveCount(product.id, loc, 0, countUomOf(product));
       return;
     }
     void saveCrateCount(product, loc, next, loose);
@@ -867,7 +880,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   async function savePhotos(product: any, loc: number, next: string[]) {
     const k = K(product.id, loc);
     const val = entries[k] ?? null;
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     setRowPhotos((prev) => ({ ...prev, [k]: next }));
     if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
     const res = await postLine(product.id, loc, { counted_qty: val, uom, photos: next });
@@ -890,7 +903,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     setEntries((prev) => ({ ...prev, [k]: total }));
     setPackSplits((prev) => ({ ...prev, [k]: { byLevel, loose } }));
     if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: total, uom }, loc);
     const res = await postLine(product.id, loc, {
       pack_counts: byLevel, loose_qty: loose, uom,
@@ -920,7 +933,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   function handleNumpadSave(value: number | null) {
     if (numpad.product) {
       const had = rowNotes[K(numpad.product.id, numpad.loc)] || '';
-      saveCount(numpad.product.id, numpad.loc, value, numpad.product.uom_id?.[1] || 'Units',
+      saveCount(numpad.product.id, numpad.loc, value, countUomOf(numpad.product),
         draftNote !== had ? draftNote : undefined);
     }
     setNumpad({ open: false, product: null, loc: 0 });
@@ -1046,6 +1059,18 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
     const label = words.pack;
     const measure = words.measure;
+    // COUNT IN WHAT THE MANAGER NAMED, even with no conversion.
+    //
+    // A product sold by weight whose count unit was set to "piece" but whose
+    // kg-per-piece is unknown used to fall back to kg — so the settings said
+    // pieces and the phone asked for kilos (Ethan, 2026-08-04: "I don't always
+    // have the equivalent of kilos"). An EXPLICITLY chosen pack word now wins:
+    // staff count pieces, and the number is stored as pieces. Nothing is lost —
+    // these counts are the portal's own ledger, so the only thing that matters
+    // is that the unit means something to the person holding the plantains.
+    // (Products with a conversion still count packs + loose exactly as before.)
+    const namedUnitOnly = measure && !isCrate && !!crateLabels[p.id];
+    const countWord = namedUnitOnly ? pluralizePack(label, 2) : words.loose;
     // A product with a frozen chain is counted level by level, not as one pack
     // size plus loose — that is what the chain is FOR.
     const chain = countableLevels(packaging[p.id] || []);
@@ -1085,7 +1110,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
               {/* The unit staff COUNT in — bunches, not the kilograms it converts
                   to. The conversion is the manager's business when ordering. */}
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">
-                {isCrate && measure ? pluralizePack(label, 2) : words.loose}
+                {isCrate && measure ? pluralizePack(label, 2) : countWord}
               </span>
               {/* A pack of countable things still has to show its size, because
                   "3" means nothing until you know whether a crate is 12 or 24. */}
@@ -1165,7 +1190,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
           <div className="basis-full sm:basis-auto sm:flex-none flex justify-end items-center mt-2.5 sm:mt-0 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-gray-100">
           {isReadOnly ? (
             <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
-              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{words.loose}</span>
+              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{countWord}</span>
               {isCrate && split && val !== null && (
                 <div className="text-[10px] text-gray-400 font-normal font-mono">{formatSplit(split.crates, split.loose, words.loose, label)}</div>
               )}
@@ -1220,7 +1245,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
               )}
             </button>
           ) : (
-            <Stepper value={val} uom={words.loose}
+            <Stepper value={val} uom={countWord}
               onMinus={() => stepQty(p, loc, -1)}
               onPlus={() => stepQty(p, loc, 1)}
               onTap={() => openNumpad(p, loc)} />

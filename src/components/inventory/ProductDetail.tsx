@@ -1220,11 +1220,19 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </div>
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
               {packSize === '' ? (
-                <>
-                  Fill in how many {unitWords(uomName, effPack, looseLabel).looseFor(2)} are in one {effPack}
-                  {' '}and staff can count whole {pluralizePack(effPack, 2)} plus loose ones.
-                  Leave it blank and they count in {unitWords(uomName, effPack, looseLabel).looseFor(2)} only.
-                </>
+                measure && !!packLabel ? (
+                  <>
+                    Staff count whole {pluralizePack(effPack, 2)}. Fill in how many {uomName} one
+                    {' '}{effPack} weighs only if you want the {uomName} equivalent too — the count
+                    {' '}works without it.
+                  </>
+                ) : (
+                  <>
+                    Fill in how many {unitWords(uomName, effPack, looseLabel).looseFor(2)} are in one {effPack}
+                    {' '}and staff can count whole {pluralizePack(effPack, 2)} plus loose ones.
+                    Leave it blank and they count in {unitWords(uomName, effPack, looseLabel).looseFor(2)} only.
+                  </>
+                )
               ) : measure ? (
                 `Staff count whole ${pluralizePack(effPack, 2)}; Odoo gets ${uomName}.`
               ) : (
