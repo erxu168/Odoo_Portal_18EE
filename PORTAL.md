@@ -155,6 +155,20 @@ Single-page screen router; mobile-first; role-gated.
 
 **Note:** Module is built end-to-end but is NOT yet in active production use. Stock readings from Odoo are stale because real counts aren't being run. See feedback rule: manufacturing UI must not gate features on `on_hand_qty`/`is_short` until inventory is live.
 
+### WAJ Radio (Music) — `/music` (August 2026)
+
+Genre-locked YouTube jukebox for What A Jerk. Player kiosk at `/music/player`
+(runs as a Chrome-installed app on a dedicated Sunmi T2s, pinned in settings —
+only that device can queue/skip); manager screens: Song Requests (approve with
+a genre shelf), Play History, Settings (device pin + radio warm-up). Gate:
+manual decisions > cached verdict > YouTube topics (Electronic blocks) > Claude
+Haiku classifier; unsure → request list; outages fail closed. Auto-radio
+shuffles 4 genre shelves with a 50-play/12h no-repeat. Libs in
+`src/lib/music/`; the ONLY youtubei.js import is `music/catalog.ts`. Needs
+`YOUTUBE_API_KEY` + `ANTHROPIC_API_KEY` in `.env.local`. Spec:
+`docs/superpowers/specs/2026-08-03-waj-radio-genre-locked-jukebox-design.md`;
+device setup: `docs/waj-radio-runbook.md`.
+
 ### Department Task Manager — `/tasks` (May 2026)
 
 Department-scoped daily checklists (no shift coupling). Backed by Odoo addon `krawings_task_manager` (models: `krawings.task.template`, `krawings.task.list`, plus lines/subtasks).
