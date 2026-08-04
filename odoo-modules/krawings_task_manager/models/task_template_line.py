@@ -8,6 +8,9 @@ GUIDE_MAX_STEPS = 40
 GUIDE_MAX_PINS = 20
 GUIDE_MAX_EXPLANATION = 2000
 GUIDE_MAX_NOTE = 500
+# The manager's standing note on a task. Bounded because it is deep-copied onto
+# every daily line at spawn, so an unbounded blob would compound day after day.
+MAX_MANAGER_NOTE = 1000
 GUIDE_MAX_IMAGE_B64 = 12 * 1024 * 1024   # ~9 MB decoded
 GUIDE_MAX_PDF_B64 = 20 * 1024 * 1024     # ~15 MB decoded
 
@@ -67,6 +70,15 @@ class KrawingsTaskTemplateLine(models.Model):
     photo_required = fields.Boolean()
     photo_instructions = fields.Char(
         help='Hint shown to staff above the photo upload button when photo_required is set.',
+    )
+    # Standing guidance the MANAGER writes on the task definition, shown to
+    # whoever does it, every day it runs. Distinct from krawings.task.list.line
+    # `note`, which is what STAFF write about one particular day — hence the
+    # explicit `manager_` prefix rather than a second bare `note`.
+    manager_note = fields.Text(
+        help="Note from the manager, shown to staff when they open this task. "
+             "Standing guidance (e.g. 'Check the walk-in AND the dry store'), "
+             "not a remark about one day.",
     )
     module_link_type = fields.Selection(MODULE_LINK_SELECTION, default='none')
     subtask_ids = fields.One2many(
@@ -131,6 +143,14 @@ class KrawingsTaskTemplateLine(models.Model):
         for line in self:
             if line.guide_id and line.template_id.company_id != line.guide_id.company_id:
                 raise ValidationError('A task can only link a guide from the same company.')
+
+    @api.constrains('manager_note')
+    def _check_manager_note(self):
+        for line in self:
+            if line.manager_note and len(line.manager_note) > MAX_MANAGER_NOTE:
+                raise ValidationError(
+                    'A note for staff can be at most %d characters.' % MAX_MANAGER_NOTE
+                )
 
     # ── Guided-tutorial editor RPC — BACKWARD-COMPAT SHIMS ────────────────
     # The library-era editor talks to krawings.task.guide directly. These shims

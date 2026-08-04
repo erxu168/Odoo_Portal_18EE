@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { DayPart, ModuleLink } from '@/lib/odoo-tasks';
+import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
 
 const DAY_PART_OPTIONS: { value: DayPart; label: string }[] = [
   { value: 'opening', label: 'Opening' },
@@ -23,6 +24,7 @@ export interface AdHocSubmitVals {
   deadline_datetime: string | null;
   photo_required: boolean;
   photo_instructions: string | null;
+  manager_note: string | null;
   module_link_type: ModuleLink;
 }
 
@@ -38,6 +40,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
   const [deadline, setDeadline]               = useState('');
   const [photoRequired, setPhotoRequired]     = useState(false);
   const [photoInstructions, setPhotoInstr]    = useState('');
+  const [managerNote, setManagerNote]         = useState('');
   const [moduleLink, setModuleLink]           = useState<ModuleLink>('none');
   const [submitting, setSubmitting]           = useState(false);
   const [error, setError]                     = useState<string | null>(null);
@@ -56,6 +59,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
         deadline_datetime: deadlineIso,
         photo_required: photoRequired,
         photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
+        manager_note: managerNote.trim() || null,
         module_link_type: moduleLink,
       });
     } catch (e: unknown) {
@@ -111,6 +115,21 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
               />
             </div>
           )}
+          <div>
+            <label className="flex items-baseline justify-between text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+              <span>Note for staff</span>
+              <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
+            </label>
+            <textarea
+              value={managerNote}
+              onChange={e => setManagerNote(e.target.value)}
+              placeholder="e.g. Check the walk-in AND the dry store."
+              rows={2}
+              maxLength={MAX_MANAGER_NOTE}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Shown to staff when they open this task.</p>
+          </div>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />
         </div>

@@ -5,6 +5,7 @@ import DropZone from '@/components/ui/DropZone';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
+import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
 import AppHeader from '@/components/ui/AppHeader';
 import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
@@ -118,6 +119,7 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
       photo_required: tl.photo_required,
       photo_uploaded: false,
       photo_instructions: tl.photo_instructions,
+      manager_note: tl.manager_note,
       module_link_type: tl.module_link_type,
       is_setup_guide: tl.is_setup_guide,
       has_setup_photo: tl.has_setup_photo,
@@ -469,6 +471,9 @@ export default function TemplateEditPage({ params }: PageProps) {
                           {l.photo_instructions && (
                             <p className="text-xs text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
                           )}
+                          {l.manager_note && (
+                            <p className="text-xs text-gray-500 mt-1.5 whitespace-pre-wrap">📌 {l.manager_note}</p>
+                          )}
                           {l.attachments.length > 0 && (
                             <div className="mt-1.5">
                               <AttachmentList attachments={l.attachments} compact />
@@ -545,6 +550,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   const [deadline, setDeadline]       = useState(floatToHHMM(line?.deadline_time));
   const [photoRequired, setPhotoReq]  = useState(line?.photo_required ?? false);
   const [photoInstructions, setPhotoInstr] = useState(line?.photo_instructions ?? '');
+  const [managerNote, setManagerNote] = useState(line?.manager_note ?? '');
   const [moduleLink, setModuleLink]   = useState<ModuleLink>(line?.module_link_type ?? 'none');
   // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/photo/item).
   const [subtasks, setSubtasks]       = useState<GuidePin[]>(
@@ -667,6 +673,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
         deadline_time: hhmmToFloat(deadline),
         photo_required: photoRequired,
         photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
+        manager_note: managerNote.trim() || null,
         module_link_type: moduleLink,
         is_setup_guide: isSetupGuide,
         subtasks: subtasksPayload(seqMap),
@@ -901,6 +908,26 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
               <p className="text-[11px] text-gray-400 mt-1">Shown to staff above the photo upload button.</p>
             </div>
           )}
+          <div>
+            <label className="flex items-baseline justify-between text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+              <span>Note for staff</span>
+              <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
+            </label>
+            <textarea
+              value={managerNote}
+              onChange={e => setManagerNote(e.target.value)}
+              placeholder="e.g. Check the walk-in AND the dry store. Order if under 2 trays."
+              rows={2}
+              maxLength={MAX_MANAGER_NOTE}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Shown to staff every day this task runs, when they open it.
+              {managerNote.length > MAX_MANAGER_NOTE - 100 && (
+                <span className="text-gray-500"> · {MAX_MANAGER_NOTE - managerNote.length} characters left</span>
+              )}
+            </p>
+          </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
             <div className="space-y-1.5">

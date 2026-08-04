@@ -49,6 +49,8 @@ export interface TaskListLine {
   photo_required: boolean;
   photo_uploaded: boolean;
   photo_instructions: string | null;
+  /** Manager's standing note, snapshotted from the template. Read-only to staff. */
+  manager_note: string | null;
   module_link_type: ModuleLink;
   state: LineState;
   completed_at: string | null;
@@ -134,6 +136,8 @@ export interface TaskTemplateLine {
   deadline_time: number | null;   // Float hours, e.g. 14.5 = 14:30
   photo_required: boolean;
   photo_instructions: string | null;
+  /** Manager's standing note, shown to staff every day this task runs. */
+  manager_note: string | null;
   module_link_type: ModuleLink;
   subtasks: TemplatePin[];
   attachments: TaskAttachment[];
@@ -278,7 +282,7 @@ const LIST_FIELDS = [
 
 const LINE_FIELDS = [
   'id', 'list_id', 'name', 'sequence', 'day_part', 'deadline_datetime',
-  'photo_required', 'photo_uploaded', 'photo_instructions',
+  'photo_required', 'photo_uploaded', 'photo_instructions', 'manager_note',
   'module_link_type', 'state',
   'completed_at', 'completed_by_id', 'completed_by_name',
   'is_ad_hoc', 'source_template_line_id', 'subtask_ids',
@@ -370,6 +374,7 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     photo_required: !!l.photo_required,
     photo_uploaded: !!l.photo_uploaded,
     photo_instructions: l.photo_instructions || null,
+    manager_note: l.manager_note || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     state: l.state as LineState,
     completed_at: odooDtToIso(l.completed_at),
@@ -558,13 +563,14 @@ export async function toggleSubtask(
 
 export async function addAdHocLine(
   listId: number,
-  vals: { name: string; day_part: DayPart; deadline_datetime?: string | null; photo_required?: boolean; photo_instructions?: string | null; module_link_type?: ModuleLink },
+  vals: { name: string; day_part: DayPart; deadline_datetime?: string | null; photo_required?: boolean; photo_instructions?: string | null; manager_note?: string | null; module_link_type?: ModuleLink },
 ): Promise<number> {
   const odooVals: any = {
     name: vals.name,
     day_part: vals.day_part,
     photo_required: !!vals.photo_required,
     photo_instructions: vals.photo_instructions || false,
+    manager_note: vals.manager_note || false,
     module_link_type: vals.module_link_type || 'none',
   };
   if (vals.deadline_datetime) {
@@ -577,10 +583,11 @@ export async function addAdHocLine(
 
 export async function updateLine(
   lineId: number,
-  vals: Partial<{ name: string; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; photo_instructions: string | null; module_link_type: ModuleLink }>,
+  vals: Partial<{ name: string; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; photo_instructions: string | null; manager_note: string | null; module_link_type: ModuleLink }>,
 ): Promise<void> {
   const odooVals: any = { ...vals };
   if (vals.photo_instructions === null) odooVals.photo_instructions = false;
+  if (vals.manager_note === null) odooVals.manager_note = false;
   if (vals.deadline_datetime) {
     odooVals.deadline_datetime = new Date(vals.deadline_datetime).toISOString().slice(0, 19).replace('T', ' ');
   } else if (vals.deadline_datetime === null) {
@@ -624,7 +631,7 @@ const TEMPLATE_FIELDS = [
 
 const TEMPLATE_LINE_FIELDS = [
   'id', 'template_id', 'name', 'sequence', 'day_part', 'deadline_time',
-  'photo_required', 'photo_instructions', 'module_link_type', 'subtask_ids',
+  'photo_required', 'photo_instructions', 'manager_note', 'module_link_type', 'subtask_ids',
   'recurrence_type', 'recurrence_interval', 'recurrence_start_date',
   'recurrence_end_type', 'recurrence_end_date', 'recurrence_count',
   'recurrence_one_off_date', 'recurrence_weekdays', 'recurrence_monthly_mode',
@@ -747,6 +754,7 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     deadline_time: l.deadline_time ? l.deadline_time : null,
     photo_required: !!l.photo_required,
     photo_instructions: l.photo_instructions || null,
+    manager_note: l.manager_note || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     subtasks: subByLine.get(l.id) || [],
     attachments: tplAttsByLine.get(l.id) || [],
@@ -795,6 +803,7 @@ export interface TemplateLineInput {
   deadline_time?: number | null;
   photo_required?: boolean;
   photo_instructions?: string | null;
+  manager_note?: string | null;
   module_link_type?: ModuleLink;
   subtasks?: { id?: number; name: string; sequence?: number; pin_x?: number; pin_y?: number; pin_photo_seq?: number; item_id?: number | null }[];
   recurrence?: RecurrenceRule;
@@ -859,6 +868,7 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     deadline_time: line.deadline_time ?? false,
     photo_required: !!line.photo_required,
     photo_instructions: line.photo_instructions || false,
+    manager_note: line.manager_note || false,
     module_link_type: line.module_link_type || 'none',
   };
   if (line.is_setup_guide !== undefined) vals.is_setup_guide = !!line.is_setup_guide;

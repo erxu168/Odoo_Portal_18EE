@@ -205,6 +205,20 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           )}
         </div>
 
+        {/* The manager's standing note, at the top of the task with the other
+            guidance and above the subtasks. Neutral grey on purpose: it is
+            information, not a warning, and the standard reserves colour for
+            things that carry meaning (overdue red, photo-required blue).
+            Shown on past days too — it is part of what the task said that day.
+            whitespace-pre-wrap keeps any line breaks the manager typed. */}
+        {task.manager_note && (
+          <div className="mt-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 text-xs leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]">
+            <span aria-hidden="true">📌 </span>
+            <span className="font-bold">Note: </span>
+            {task.manager_note}
+          </div>
+        )}
+
         {task.has_guide && (
           <button
             type="button"

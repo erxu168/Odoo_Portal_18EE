@@ -26,6 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       deadline_time: body.deadline_time ?? null,
       photo_required: !!body.photo_required,
       photo_instructions: body.photo_instructions ?? null,
+      manager_note: body.manager_note ?? null,
       module_link_type: (body.module_link_type || 'none') as ModuleLink,
       subtasks: body.subtasks,
       recurrence: body.recurrence,

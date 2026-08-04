@@ -1,7 +1,12 @@
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
-from .task_template_line import DAY_PART_SELECTION, MODULE_LINK_SELECTION, _guess_image_mime
+from .task_template_line import (
+    DAY_PART_SELECTION,
+    MAX_MANAGER_NOTE,
+    MODULE_LINK_SELECTION,
+    _guess_image_mime,
+)
 
 
 class KrawingsTaskListLine(models.Model):
@@ -19,6 +24,13 @@ class KrawingsTaskListLine(models.Model):
     photo_required = fields.Boolean()
     photo_instructions = fields.Char(
         help='Hint shown to staff above the photo upload button.',
+    )
+    # Snapshot of the template line's manager_note, copied at spawn like every
+    # other field here — so clearing it on the template leaves today's already-
+    # spawned lists untouched. NOT the same thing as `note` below: this one the
+    # manager wrote for staff; `note` is what staff wrote back about today.
+    manager_note = fields.Text(
+        help='Note from the manager, shown to staff when they open this task.',
     )
     module_link_type = fields.Selection(MODULE_LINK_SELECTION, default='none')
 
@@ -56,6 +68,16 @@ class KrawingsTaskListLine(models.Model):
     )
 
     subtask_ids = fields.One2many('krawings.task.list.subtask', 'line_id')
+
+    @api.constrains('manager_note')
+    def _check_manager_note(self):
+        # Also enforced here, not just on the template: a one-off task is written
+        # straight onto the daily list and never passes through a template line.
+        for line in self:
+            if line.manager_note and len(line.manager_note) > MAX_MANAGER_NOTE:
+                raise ValidationError(
+                    'A note for staff can be at most %d characters.' % MAX_MANAGER_NOTE
+                )
 
     # ── Setup guide (mise en place) — snapshot copied from the template at spawn.
     # Each daily line keeps its OWN photo copies (immutable per-day history); the
