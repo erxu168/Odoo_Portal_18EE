@@ -8,11 +8,16 @@
 /** The evening send window is one hour wide (the cron runs hourly). */
 export const DUE_WINDOW_MS = 3_600_000;
 
-/** The Berlin calendar date one day AFTER a plain "YYYY-MM-DD" (pure string math). */
-export function nextDateStr(dateStr: string): string {
+/** Add `n` days to a plain "YYYY-MM-DD" Berlin date (pure; DST-safe, no time part). */
+export function addDaysStr(dateStr: string, n: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** The Berlin calendar date one day AFTER a plain "YYYY-MM-DD". */
+export function nextDateStr(dateStr: string): string {
+  return addDaysStr(dateStr, 1);
 }
 
 /**

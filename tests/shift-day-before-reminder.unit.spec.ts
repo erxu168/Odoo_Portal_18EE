@@ -1,10 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { nextDateStr, isDueNow, groupByEmployee, DUE_WINDOW_MS } from '../src/lib/shift-day-before-reminder';
+import { nextDateStr, addDaysStr, isDueNow, groupByEmployee, DUE_WINDOW_MS } from '../src/lib/shift-day-before-reminder';
 
 test('nextDateStr rolls over month and year boundaries', () => {
   expect(nextDateStr('2026-07-20')).toBe('2026-07-21');
   expect(nextDateStr('2026-07-31')).toBe('2026-08-01');
   expect(nextDateStr('2026-12-31')).toBe('2027-01-01');
+});
+
+test('addDaysStr adds days across month/year boundaries', () => {
+  expect(addDaysStr('2026-08-04', 7)).toBe('2026-08-11');
+  expect(addDaysStr('2026-08-09', 7)).toBe('2026-08-16'); // this Sun -> next Sun
+  expect(addDaysStr('2026-12-30', 7)).toBe('2027-01-06');
 });
 
 test('isDueNow fires only within the one-hour send window', () => {

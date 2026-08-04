@@ -425,6 +425,7 @@ export async function sendDayBeforeShiftReminderEmail(
   toName: string,
   dateLabel: string,
   shifts: { time: string; roleName: string }[],
+  upcoming: { day: string; shifts: { time: string; roleName: string }[] }[],
   companyId?: number,
 ): Promise<void> {
   const brand = await getCompanyBrandName(companyId);
@@ -445,6 +446,33 @@ export async function sendDayBeforeShiftReminderEmail(
     .join('');
   const plural = shifts.length === 1 ? 'shift' : 'shifts';
 
+  // A visually-separated "upcoming days" section (rest of this week + next week),
+  // distinct from the tomorrow reminder above. Omitted when there's nothing more.
+  const upcomingText = upcoming.length
+    ? [
+        '',
+        '— — —',
+        'Your shifts for the upcoming days:',
+        ...upcoming.map(d => `  ${d.day}: ${d.shifts.map(s => `${s.time}${s.roleName ? ` (${s.roleName})` : ''}`).join(', ')}`),
+      ].join('\n')
+    : '';
+  const upcomingHtml = upcoming.length
+    ? `
+        <div style="border-top: 2px dashed #E5E7EB; margin: 24px 0 10px;"></div>
+        <p style="color: #6B7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">Your shifts for the upcoming days</p>
+        ${upcoming
+          .map(
+            d => `
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #F3F4F6;">
+            <span style="font-size: 14px; font-weight: 700; color: #374151;">${escapeHtml(d.day)}</span>
+            <span style="font-size: 14px; color: #6B7280; text-align: right;">${d.shifts
+              .map(s => `${escapeHtml(s.time)}${s.roleName ? ` · ${escapeHtml(s.roleName)}` : ''}`)
+              .join('<br/>')}</span>
+          </div>`,
+          )
+          .join('')}`
+    : '';
+
   await getTransporter(companyId).sendMail({
     from: `"${location} Shifts" <${getFrom(companyId)}>`,
     to: toEmail,
@@ -456,6 +484,7 @@ export async function sendDayBeforeShiftReminderEmail(
       rows,
       '',
       'See you then! Can’t make it? Let your manager know as soon as you can.',
+      upcomingText,
       '',
       `— ${location} Shifts`,
     ].join('\n'),
@@ -470,6 +499,7 @@ export async function sendDayBeforeShiftReminderEmail(
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Just a reminder — you're scheduled <b>tomorrow (${escapeHtml(dateLabel)})</b>:</p>
         ${htmlRows}
         <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5; margin-top: 18px;">See you then! Can’t make it? Let your manager know as soon as you can.</p>
+        ${upcomingHtml}
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
         <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${escapeHtml(location)} &middot; Krawings Staff Portal</p>
       </div>

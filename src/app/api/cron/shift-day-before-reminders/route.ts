@@ -18,8 +18,8 @@ import { fetchEmployeeEmails, fetchFutureAssignedSlots } from '@/lib/shifts-odoo
 import { claimDayBeforeReminder, companiesWithDayBeforeReminder, getShiftSettings } from '@/lib/shifts-db';
 import { notifyManagers } from '@/lib/shifts-notify';
 import { sendDayBeforeShiftReminderEmail } from '@/lib/email';
-import { berlinDateTimeToUtcOdoo, berlinParts, fmtDay, fmtTimeRange, nowOdooUtc, odooToDate } from '@/lib/shifts-time';
-import { groupByEmployee, isDueNow, nextDateStr } from '@/lib/shift-day-before-reminder';
+import { berlinDateTimeToUtcOdoo, berlinISOWeekKey, berlinParts, fmtDay, fmtTimeRange, nowOdooUtc, odooToDate, weekKeyDays } from '@/lib/shifts-time';
+import { addDaysStr, groupByEmployee, isDueNow, nextDateStr } from '@/lib/shift-day-before-reminder';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -38,6 +38,10 @@ export async function GET(request: Request) {
   const nowUtc = nowOdooUtc();
   const nowMs = odooToDate(nowUtc).getTime();
   const todayBerlin = berlinParts(nowUtc).date;
+  const tomorrow = nextDateStr(todayBerlin);
+  // "Upcoming days" section = the rest of this week + all of next week (day after
+  // tomorrow → next week's Sunday), shown separately from the tomorrow reminder.
+  const endOfNextWeek = addDaysStr(weekKeyDays(berlinISOWeekKey(`${todayBerlin} 12:00:00`))[6], 7);
   const result = { companies: 0, emailed: 0, noEmailWarned: 0 };
 
   for (const companyId of companyIds) {
@@ -48,7 +52,6 @@ export async function GET(request: Request) {
     const scheduledMs = odooToDate(berlinDateTimeToUtcOdoo(todayBerlin, settings.dayBeforeReminderTime)).getTime();
     if (!isDueNow(scheduledMs, nowMs)) continue;
 
-    const tomorrow = nextDateStr(todayBerlin);
     let slots;
     try {
       slots = await fetchFutureAssignedSlots(companyId);
@@ -68,6 +71,23 @@ export async function GET(request: Request) {
         roleName: s.roleName || '',
       }));
     if (items.length === 0) continue;
+
+    // Each person's shifts for the upcoming days (day after tomorrow → next Sunday).
+    const upcomingItems = slots
+      .filter(s => {
+        if (s.employeeId === null) return false;
+        const d = berlinParts(s.start).date;
+        return d > tomorrow && d <= endOfNextWeek;
+      })
+      .map(s => ({
+        employeeId: s.employeeId as number,
+        startMs: odooToDate(s.start).getTime(),
+        dateStr: berlinParts(s.start).date,
+        day: fmtDay(s.start),
+        time: fmtTimeRange(s.start, s.end),
+        roleName: s.roleName || '',
+      }));
+    const upcomingByEmployee = groupByEmployee(upcomingItems);
 
     const byEmployee = groupByEmployee(items);
     let emails = new Map<number, string>();
@@ -94,12 +114,23 @@ export async function GET(request: Request) {
       // Claim BEFORE sending so a concurrent run can't double-send (SMTP failure after
       // the claim loses that one reminder — accepted; no auto-retry).
       if (!claimDayBeforeReminder(companyId, employeeId, tomorrow)) continue;
+      // Group this person's upcoming shifts by day (each group already sorted by start).
+      const upDays: { day: string; shifts: { time: string; roleName: string }[] }[] = [];
+      let curDate = '';
+      for (const it of upcomingByEmployee.get(employeeId) ?? []) {
+        if (it.dateStr !== curDate) {
+          curDate = it.dateStr;
+          upDays.push({ day: it.day, shifts: [] });
+        }
+        upDays[upDays.length - 1].shifts.push({ time: it.time, roleName: it.roleName });
+      }
       try {
         await sendDayBeforeShiftReminderEmail(
           email,
           group[0].employeeName,
           dateLabel,
           group.map(g => ({ time: g.time, roleName: g.roleName })),
+          upDays,
           companyId,
         );
         result.emailed += 1;
