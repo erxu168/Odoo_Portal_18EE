@@ -26,6 +26,10 @@ interface ManifestResponse {
   manifest: FloorplanManifest | null;
   focus: { locationId: number; floorId: number; cx: number; cy: number } | null;
   focusMissing: boolean;
+  /** The spot that was ASKED for — not always the one pinned. */
+  focusAsked?: { id: number; name: string } | null;
+  /** Set when the map flew to an ANCESTOR because the spot itself has no pin. */
+  focusVia?: { id: number; name: string } | null;
 }
 
 export interface FloorplanAppProps {
@@ -43,6 +47,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const stateClass = onClose ? 'flex h-full flex-col bg-gray-50' : 'flex min-h-screen flex-col bg-gray-50';
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
   const [resp, setResp] = useState<ManifestResponse | null>(null);
+  // What to tell the person about how well we answered "where is this?".
+  const [findNote, setFindNote] = useState<{ kind: 'via' | 'missing'; text: string } | null>(null);
   const [activeFloorId, setActiveFloorId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [sheetId, setSheetId] = useState<number | null>(null);
@@ -175,11 +181,25 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         }
         if (floorId == null) floorId = floors[0]?.id ?? null;
         setActiveFloorId(floorId);
+        // Say plainly how the question was answered. Flying to a DIFFERENT pin
+        // than the one asked for, with nothing on screen to explain it, is the
+        // kind of quiet half-answer that makes a map untrustworthy.
+        if (data.focus && data.focusVia && data.focusAsked) {
+          setFindNote({ kind: 'via', text: `${data.focusAsked.name} is inside ${data.focusVia.name} — shown here.` });
+        } else if (data.focusMissing && data.focusAsked) {
+          setFindNote({ kind: 'missing', text: `${data.focusAsked.name} is not on the plan yet, so there is nothing to point at.` });
+        } else {
+          setFindNote(null);
+        }
         if (data.focus) {
           setSelectedId(data.focus.locationId);
-          // In the counting overlay we only fly to + highlight the spot; opening
-          // the editor sheet here is what buried the map.
-          if (!inOverlay) setSheetId(data.focus.locationId);
+          // Highlight what is DRAWN, but open the details of what was ASKED
+          // about: after the ancestor walk those are different things, and
+          // showing the room's products when someone asked about a drawer is a
+          // confident wrong answer. (Codex, 2026-08-04.)
+          // In the counting overlay neither sheet opens — that is what buried
+          // the map.
+          if (!inOverlay) setSheetId(data.focusAsked?.id ?? data.focus.locationId);
           setFlyTo({ cx: data.focus.cx, cy: data.focus.cy, seq: ++seqRef.current });
         } else if (data.focusMissing && spotParam && !inOverlay) {
           // Not on the plan (a drawer inside a fridge never gets its own
@@ -199,6 +219,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         if (uid && cookieCompany) {
           const cached = await getCachedFloorplan(uid, cookieCompany);
           if (tokenRef.current === token && cached) {
+            // The cached plan carries no focus, so any note is now unanswered.
+            setFindNote(null);
             setResp({ manifest: cached.manifest, focus: null, focusMissing: false });
             setOfflineRasters(cached.rasterUrls);
             setOfflineFrom(cached.cachedAt);
@@ -297,6 +319,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     setActiveFloorId(floorId);
     setSelectedId(null);
     setSheetId(null);
+    setFindNote(null);   // it described a place on the floor we just left
     setFilterTypes([]);
     setEditSel(null);   // never keep a Remove-marker bar for an off-screen anchor
     setRemoveAsk(null); setRemoveErr(null);
@@ -309,6 +332,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
 
   const focusLocation = useCallback((locationId: number) => {
     if (!manifest) return;
+    // The note answered "where is the spot you asked about". Once the person
+    // navigates somewhere else it is a caption for a different place, and it
+    // would sit there saying "D4 is inside FRIDGE ROOM" over a completely
+    // unrelated corner of the plan. (Codex, 2026-08-04.)
+    setFindNote(null);
     // The anchor may live on another floor — switch first, then glide.
     let anchor = null as null | { floorId: number; cx: number; cy: number; typeKey: string };
     for (const [fidStr, list] of Object.entries(manifest.anchors)) {
@@ -759,9 +787,15 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           Offline — showing the plan saved {new Date(offlineFrom).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
         </div>
       )}
-      {resp?.focusMissing && (
-        <div className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[12.5px] font-medium text-amber-800">
-          Not marked on the plan itself — it usually sits inside something that is{inOverlay ? '.' : '. Details below.'}
+      {/* NAMES the place rather than describing the situation. The old wording
+          ("it usually sits inside something that is") was true but left the
+          person to work out what they were looking at. */}
+      {findNote && (
+        <div className={`mx-3 mt-2 rounded-xl px-4 py-2.5 text-[12.5px] font-medium ${
+          findNote.kind === 'via' ? 'bg-blue-50 text-blue-800' : 'bg-amber-50 text-amber-800'
+        }`}>
+          {findNote.text}
+          {findNote.kind === 'missing' && !inOverlay && ' Put it on the plan and the crosshair will find it.'}
         </div>
       )}
       {!immersive && !inOverlay && <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />}
@@ -890,6 +924,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           filtered={filterTypes.length > 0}
           editable={edit}
           onTapAnchor={id => {
+            // Tapping a different marker makes any find-note a caption for
+            // something the person is no longer looking at.
+            setFindNote(null);
             if (edit) {
               // Tapping an existing marker always selects it — even with a type
               // armed — so you can move or remove it without disarming first.

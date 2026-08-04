@@ -681,6 +681,75 @@ export function deleteSpotWithAnchors(countLocationId: number, companyId: number
  * of ACTIVE floors count: a draft/superseded revision or an archived floor must
  * never leak into staff search, QR deep links, or "Show on map".
  */
+/**
+ * The nearest place ON THE PLAN for a spot — itself if it is pinned, otherwise
+ * the closest ancestor that is.
+ *
+ * A drawer never gets its own pin, and neither does the fridge it is in: only
+ * ROOMS are drawn. So asking "where is Drawer D4" and finding no pin on D4 is
+ * the normal case, not the exception, and answering "nowhere" is useless to
+ * somebody holding a phone in a kitchen. Walking up gives the true answer —
+ * "it is inside the Countertop fridge, which is here" — and `via` lets the
+ * screen say exactly that instead of silently showing a different pin.
+ *
+ * Returns null only when NOTHING in the chain is on a published plan, which is
+ * a real state today: 75 counting spots exist and 44 rooms are pinned, and they
+ * are not the same records. (Ethan, 2026-08-04.)
+ */
+export function findAnchorForLocationOrAncestor(countLocationId: number): {
+  floor_id: number; revision_id: number; cx: number; cy: number;
+  /** The pinned location actually used — null when it is the spot itself. */
+  via: { id: number; name: string } | null;
+} | null {
+  initFloorplanTables();
+  const db = getDb();
+  // ONE recursive walk up the tree, taking the NEAREST ancestor that is drawn.
+  //
+  // Three things it must get right, enforced in the query rather than a loop:
+  //  - it never leaves the restaurant it started in. parent_id carries no
+  //    company constraint, and NEITHER DOES AN ANCHOR'S FLOOR — guarding only
+  //    the parent chain still let a location attached to another company's
+  //    revision return that foreign floor. (Codex, 2026-08-04.)
+  //  - only a PUBLISHED revision of an ACTIVE floor counts as drawn.
+  //  - depth is effectively unbounded. A low cap quietly turns a valid deep
+  //    hierarchy into "not on the plan", which is a lie rather than a limit;
+  //    the 50 here exists solely as a backstop against a cycle in the data.
+  const row = db.prepare(`
+    WITH RECURSIVE up(id, name, company_id, parent_id, depth) AS (
+      SELECT id, name, company_id, parent_id, 0
+        FROM count_locations WHERE id = ?
+      UNION ALL
+      SELECT l.id, l.name, l.company_id, l.parent_id, up.depth + 1
+        FROM count_locations l
+        JOIN up ON l.id = up.parent_id
+       WHERE l.company_id IS up.company_id
+         AND up.depth < 50
+    )
+    SELECT up.id AS anchored_id, up.name AS anchored_name, up.depth,
+           f.id AS floor_id, r.id AS revision_id, a.cx, a.cy
+      FROM up
+      JOIN inventory_floor_anchors a ON a.count_location_id = up.id AND a.is_primary = 1
+      JOIN inventory_floor_revisions r ON r.id = a.revision_id AND r.status = 'published'
+      JOIN inventory_floors f ON f.id = r.floor_id AND f.active = 1
+       AND f.current_revision_id = r.id
+       AND f.company_id IS up.company_id
+     ORDER BY up.depth ASC, r.id DESC
+     LIMIT 1
+  `).get(countLocationId) as {
+    anchored_id: number; anchored_name: string; depth: number;
+    floor_id: number; revision_id: number; cx: number; cy: number;
+  } | undefined;
+
+  if (!row) return null;
+  return {
+    floor_id: row.floor_id,
+    revision_id: row.revision_id,
+    cx: row.cx,
+    cy: row.cy,
+    via: row.depth === 0 ? null : { id: row.anchored_id, name: row.anchored_name },
+  };
+}
+
 export function getPrimaryAnchorForLocation(countLocationId: number): { floor_id: number; revision_id: number; cx: number; cy: number } | null {
   initFloorplanTables();
   const row = getDb().prepare(`
