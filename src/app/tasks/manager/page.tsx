@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
 import PrimaryButton from '@/components/ui/PrimaryButton';
 import ManagerTabs from '../_components/ManagerTabs';
 import type { DashboardData, TaskListSummary } from '@/lib/odoo-tasks';
@@ -63,8 +65,10 @@ export default function ManagerDashboard() {
 
       <div className="max-w-2xl mx-auto px-4 py-5">
         {loading ? (
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-gray-200 rounded-2xl animate-pulse" />)}
+          // Skeleton mirrors the real KPI row (4 across, chip height), so the
+          // layout doesn't jump when the numbers land.
+          <div className="grid grid-cols-4 gap-2 mb-5">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-[58px] bg-gray-200 rounded-xl animate-pulse" />)}
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">{error}</div>
@@ -101,24 +105,42 @@ export default function ManagerDashboard() {
   );
 }
 
+/**
+ * The four numbers, as the portal's standard KPI chips.
+ *
+ * Was four cards with a coloured stripe down the left edge, each number in its
+ * own colour — green, green, red, amber. With everything shouting, a real "3
+ * overdue" competed with a perfectly healthy "60%". The standard's rule is that
+ * a number goes red ONLY when it is a problem you must act on, so red always
+ * means look here. Overdue is red when there IS an overdue task; the rest stay
+ * neutral, including Photos Pending — waiting to be reviewed is a queue, not a
+ * fault. Tapping Photos Pending goes straight to the review screen.
+ */
 function StatGrid({ data }: { data: DashboardData }) {
-  const stats = [
-    { label: 'Active Lists',    value: data.active_lists,             color: 'text-green-700', accent: 'border-green-600' },
-    { label: 'Avg Completion',  value: `${data.avg_completion}%`,     color: 'text-green-600',  accent: 'border-green-400'  },
-    { label: 'Overdue',         value: data.total_overdue,            color: 'text-red-600',    accent: 'border-red-400'    },
-    { label: 'Photos Pending',  value: data.total_photos_pending,     color: 'text-amber-600',  accent: 'border-amber-400'  },
-  ];
+  const router = useRouter();
   return (
-    <div className="grid grid-cols-2 gap-3 mb-5">
-      {stats.map(s => (
-        <div key={s.label} className={`bg-white rounded-2xl border-l-4 ${s.accent} p-4 shadow-sm`}>
-          <p className={`text-3xl font-extrabold leading-none ${s.color}`}>{s.value}</p>
-          <p className="text-xs text-gray-400 font-medium mt-1.5">{s.label}</p>
-        </div>
-      ))}
-    </div>
+    <KpiRow columns={4} className="mb-5">
+      <KpiChip value={data.active_lists} label="Lists" />
+      <KpiChip value={`${data.avg_completion}%`} label="Done" />
+      <KpiChip
+        value={data.total_overdue}
+        label="Overdue"
+        tone={data.total_overdue > 0 ? 'danger' : 'default'}
+      />
+      <KpiChip
+        value={data.total_photos_pending}
+        label="Photos"
+        onClick={() => router.push('/tasks/manager/review')}
+      />
+    </KpiRow>
   );
 }
+
+/** Plain words for a list's state — never colour alone (design guide §4). */
+const LIST_STATE_LABEL: Record<string, string> = {
+  done: 'Done',
+  in_progress: 'In progress',
+};
 
 function DeptList({ lists }: { lists: TaskListSummary[] }) {
   if (!lists.length) {
@@ -138,17 +160,23 @@ function DeptList({ lists }: { lists: TaskListSummary[] }) {
           href={`/tasks/manager/dept/${l.department_id}`}
           className={`flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors ${i < lists.length - 1 ? 'border-b border-gray-100' : ''}`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
               l.state === 'done' ? 'bg-green-500' :
               l.state === 'in_progress' ? 'bg-amber-400' : 'bg-gray-300'
-            }`} />
-            <div>
-              <p className="font-semibold text-sm text-gray-800">{l.department_name}</p>
+            }`} aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-gray-800 truncate">{l.department_name}</p>
+              {/* The dot alone said nothing — a colour is not a status. The word
+                  carries it now, and the photo count says what it counts
+                  instead of leaving a bare camera glyph to be guessed at. */}
               <p className="text-xs text-gray-400 mt-0.5">
-                {l.line_count} task{l.line_count === 1 ? '' : 's'}
+                {LIST_STATE_LABEL[l.state] || 'Not started'}
+                {' · '}{l.line_count} task{l.line_count === 1 ? '' : 's'}
                 {l.overdue_count > 0 ? ` · ${l.overdue_count} overdue` : ''}
-                {l.photo_pending_count > 0 ? ` · ${l.photo_pending_count} \u{1F4F8}` : ''}
+                {l.photo_pending_count > 0
+                  ? ` · ${l.photo_pending_count} photo${l.photo_pending_count === 1 ? '' : 's'} to review`
+                  : ''}
               </p>
             </div>
           </div>
