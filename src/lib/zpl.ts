@@ -322,3 +322,150 @@ export function generateLocationZPL(
   lines.push('^XZ');
   return lines.join('\n');
 }
+
+/**
+ * THE SHELF LABEL — "this is what belongs here".
+ *
+ * Stuck on the storage place, not on the product. So the PRODUCT NAME is the
+ * headline (Ethan, 2026-08-04: "make the product name bigger… it could be even
+ * larger"): it takes the full label width and prints ~13mm per line on a 90×60
+ * at 203dpi, readable across a kitchen. Everything else earns its place under it:
+ *
+ *   Thymian, frisch          ← name, full width, up to 2 lines
+ *   counted in kg            ← the unit staff count in
+ *   ▌▐▌▐▐▌▐▌▌▐▌▐▐▌           ← the product's own barcode, scan to count it
+ *   KRW-1546
+ *   ─────────────────────
+ *   WAJ Kitchen › Fridge › D4    [QR]   ← where, in full, + the shelf's own code
+ *
+ * The shelf's QR sits beside the LOCATION rather than up beside the name, both
+ * because that is what it labels and because it frees the whole width for the
+ * name. Scanning it jumps to that shelf; scanning the bar code counts the product.
+ *
+ * Sizes are shares of the label, so it holds at any size the manager picks — but
+ * a long name steps DOWN one size rather than wrapping to a third line, which
+ * would push the barcode off the label.
+ */
+export function generateProductStorageZPL(
+  data: {
+    productName: string;
+    /** The product's barcode. Absent → the label says so rather than printing a silent gap. */
+    barcodeValue?: string | null;
+    /** "WAJ Kitchen › Countertop fridge › D4". Absent → the product has no home spot yet. */
+    locationLabel?: string | null;
+    /** The shelf's own scannable code (KWLOC-<id>) — omitted when there is no spot. */
+    locationCode?: string | null;
+    /** Counting unit, e.g. "kg" — small, under the name. */
+    uom?: string | null;
+    /** Stamped small in the corner so a sticker left on a renamed shelf is identifiable. */
+    printedOn?: string | null;
+  },
+  opts: { widthMm: number; heightMm: number; dpi?: number },
+): string {
+  const dpi = opts.dpi ?? 203;
+  const scale = dotsPerMm(dpi);
+  const wDots = Math.round(opts.widthMm * scale);
+  const hDots = Math.round(opts.heightMm * scale);
+  const margin = Math.round(3 * scale);
+  const printW = wDots - margin * 2;
+  const gap = Math.max(3, Math.round(hDots * 0.015));
+
+  const lines: string[] = ['^XA', `^PW${wDots}`, `^LL${hDots}`, '^CI28', '^LH0,0'];
+
+  // The name owns the top. Two lines at 22% each is the loudest it can be while
+  // still leaving the barcode a scannable height; a name too long for two lines
+  // at that size steps down instead of overflowing.
+  // 17% per line, twice, is as loud as the name can be while the barcode keeps
+  // real headroom above the ~8mm a scanner needs. At 22% (my first attempt) the
+  // barcode had 20 dots left and vanished from the label entirely — a test
+  // caught it; at 18% it landed exactly on the floor, one tweak from vanishing
+  // again. Half a millimetre of name buys 2mm of reliable scanning.
+  const CHARS_PER_LINE_AT_FULL = 18;   // measured for ^A0N at 17% of a 90mm label
+  const name = data.productName || '';
+  const bigH = Math.round(hDots * 0.17);
+  const stepDown = name.length > CHARS_PER_LINE_AT_FULL * 2;
+  const nameF = font(stepDown ? Math.round(bigH * 0.76) : bigH);
+
+  let y = margin;
+  lines.push(`^FO${margin},${y}^A0N,${nameF.h},${nameF.w}^FB${printW},2,0,L,0^FD${escapeZPL(name)}^FS`);
+  // Reserve two lines whether or not the name uses both, so every label in a
+  // batch has its barcode and location in the SAME place on the sticker.
+  y += nameF.h * 2 + gap;
+
+  if (data.uom) {
+    const uomF = font(Math.max(12, Math.round(hDots * 0.055)));
+    lines.push(`^FO${margin},${y}^A0N,${uomF.h},${uomF.w}^FB${printW},1,0,L,0^FDcounted in ${escapeZPL(data.uom)}^FS`);
+    y += uomF.h + gap;
+  }
+
+  // ── The product's barcode ──
+  const codeF = font(Math.max(12, Math.round(hDots * 0.058)));
+  // Everything below the barcode, so its height is what is genuinely left over.
+  const locF = font(Math.max(14, Math.round(hDots * 0.07)));
+  const locCodeF = font(Math.max(11, Math.round(hDots * 0.045)));
+  const locBlockH = (data.locationLabel ? locF.h * 2 : 0)
+    + (data.locationCode ? locCodeF.h + gap : 0)
+    + Math.round(2 * scale);                                  // the rule above it
+  const bottomReserved = locBlockH + margin;
+
+  if (data.barcodeValue) {
+    const avail = hDots - y - bottomReserved - codeF.h - gap * 2;
+    // 18mm cap, not the food label's 12mm — a shelf sticker is read from further
+    // away and has the room. Floor of ~8mm keeps it scannable.
+    const barcodeH = Math.min(avail, Math.round(18 * scale));
+    if (barcodeH >= Math.round(8 * scale)) {
+      // Same narrow-head rule as generateZPL: Code 128 subset-B worst case is
+      // 11 modules per character plus start/check/stop, and 2 dots per module
+      // can overrun a narrow head. Drop to ^BY1 rather than print a chopped code.
+      const modules = 11 * (data.barcodeValue.length + 2) + 13;
+      const by = modules * 2 <= printW ? 2 : 1;
+      lines.push(`^FO${margin},${y}^BY${by}^BCN,${barcodeH},N,N,N^FD${escapeZPL(data.barcodeValue)}^FS`);
+      y += barcodeH + gap;
+      lines.push(`^FO${margin},${y}^A0N,${codeF.h},${codeF.w}^FB${printW},1,0,L,0^FD${escapeZPL(data.barcodeValue)}^FS`);
+      y += codeF.h + gap;
+    }
+  } else {
+    // A shelf label with no code is not a mistake to hide — it is a job to do.
+    const warnF = font(Math.max(14, Math.round(hDots * 0.07)));
+    lines.push(`^FO${margin},${y}^A0N,${warnF.h},${warnF.w}^FB${printW},1,0,L,0^FDNo barcode yet^FS`);
+    y += warnF.h + gap;
+  }
+
+  // ── Where it lives ──
+  const ruleY = Math.max(y, hDots - bottomReserved);
+  lines.push(`^FO${margin},${ruleY}^GB${printW},2,2^FS`);
+  let ly = ruleY + Math.round(2 * scale) + gap;
+
+  // The QR sits at the right, bottom-aligned, and the location text flows beside it.
+  let locW = printW;
+  if (data.locationCode) {
+    const qrPayload = data.locationCode;
+    const modules = qrModules(qrPayload.length);
+    const qrTarget = Math.min(hDots - ly - margin, Math.round(printW * 0.16));
+    const mag = Math.max(2, Math.min(10, Math.round(qrTarget / modules)));
+    const qrDots = mag * modules;
+    lines.push(`^FO${wDots - margin - qrDots},${hDots - margin - qrDots}^BQN,2,${mag}^FDQA,${escapeZPL(qrPayload)}^FS`);
+    locW = printW - qrDots - Math.round(3 * scale);
+  }
+
+  if (data.locationLabel) {
+    lines.push(`^FO${margin},${ly}^A0N,${locF.h},${locF.w}^FB${locW},2,0,L,0^FD${escapeZPL(data.locationLabel)}^FS`);
+    ly += locF.h * 2;
+  } else {
+    lines.push(`^FO${margin},${ly}^A0N,${locF.h},${locF.w}^FB${locW},1,0,L,0^FDNo storage place set^FS`);
+    ly += locF.h;
+  }
+  if (data.locationCode) {
+    lines.push(`^FO${margin},${ly}^A0N,${locCodeF.h},${locCodeF.w}^FB${locW},1,0,L,0^FD${escapeZPL(data.locationCode)}^FS`);
+  }
+
+  // Renaming a shelf silently invalidates every sticker already on it, and
+  // nothing else on the label would ever betray its age.
+  if (data.printedOn) {
+    const stampF = font(Math.max(10, Math.round(hDots * 0.042)));
+    lines.push(`^FO${margin},${hDots - margin - stampF.h}^A0N,${stampF.h},${stampF.w}^FB${printW},1,0,R,0^FD${escapeZPL(data.printedOn)}^FS`);
+  }
+
+  lines.push('^XZ');
+  return lines.join('\n');
+}
