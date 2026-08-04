@@ -116,7 +116,6 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
   }, [setHidden]);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const pinSheetRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
   // Keep live values for the mount-only key handler without re-binding it.
@@ -213,12 +212,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
         return;
       }
       if (e.key !== 'Tab') return;
-      // While a pin note is open it's a modal-within-modal: trap Tab inside the
-      // sheet, not the whole player.
-      const root =
-        activePinRef.current !== null && pinSheetRef.current
-          ? pinSheetRef.current
-          : containerRef.current;
+      const root = containerRef.current;
       if (!root) return;
       const nodes = focusableWithin(root);
       if (nodes.length === 0) {
@@ -248,19 +242,6 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const noteOpen = step?.media_type === 'photo' && activePin !== null && !!step.pins[activePin];
-
-  // Move focus into the pin-note sheet when it opens and return it to the pin
-  // (if still on screen) when it closes — the sheet is a modal within the player.
-  useEffect(() => {
-    if (!noteOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
-    (focusableWithin(pinSheetRef.current)[0] ?? pinSheetRef.current)?.focus();
-    return () => {
-      if (opener?.isConnected) opener.focus();
-    };
-  }, [noteOpen]);
-
   function goBack() {
     setIndex(i => Math.max(0, i - 1));
   }
@@ -268,9 +249,6 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
     if (isLast) onClose();
     else setIndex(i => Math.min(total - 1, i + 1));
   }
-
-  const activeNote =
-    step && step.media_type === 'photo' && activePin !== null ? step.pins[activePin]?.note : undefined;
 
   return (
     <div
@@ -281,22 +259,28 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
       aria-labelledby={titleId}
       className="fixed inset-0 z-[100] flex flex-col bg-gray-50 outline-none"
     >
-      {/* Header (blue portal chrome) */}
-      <header className="flex-shrink-0 bg-[#2563EB] text-white px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/70">
+      {/* Header (blue portal chrome) — compact on phone/tablet so the photo gets
+          the room; desktop (lg) keeps the roomier original. */}
+      <header className="flex-shrink-0 bg-[#2563EB] text-white px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2 lg:pb-4">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="hidden lg:block text-[11px] font-bold uppercase tracking-[0.08em] text-white/70">
               How-to guide
             </p>
-            <h1 id={titleId} className="text-lg font-bold leading-tight truncate">
+            <h1 id={titleId} className="text-base lg:text-lg font-bold leading-tight truncate">
               {guide?.line_name || (isPreview ? 'Guide preview' : 'Guided tutorial')}
             </h1>
           </div>
+          {total > 0 && (
+            <span className="lg:hidden flex-shrink-0 text-xs font-bold tabular-nums bg-white/20 px-2.5 py-1 rounded-full" aria-hidden="true">
+              {index + 1}/{total}
+            </span>
+          )}
           <button
             type="button"
             onClick={onClose}
             aria-label="Close guide"
-            className="flex-shrink-0 -mr-1 w-10 h-10 flex items-center justify-center rounded-full text-white/90 active:bg-white/15 motion-safe:transition-colors"
+            className="flex-shrink-0 -mr-1 w-9 h-9 lg:w-10 lg:h-10 flex items-center justify-center rounded-full text-white/90 active:bg-white/15 motion-safe:transition-colors"
           >
             <span aria-hidden="true" className="text-xl leading-none">
               &#x2715;
@@ -306,11 +290,12 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
 
         {total > 0 && (
           <>
-            <p className="mt-2 text-sm font-semibold text-white/90" aria-live="polite">
+            <p className="hidden lg:block mt-2 text-sm font-semibold text-white/90" aria-live="polite">
               Step {index + 1} of {total}
             </p>
+            {/* phone/tablet: slim segmented progress bar (tap a segment to jump) */}
             <div
-              className="mt-1.5 flex flex-wrap items-center gap-0.5"
+              className="lg:hidden mt-2 flex items-center gap-1"
               role="group"
               aria-label={`Step navigation — step ${index + 1} of ${total}`}
             >
@@ -321,7 +306,29 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                   onClick={() => setIndex(i)}
                   aria-label={`Go to step ${i + 1} of ${total}`}
                   aria-current={i === index ? 'true' : undefined}
-                  // Small visual bar inside a padded (~28px) touch target.
+                  className="group flex-1 py-1.5 flex items-center"
+                >
+                  <span
+                    className={`block w-full h-1 rounded-full motion-safe:transition-all ${
+                      i <= index ? 'bg-white' : 'bg-white/35 group-active:bg-white/70'
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+            {/* desktop: keep the original dot row (don't touch desktop) */}
+            <div
+              className="hidden lg:flex mt-1.5 flex-wrap items-center gap-0.5"
+              role="group"
+              aria-label={`Step navigation — step ${index + 1} of ${total} (desktop)`}
+            >
+              {steps.map((s, i) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setIndex(i)}
+                  aria-label={`Go to step ${i + 1} of ${total}`}
+                  aria-current={i === index ? 'true' : undefined}
                   className="group flex items-center justify-center h-7 px-1"
                 >
                   <span
@@ -337,7 +344,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
       </header>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-3 py-3">
         <div className="max-w-md mx-auto">
           {loading && (
             <div className="py-16 text-center text-sm font-medium text-gray-500">Loading how-to…</div>
@@ -397,23 +404,12 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                 broken={imgError.has(step.id)}
                 activePin={activePin}
                 onPinClick={i => setActivePin(a => (a === i ? null : i))}
+                onClearActive={() => setActivePin(null)}
                 onImageError={() => setImgError(prev => new Set(prev).add(step.id))}
                 onRetry={() => retryImage(step.id)}
                 lineName={guide?.line_name || ''}
                 stepNo={index + 1}
               />
-
-              {/* Pins aren't obviously tappable on their own — tell staff to tap
-                  them (and pulse the markers, below, to draw the eye). */}
-              {step.media_type === 'photo' && step.pins.length > 0 && !imgError.has(step.id) && (
-                <div className="flex items-center justify-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-600 text-white text-[11px] font-bold flex items-center justify-center" aria-hidden="true">1</span>
-                  <p className="text-[13px] font-semibold text-amber-800">
-                    Tap each numbered marker on the photo to read its note
-                    {step.pins.length > 1 ? ` (${step.pins.length} of them)` : ''}.
-                  </p>
-                </div>
-              )}
 
               {/* Explanation, always as TEXT (never HTML). Tip steps render the
                   explanation inside their own panel, so don't repeat it here. */}
@@ -463,44 +459,6 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
         </div>
       )}
 
-      {/* Pin note — bottom sheet, above the player (z-[110]) */}
-      {activeNote !== undefined && (
-        <div
-          className="fixed inset-0 z-[110] flex items-end justify-center"
-          onClick={() => setActivePin(null)}
-        >
-          <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
-          <div
-            ref={pinSheetRef}
-            tabIndex={-1}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Note ${(activePin ?? 0) + 1}`}
-            onClick={e => e.stopPropagation()}
-            className="relative w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl sm:mb-6 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] outline-none"
-          >
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-7 h-7 flex-shrink-0 rounded-full bg-green-600 text-white text-xs font-bold flex items-center justify-center">
-                  {(activePin ?? 0) + 1}
-                </span>
-                <span className="text-sm font-bold text-gray-800">Note</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActivePin(null)}
-                aria-label="Close note"
-                className="w-9 h-9 flex items-center justify-center text-gray-400 active:text-gray-600"
-              >
-                <span aria-hidden="true" className="text-lg leading-none">
-                  &#x2715;
-                </span>
-              </button>
-            </div>
-            <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">{activeNote}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -512,6 +470,7 @@ function StepMedia({
   broken,
   activePin,
   onPinClick,
+  onClearActive,
   onImageError,
   onRetry,
   lineName,
@@ -522,6 +481,7 @@ function StepMedia({
   broken: boolean;
   activePin: number | null;
   onPinClick: (index: number) => void;
+  onClearActive: () => void;
   onImageError: () => void;
   onRetry: () => void;
   lineName: string;
@@ -649,6 +609,8 @@ function StepMedia({
         src={src}
         alt={`Step ${stepNo} photo`}
         mode="view"
+        imgClassName="max-h-[64vh]"
+        notePopover
         pins={step.pins.map((p, i) => ({
           pin_x: p.pin_x,
           pin_y: p.pin_y,
@@ -657,6 +619,7 @@ function StepMedia({
         }))}
         activeIndex={activePin}
         onPinClick={onPinClick}
+        onClearActive={onClearActive}
         onImageError={onImageError}
       />
     </div>

@@ -35,6 +35,12 @@ interface Props {
   className?: string;
   /** Accessible description of the image (falls back to a generic label). */
   alt?: string;
+  /** view: show the active pin's label as a popover anchored at the dot. */
+  notePopover?: boolean;
+  /** view: user tapped the image background — clear the open note. */
+  onClearActive?: () => void;
+  /** Extra classes for the <img> (e.g. a max-height so the photo fills more space). */
+  imgClassName?: string;
 }
 
 /** Movement below this (px) counts as a tap, not a drag. */
@@ -54,6 +60,7 @@ const DRAG_THRESHOLD = 5;
  */
 export default function PinnableImage({
   src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '', alt,
+  notePopover = false, onClearActive, imgClassName = '',
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Live position of the pin being dragged (render-only; committed on drop).
@@ -61,6 +68,43 @@ export default function PinnableImage({
   const gesture = useRef<{ pointerId: number; index: number; startX: number; startY: number; moved: boolean } | null>(null);
   // Suppress the synthetic click that follows a drag's pointerup.
   const justDragged = useRef(false);
+
+  // View-mode note popover, anchored at the active pin. It flips above/below the
+  // dot and clamps horizontally so it never leaves the photo — feels attached to
+  // the spot it describes, unlike a detached bottom sheet.
+  const popRef = useRef<HTMLDivElement>(null);
+  const [notePos, setNotePos] = useState<{ left: number; top: number; below: boolean; arrowLeft: number } | null>(null);
+  const [resizeTick, setResizeTick] = useState(0);
+  const notePin = mode === 'view' && notePopover && activeIndex != null ? pins[activeIndex] : undefined;
+  const noteLabel = notePin?.label;
+  const noteAx = notePin?.pin_x ?? 0;
+  const noteAy = notePin?.pin_y ?? 0;
+
+  useEffect(() => {
+    if (!noteLabel) { setNotePos(null); return; }
+    const wrap = wrapRef.current, pop = popRef.current;
+    if (!wrap || !pop) return;
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (!W || !H) return;
+    const pr = pop.getBoundingClientRect();
+    const dotX = W * noteAx, dotY = H * noteAy;
+    // Dot in the upper half → note below it; lower half → above it. Keeps the
+    // note next to the dot and on-screen.
+    const below = noteAy < 0.55;
+    let left = dotX - pr.width / 2;
+    left = Math.max(6, Math.min(left, Math.max(6, W - pr.width - 6)));
+    const top = below ? dotY + 22 : dotY - 22 - pr.height;
+    let arrowLeft = dotX - left;
+    arrowLeft = Math.max(14, Math.min(arrowLeft, pr.width - 14));
+    setNotePos({ left, top, below, arrowLeft });
+  }, [noteLabel, noteAx, noteAy, resizeTick]);
+
+  useEffect(() => {
+    if (!noteLabel) return;
+    const on = () => setResizeTick(t => t + 1);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, [noteLabel]);
 
   // If a save freezes the editor mid-gesture, VOID the captured drag immediately.
   // Otherwise a pointer released later — even after a failed save re-enables the
@@ -80,7 +124,9 @@ export default function PinnableImage({
   }
 
   function handleWrapClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (mode !== 'edit' || !onPlace || disabled) return;
+    // View mode: a tap on the photo background dismisses an open note.
+    if (mode === 'view') { onClearActive?.(); return; }
+    if (!onPlace || disabled) return;
     if (justDragged.current) { justDragged.current = false; return; }
     const f = fractions(e);
     if (f) onPlace(f.x, f.y);
@@ -138,7 +184,7 @@ export default function PinnableImage({
         src={src}
         alt={alt || 'Guide photo'}
         onError={onImageError}
-        className="block max-w-full h-auto rounded-lg"
+        className={`block max-w-full h-auto rounded-lg ${imgClassName}`}
         draggable={false}
       />
       {pins.map((p, i) => {
@@ -207,6 +253,43 @@ export default function PinnableImage({
           </button>
         );
       })}
+      {noteLabel && (
+        <div
+          ref={popRef}
+          role="note"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            left: notePos?.left ?? 0,
+            top: notePos?.top ?? 0,
+            maxWidth: 'min(240px, 80%)',
+            minWidth: 116,
+            visibility: notePos ? 'visible' : 'hidden',
+          }}
+          className="absolute z-20 rounded-xl bg-white shadow-lg ring-1 ring-black/5"
+        >
+          <div className="flex items-start gap-1.5 px-3 py-2.5">
+            <span className="mt-[1px] flex-shrink-0 w-5 h-5 rounded-full bg-orange-500 text-white text-[11px] font-bold flex items-center justify-center">
+              {(activeIndex ?? 0) + 1}
+            </span>
+            <span className="text-sm leading-snug text-gray-800 whitespace-pre-wrap break-words">{noteLabel}</span>
+          </div>
+          {notePos && (
+            <span
+              aria-hidden="true"
+              className="absolute"
+              style={{
+                left: notePos.arrowLeft - 7,
+                ...(notePos.below ? { top: -7 } : { bottom: -7 }),
+                width: 0,
+                height: 0,
+                borderLeft: '7px solid transparent',
+                borderRight: '7px solid transparent',
+                ...(notePos.below ? { borderBottom: '7px solid #ffffff' } : { borderTop: '7px solid #ffffff' }),
+              }}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
