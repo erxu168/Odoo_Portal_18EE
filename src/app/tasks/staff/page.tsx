@@ -331,7 +331,7 @@ export default function StaffPage() {
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
               onNoteSave={handleNoteSave}
-              onReload={load}
+              onReload={() => load(true)}
               readOnly={isPast || isFuture}
             />
           </>

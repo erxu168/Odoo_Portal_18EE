@@ -43,8 +43,12 @@ export default function DeptReviewPage({ params }: PageProps) {
   const isFuture = date > today;
   const { toast, showToast, dismissToast } = useToast();
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  // `quiet` refetches + swaps the data WITHOUT flipping `loading` — so a check-off
+  // reload doesn't blank the whole list (which read as a flash). Keyed rows just
+  // move between sections. Only the initial load / date change shows the skeleton.
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/tasks/manager/history?dept=${deptId}&date=${date}`);
       const body = await res.json();
@@ -53,7 +57,7 @@ export default function DeptReviewPage({ params }: PageProps) {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [deptId, date]);
 
@@ -63,14 +67,14 @@ export default function DeptReviewPage({ params }: PageProps) {
     const res = await fetch(`/api/tasks/lines/${lineId}/complete`, { method: 'POST' });
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed');
-    await load();
+    await load(true);   // quiet — don't blank the list under the user's thumb
   }
 
   async function handleUncomplete(lineId: number) {
     const res = await fetch(`/api/tasks/lines/${lineId}/complete`, { method: 'DELETE' });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body.ok === false) throw new Error(body.error || 'Failed');
-    await load();
+    await load(true);   // quiet reload — the task glides to its section, no flash
   }
 
   async function handleSubtaskToggle(lineId: number, subtaskId: number, done: boolean) {
@@ -101,7 +105,7 @@ export default function DeptReviewPage({ params }: PageProps) {
     });
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed to save note');
-    await load();
+    await load(true);
     showToast(note.trim() ? 'Note saved' : 'Note removed');
   }
 
@@ -122,7 +126,7 @@ export default function DeptReviewPage({ params }: PageProps) {
     setCreating(true);
     try {
       await ensureList();
-      await load();
+      await load(true);
       showToast('List created');
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Failed', 'error');
@@ -143,7 +147,7 @@ export default function DeptReviewPage({ params }: PageProps) {
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed to add task');
     setShowAddModal(false);
-    await load();
+    await load(true);
     showToast('Task added');
   }
 
@@ -230,7 +234,7 @@ export default function DeptReviewPage({ params }: PageProps) {
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
               onNoteSave={handleNoteSave}
-              onReload={load}
+              onReload={() => load(true)}
               readOnly={isPast || isFuture}
             />
           </>
