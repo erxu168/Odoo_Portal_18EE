@@ -224,14 +224,16 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
     };
   }, [mediaHref]);
 
-  const load = useCallback(async (opts?: { silent?: boolean }) => {
+  /** Returns true when the guide was re-read successfully. Callers that MUST have
+   * fresh step ids (the post-save re-hydrate) use this to decide what to show. */
+  const load = useCallback(async (opts?: { silent?: boolean }): Promise<boolean> => {
     if (!opts?.silent) setLoading(true);
     setLoadError(null);
     try {
       const res = await fetch(guideBase, { credentials: 'same-origin' });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || `Could not load the guide (${res.status})`);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return false;
       const raw: GuideStepRead[] = Array.isArray(body.steps) ? body.steps : [];
       setSteps(raw.map(hydrate));
       if (typeof body.name === 'string') setName(body.name);
@@ -243,8 +245,9 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       setActivePin(null);
       setImgError(new Set());
       mediaTokens.current = new Map();
+      return true;
     } catch (e: unknown) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current) return false;
       if (!opts?.silent) {
         setLoadError(e instanceof Error ? e.message : 'Could not load the guide');
       } else {
@@ -255,6 +258,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         setStale(true);
         setError('Saved, but couldn’t reload the latest version. Reload before editing again so your photos aren’t lost.');
       }
+      return false;
     } finally {
       if (mountedRef.current && !opts?.silent) setLoading(false);
     }
@@ -555,14 +559,20 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         return;
       }
       if (typeof body?.revision === 'number' && mountedRef.current) setRevision(body.revision);
-      // Save = DONE: refresh the library list and CLOSE (return to it), so it's
-      // one action, not save-then-close. The aggregate rebuild changes step ids,
-      // but that only matters for CONTINUED editing — reopening re-reads fresh
-      // ids, so there's nothing to preserve by staying open.
-      savingRef.current = false;
+      // Save = SAVE, not leave: keep the manager on the guide so they can carry
+      // on adding steps/pins/drawings ("Close" is how you leave). The server
+      // rebuilt the aggregate, so every local step id is now STALE — a follow-up
+      // save on stale ids would drop the kept photos. The silent re-GET below is
+      // therefore MANDATORY, and it fails closed (marks `stale`, disabling Save)
+      // if it can't refresh.
+      // Keep savingRef held through the re-hydrate (the `finally` clears it), so a
+      // second Save can't start against ids the server just replaced.
       setDirty(false);
       onSaved?.();
-      onClose();
+      const fresh = await load({ silent: true });
+      // On failure `load` already set a stale-warning error — don't overwrite it
+      // with a cheerful "Saved."
+      if (fresh && mountedRef.current) setNotice('Saved.');
       return;
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not save the guide.');
