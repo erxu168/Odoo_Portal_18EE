@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useShift } from '@/lib/shift-context';
 import type { TaskList, EmployeeContext } from '@/lib/odoo-tasks';
 import ChecklistCard from '../_components/ChecklistCard';
-import BottomNav from '../_components/BottomNav';
 import AdHocModal, { type AdHocSubmitVals } from '../_components/AdHocModal';
 import { uploadTaskPhotoFile, PhotoCancelled } from '../_components/photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
@@ -210,12 +210,34 @@ export default function StaffPage() {
   const ctx  = data?.context ?? null;
   const showManagerControls = isManagerOrAdmin && !!ctx?.department_id;
 
+  // The module's own bottom bar was the ONLY route to the Training screen in the
+  // whole app, and it sat stacked on top of the app's global tab bar. The bar is
+  // gone, so Training moves into the header — always reachable, and costing no
+  // vertical space above the day's checklist.
+  const trainingLink = (
+    <Link
+      href="/tasks/training"
+      className="h-11 px-3 inline-flex items-center rounded-xl bg-white/10 border border-white/10 text-white text-[13px] font-semibold active:bg-white/20 transition-colors"
+    >
+      Training
+    </Link>
+  );
+
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 max-w-[430px] mx-auto">
+    // No width cap of its own: MainWrapper already centres every screen at
+    // max-w-lg and steps up on tablet/desktop. A second, tighter 430px cap left
+    // the checklist as a narrow phone strip down the middle of a kitchen tablet.
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      {/* `root`: this screen is only ever reached from the home dashboard (via
+          the /tasks redirect) or a notification deep-link, so a Back arrow just
+          went home too — two buttons, one destination. Home-only also leaves
+          room for Training without crowding the header on a phone. */}
       <AppHeader
         supertitle={ctx?.department_name ? ctx.department_name.toUpperCase() : 'TASKS'}
         title={isToday ? "Today's checklist" : `Checklist · ${date}`}
         subtitle={todayLabel}
+        root
+        action={trainingLink}
       />
 
       {list && list.line_count > 0 && (
@@ -256,7 +278,10 @@ export default function StaffPage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
+      {/* pb-6, not pb-24: the 96px reserve was clearance for the module's own
+          bottom bar. MainWrapper's pb-20 already clears the app's global tab bar,
+          so keeping both left a dead strip under the last task. */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
         {isToday && <NotificationsToggle />}
         {showManagerControls && isPast && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-xs mb-4">
@@ -337,8 +362,6 @@ export default function StaffPage() {
           </>
         )}
       </div>
-
-      <BottomNav />
 
       {showAdd && (
         <AdHocModal date={date} onClose={() => setShowAdd(false)} onSubmit={handleAdd} />

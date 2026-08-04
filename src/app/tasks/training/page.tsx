@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import BottomNav from '../_components/BottomNav';
 import GuidedTutorialPlayer from '../_components/GuidedTutorialPlayer';
 
 interface TrainingGuide {
@@ -55,10 +54,12 @@ export default function TrainingPage() {
     : guides;
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 max-w-[430px] mx-auto">
+    // Width and bottom clearance both come from MainWrapper — see the staff
+    // checklist for why this screen no longer caps itself at 430px.
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <AppHeader supertitle="LEARN" title="Training" />
 
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
         <p className="text-sm text-gray-500 mb-4">
           Step-by-step how-tos for common tasks. Watch any time &mdash; this is just for learning.
         </p>
@@ -146,8 +147,6 @@ export default function TrainingPage() {
           </div>
         )}
       </div>
-
-      <BottomNav />
 
       {openGuideId !== null && (
         <GuidedTutorialPlayer

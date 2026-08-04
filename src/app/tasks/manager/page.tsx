@@ -2,17 +2,17 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import PrimaryButton from '@/components/ui/PrimaryButton';
 import ManagerTabs from '../_components/ManagerTabs';
 import type { DashboardData, TaskListSummary } from '@/lib/odoo-tasks';
 
 export default function ManagerDashboard() {
-  const router = useRouter();
   const [data, setData]       = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [spawning, setSpawning] = useState(false);
+  const [spawnError, setSpawnError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,13 +33,16 @@ export default function ManagerDashboard() {
 
   async function handleSpawn() {
     setSpawning(true);
+    setSpawnError(null);
     try {
       const res = await fetch('/api/tasks/spawn-today', { method: 'POST' });
       const body = await res.json();
-      if (!body.ok) throw new Error(body.error || 'Spawn failed');
+      if (!body.ok) throw new Error(body.error || "Could not create today's lists");
       await load();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Spawn failed');
+      // In-page message, not alert(): the browser box shows the site's address to
+      // staff and looks like a scam warning, and it blocks the whole tab.
+      setSpawnError(e instanceof Error ? e.message : "Could not create today's lists");
     } finally {
       setSpawning(false);
     }
@@ -47,20 +50,13 @@ export default function ManagerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* `root`, not `showBack`: the back arrow and the home button both pushed
+          '/', so the header carried two buttons doing the same thing. This is a
+          top-level screen — home-only is what `root` is for. */}
       <AppHeader
         supertitle="TASK MANAGER"
         title="Department Tasks"
-        showBack
-        onBack={() => router.push('/')}
-        action={
-          <button
-            onClick={handleSpawn}
-            disabled={spawning}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25 disabled:opacity-50"
-          >
-            {spawning ? '…' : 'Spawn'}
-          </button>
-        }
+        root
       />
 
       <ManagerTabs />
@@ -79,6 +75,25 @@ export default function ManagerDashboard() {
               Today&apos;s lists
             </p>
             <DeptList lists={data.lists} />
+
+            {/* The screen's ONE primary action, as a full-width green button.
+                It used to be a small "Spawn" pill in the blue header — ERP
+                jargon, and styled as header chrome rather than an action. */}
+            {spawnError && (
+              <div role="alert" className="mt-5 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+                {spawnError}
+              </div>
+            )}
+            <PrimaryButton
+              onClick={handleSpawn}
+              busy={spawning}
+              className={`w-full ${spawnError ? 'mt-2' : 'mt-5'}`}
+            >
+              {spawning ? 'Creating…' : "Create today's lists"}
+            </PrimaryButton>
+            <p className="text-xs text-gray-400 mt-1.5 text-center">
+              Builds today&apos;s checklists from the active templates. Safe to tap again — it won&apos;t duplicate.
+            </p>
           </>
         ) : null}
       </div>
@@ -111,7 +126,7 @@ function DeptList({ lists }: { lists: TaskListSummary[] }) {
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
         <p className="text-3xl mb-2">📋</p>
         <p className="font-semibold text-gray-700 text-sm">No lists for today</p>
-        <p className="text-xs text-gray-400 mt-1">Tap “Spawn” above to create today&apos;s lists from active templates.</p>
+        <p className="text-xs text-gray-400 mt-1">Use “Create today&apos;s lists” below to build them from the active templates.</p>
       </div>
     );
   }

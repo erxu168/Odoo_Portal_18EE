@@ -25,7 +25,10 @@ export default function ManagerTabs() {
   const tabs = BASE_TABS.filter(t => !t.adminOnly || role === 'admin');
 
   return (
-    <nav className="sticky top-0 z-40 bg-white border-b border-gray-200 flex overflow-x-auto px-4 scrollbar-hide">
+    // top-9, not top-0: the app's blue top bar is `fixed top-0` (which is why
+    // MainWrapper reserves pt-9). Sticking at 0 parked the tabs UNDERNEATH it and
+    // sheared the labels in half as soon as the page scrolled.
+    <nav className="sticky top-9 z-40 bg-white border-b border-gray-200 flex overflow-x-auto px-4 scrollbar-hide">
       {tabs.map(tab => {
         const active = path === tab.href;
         return (
