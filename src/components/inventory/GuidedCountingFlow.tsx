@@ -113,6 +113,10 @@ export default function GuidedCountingFlow({
 }: Props) {
   const [skipFor, setSkipFor] = useState<number | null>(null);
   const [mapSpotId, setMapSpotId] = useState<number | null>(null);
+  // A photo of the place, opened full-screen. Managers add it on the spot
+  // (Inventory → Locations); staff standing in a cold room need to recognise
+  // the right fridge, not decode its name.
+  const [photoSpot, setPhotoSpot] = useState<{ name: string; photo: string; note: string | null } | null>(null);
 
   const effStatus = (s: Stop) => statuses[s.bucket_id]?.status ?? s.status ?? 'pending';
   const withProducts = stops.filter((s) => s.product_ids.length > 0);
@@ -387,6 +391,14 @@ export default function GuidedCountingFlow({
                               )}
                             </span>
                           </div>
+                          {s.location?.photo && (
+                            <button onClick={() => setPhotoSpot({ name: shelf, photo: s.location!.photo!, note: s.location!.description ?? null })}
+                              aria-label={`Photo of ${shelf}`}
+                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 overflow-hidden bg-white active:scale-95">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={s.location.photo} alt="" className="h-full w-full object-cover" />
+                            </button>
+                          )}
                           {s.bucket_id > 0 && (
                             <button onClick={() => setMapSpotId(s.bucket_id)}
                               aria-label={`Show ${shelf} on the floorplan`}
@@ -395,6 +407,11 @@ export default function GuidedCountingFlow({
                             </button>
                           )}
                         </div>
+                        {s.location?.description && (
+                          <p className="px-3.5 py-2 text-[var(--fs-xs)] text-gray-600 bg-amber-50 border-t border-amber-100 leading-snug [overflow-wrap:anywhere]">
+                            {s.location.description}
+                          </p>
+                        )}
                         <div className="px-3">
                           {s.product_ids.map((id) => productsById[id] && (
                             <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
@@ -513,6 +530,22 @@ export default function GuidedCountingFlow({
       )}
       {mapSpotId != null && (
         <FloorplanOverlay locationId={mapSpotId} onClose={() => setMapSpotId(null)} />
+      )}
+      {photoSpot && (
+        <div className="fixed inset-0 z-[110] bg-black/90 flex flex-col" role="dialog" aria-modal="true">
+          <div className="flex items-center gap-2 px-3 py-2 text-white">
+            <span className="min-w-0 flex-1 truncate text-[var(--fs-sm)] font-bold">{photoSpot.name}</span>
+            <button onClick={() => setPhotoSpot(null)} aria-label="Close the photo"
+              className="h-10 w-10 flex-shrink-0 rounded-full bg-white/15 text-[15px] active:bg-white/25">✕</button>
+          </div>
+          <div className="flex-1 min-h-0 flex items-center justify-center px-3 pb-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoSpot.photo} alt={`Photo of ${photoSpot.name}`} className="max-h-full max-w-full object-contain rounded-xl" />
+          </div>
+          {photoSpot.note && (
+            <p className="px-4 pb-6 text-center text-[var(--fs-sm)] text-white/80 leading-snug">{photoSpot.note}</p>
+          )}
+        </div>
       )}
     </div>
   );
