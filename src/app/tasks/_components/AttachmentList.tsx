@@ -32,10 +32,15 @@ function isPdf(mime: string) {
 
 export default function AttachmentList({ attachments, canDelete = false, onDeleted, compact = false }: Props) {
   const [open, setOpen] = useState<OpenAttachment | null>(null);
+  const [imgOpen, setImgOpen] = useState<TaskAttachment | null>(null);
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
   if (attachments.length === 0) return null;
+
+  // Photos show as THUMBNAILS (like inventory counting); other files stay as rows.
+  const images = attachments.filter(a => isImage(a.mimetype));
+  const others = attachments.filter(a => !isImage(a.mimetype));
 
   async function openAttachment(att: TaskAttachment) {
     setLoadingId(att.id);
@@ -68,13 +73,48 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
 
   return (
     <>
-      <ul className={compact ? 'space-y-1' : 'space-y-1.5 mt-2'}>
-        {attachments.map(att => (
+      {/* Photos → thumbnail tiles (tap to enlarge), matching inventory counting. */}
+      {images.length > 0 && (
+        <div className={`flex flex-wrap gap-2 ${compact ? 'mt-1' : 'mt-2'}`}>
+          {images.map(att => (
+            <div key={att.id} className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setImgOpen(att)}
+                className="w-full h-full block"
+                aria-label={`View photo ${att.name}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/tasks/attachments/${att.id}`} alt={att.name} className="w-full h-full object-cover" loading="lazy" />
+              </button>
+              {att.scope === 'template' && (
+                <span className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[8px] font-semibold text-center leading-tight py-0.5">template</span>
+              )}
+              {canDelete && att.scope !== 'template' && (
+                <button
+                  type="button"
+                  onClick={() => deleteAttachment(att)}
+                  disabled={deleting === att.id}
+                  aria-label={`Remove photo ${att.name}`}
+                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center active:bg-black disabled:opacity-50"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Non-image files (PDF / docs) stay as rows. */}
+      {others.length > 0 && (
+      <ul className={`${images.length > 0 ? 'mt-2' : compact ? '' : 'mt-2'} ${compact ? 'space-y-1' : 'space-y-1.5'}`}>
+        {others.map(att => (
           <li
             key={att.id}
             className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs"
           >
-            <span className="flex-shrink-0">{isPdf(att.mimetype) ? '📄' : isImage(att.mimetype) ? '🖼️' : '📎'}</span>
+            <span className="flex-shrink-0">{isPdf(att.mimetype) ? '📄' : '📎'}</span>
             <button
               onClick={() => openAttachment(att)}
               disabled={loadingId === att.id}
@@ -97,6 +137,21 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
           </li>
         ))}
       </ul>
+      )}
+
+      {/* Photo lightbox — served straight from the bytes route. */}
+      {imgOpen && (
+        <div className="fixed inset-0 bg-black/90 z-[70] flex flex-col" onClick={() => setImgOpen(null)}>
+          <div className="flex justify-between items-center px-4 py-3 text-white">
+            <span className="text-sm truncate">{imgOpen.name}</span>
+            <button onClick={() => setImgOpen(null)} className="text-2xl px-3 -mr-3" aria-label="Close">×</button>
+          </div>
+          <div className="flex-1 overflow-auto flex items-center justify-center p-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/api/tasks/attachments/${imgOpen.id}`} alt={imgOpen.name} className="max-w-full max-h-full object-contain" onClick={e => e.stopPropagation()} />
+          </div>
+        </div>
+      )}
 
       {open && isPdf(open.mimetype) && (
         <PdfViewer
