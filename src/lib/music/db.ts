@@ -456,6 +456,49 @@ export function poolCandidates(genre: MusicGenre): PoolVideo[] {
   return rows.map((r) => ({ videoId: r.video_id, title: r.title, channel: r.channel }));
 }
 
+// ── Radio selection helpers ──
+
+export interface RadioPick { videoId: string; genre: MusicGenre; title: string; channel: string }
+
+/** Last time each genre produced sound — for least-recently-played rotation. */
+export function lastPlayedByGenre(): Partial<Record<MusicGenre, string>> {
+  initMusicTables();
+  const rows = getDb().prepare(`SELECT genre, MAX(played_at) AS at FROM music_play_history WHERE genre IS NOT NULL GROUP BY genre`).all() as Array<{ genre: string; at: string }>;
+  const out: Partial<Record<MusicGenre, string>> = {};
+  for (const r of rows) if ((ALL_GENRES as string[]).includes(r.genre)) out[r.genre as MusicGenre] = r.at;
+  return out;
+}
+
+/** Videos the radio must not repeat: last 50 plays OR anything within 12 h. */
+export function recentNoRepeatIds(): Set<string> {
+  initMusicTables();
+  const db = getDb();
+  const recent = db.prepare(`SELECT video_id FROM music_play_history ORDER BY id DESC LIMIT ?`).all(REPEAT_WINDOW_PLAYS) as Array<{ video_id: string }>;
+  const windowed = db.prepare(`SELECT video_id FROM music_play_history WHERE played_at > datetime('now', '-${REPEAT_WINDOW_HOURS} hours')`).all() as Array<{ video_id: string }>;
+  return new Set([...recent, ...windowed].map((r) => r.video_id));
+}
+
+export function queuedVideoIds(): Set<string> {
+  initMusicTables();
+  const rows = getDb().prepare(`SELECT video_id FROM music_queue WHERE status IN ('queued','selected')`).all() as Array<{ video_id: string }>;
+  return new Set(rows.map((r) => r.video_id));
+}
+
+/** Manually approved songs as a last-resort radio pool (titles best-effort from requests/metadata). */
+export function listManualAllowFallback(): RadioPick[] {
+  initMusicTables();
+  const rows = getDb().prepare(`
+    SELECT md.video_id, md.genre,
+           COALESCE(r.title, m.title, 'Approved song') AS title,
+           COALESCE(r.channel, m.channel_title, '') AS channel
+    FROM music_manual_decisions md
+    LEFT JOIN music_requests r ON r.video_id = md.video_id
+    LEFT JOIN music_video_metadata m ON m.video_id = md.video_id
+    WHERE md.decision = 'allow' AND md.genre IS NOT NULL
+  `).all() as Array<{ video_id: string; genre: MusicGenre; title: string; channel: string }>;
+  return rows.map((r) => ({ videoId: r.video_id, genre: r.genre, title: r.title, channel: r.channel }));
+}
+
 // ── Settings ──
 
 export function getMusicSettings(): { playerDeviceId: number | null } {
