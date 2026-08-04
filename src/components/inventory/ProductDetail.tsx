@@ -330,6 +330,14 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     // first reply landing after a fast second would show one restaurant's tax
     // rate labelled as another's, which is a wrong number stated confidently.
     const token = ++loadRef.current;
+    // Home spots are per restaurant too, and the SHELF LABEL prints them. Left
+    // stale they would put the previous restaurant's shelf and QR on a sticker —
+    // the same class of wrong-number-stated-confidently as the tax below, but
+    // this one gets glued to a fridge. Cleared before the read, and again if it
+    // fails, so the label section shows "no storage place" rather than a lie.
+    // (Codex, 2026-08-04.)
+    setHomeSpots([]);
+    setSpotLabels({});
     // Tax is per restaurant. Clear it BEFORE the new read so a company change
     // never leaves the previous restaurant's rate on screen, labelled as this
     // one's, while the request is in flight.
@@ -417,7 +425,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         const labels: Record<number, string> = {};
         locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
         setSpotLabels(labels);
-      } catch { /* sections degrade to their defaults */ }
+      } catch {
+        // Degrade to "unknown", never to the PREVIOUS restaurant's answer.
+        if (token === loadRef.current) { setHomeSpots([]); setSpotLabels({}); }
+      }
       finally { if (token === loadRef.current) setLoading(false); }
     })();
   }, [product.id, companyId]);

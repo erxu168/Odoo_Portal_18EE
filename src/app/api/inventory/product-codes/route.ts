@@ -36,6 +36,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { isUnrestrictedAdmin } from '@/lib/inventory-access';
+import { isSameOrigin } from '@/lib/csrf';
 import { houseCode } from '@/lib/product-code';
 
 type Skip = { product_id: number; name: string; reason: string };
@@ -47,7 +48,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  // A bulk write to live Odoo master data must not be reachable from another
+  // origin, and a body that failed to parse must never become "do it for real,
+  // everywhere". Both were true before: a non-JSON form POST landed on {} =
+  // dry_run false, no ids, no company. (Codex, 2026-08-04.)
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Bad origin' }, { status: 403 });
+  }
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+    if (!body || typeof body !== 'object') throw new Error('not an object');
+  } catch {
+    return NextResponse.json({ error: 'A JSON body is required, saying dry_run true or false.' }, { status: 400 });
+  }
+  // Intent must be STATED. Neither value may be inferred from a missing field.
+  if (typeof body.dry_run !== 'boolean') {
+    return NextResponse.json({ error: 'dry_run must be true or false — run the preview first.' }, { status: 400 });
+  }
   const dryRun = body.dry_run === true;
   const explicitIds: number[] | null = Array.isArray(body.product_ids)
     ? body.product_ids.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
@@ -74,7 +92,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
       }
       domain.push('|', ['company_id', '=', false], ['company_id', '=', companyId]);
-    } else if (!isUnrestrictedAdmin(user) && allowed.length > 0) {
+    } else if (!isUnrestrictedAdmin(user)) {
+      // FAIL CLOSED. An empty allowed list means "sees nothing" in this app's
+      // access model — it previously meant no company filter at all, so such a
+      // manager could bulk-write the service account's entire catalogue.
+      if (allowed.length === 0) {
+        return NextResponse.json({ error: 'No restaurant is available to you.' }, { status: 403 });
+      }
       domain.push('|', ['company_id', '=', false], ['company_id', 'in', allowed]);
     }
 
@@ -126,7 +150,24 @@ export async function POST(request: Request) {
     const BATCH = 20;
     for (let i = 0; i < plan.length; i += BATCH) {
       const slice = plan.slice(i, i + BATCH);
+      // RE-READ immediately before writing. The plan was built from one query
+      // that may be minutes old by the time a long run reaches this batch, and
+      // the whole promise of this endpoint is that a supplier barcode is never
+      // overwritten. This narrows the window to one batch; it cannot close it
+      // entirely, because Odoo offers no conditional write. (Codex, 2026-08-04.)
+      const fresh = await odoo.searchReadAll(
+        'product.product',
+        [['id', 'in', slice.map((p) => p.product_id)]],
+        ['id', 'barcode'],
+        { context: { active_test: false } },
+      ) as { id: number; barcode: string | false }[];
+      const nowHas = new Map(fresh.map((f) => [f.id, f.barcode]));
       await Promise.all(slice.map(async (p) => {
+        const current = nowHas.get(p.product_id);
+        if (current) {
+          skipped.push({ product_id: p.product_id, name: p.name, reason: `it was given the barcode ${current} while this ran` });
+          return;
+        }
         try {
           await odoo.write('product.product', [p.product_id], { barcode: p.code });
           assigned.push(p);

@@ -3369,6 +3369,30 @@ export function getPlacements(countLocationId: number): ProductPlacement[] {
   ).all(countLocationId) as ProductPlacement[];
 }
 
+/**
+ * Every placement at a spot AND everything inside it — a fridge's drawers, and
+ * their drawers. Labelling "the Countertop fridge" means the products in its
+ * drawers too; nobody thinks of a drawer as a separate errand.
+ *
+ * Ordered by spot then shelf order, so a printed batch comes out grouped by
+ * shelf: all of D1's stickers together, then D2's, which is how a person with a
+ * roll of labels actually works.
+ */
+export function getPlacementsInSubtree(rootLocationId: number): ProductPlacement[] {
+  const db = getDb();
+  return db.prepare(`
+    WITH RECURSIVE tree(id) AS (
+      SELECT ?
+      UNION
+      SELECT l.id FROM count_locations l JOIN tree t ON l.parent_id = t.id
+    )
+    SELECT p.odoo_product_id, p.count_location_id, p.shelf_sort
+      FROM product_locations p
+      JOIN tree ON p.count_location_id = tree.id
+     ORDER BY p.count_location_id, p.shelf_sort, p.odoo_product_id
+  `).all(rootLocationId) as ProductPlacement[];
+}
+
 export function getLocationsForProduct(productId: number): number[] {
   const db = getDb();
   return (db.prepare('SELECT count_location_id FROM product_locations WHERE odoo_product_id = ?').all(productId) as { count_location_id: number }[])

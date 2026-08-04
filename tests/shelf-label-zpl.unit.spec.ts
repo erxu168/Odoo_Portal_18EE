@@ -130,3 +130,31 @@ test('ZPL control characters in a product name cannot break the label', () => {
   const body = z.split('\n').filter((l) => l.includes('Caret')).join('');
   expect(body, 'a raw ^ would end the field early').not.toMatch(/\^FDCaret \^ /);
 });
+
+test('THE DATE STAMP MUST NOT LAND ON THE SHELF QR', () => {
+  // It used to be right-aligned across the FULL width, straight over the QR at
+  // bottom-right — and stamping is ON by default, so nearly every printed label
+  // would have carried a damaged, unscannable shelf code. (Codex, 2026-08-04.)
+  const z = generateProductStorageZPL({ ...FULL, printedOn: '04.08.2026' }, SIZE);
+  const qr = z.split('\n').find((l) => l.includes('^BQN'))!;
+  const stamp = z.split('\n').find((l) => l.includes('04.08.2026'))!;
+  const qrX = +qr.match(/\^FO(\d+),(\d+)/)![1];
+  const qrY = +qr.match(/\^FO(\d+),(\d+)/)![2];
+  const stX = +stamp.match(/\^FO(\d+),(\d+)/)![1];
+  const stW = +stamp.match(/\^FB(\d+)/)![1];
+  // The stamp's right edge must stop before the QR's left edge.
+  expect(stX + stW, 'the stamp overlaps the QR').toBeLessThanOrEqual(qrX);
+  expect(qrY).toBeGreaterThan(0);
+});
+
+test('a label too short for a barcode SAYS so rather than printing nothing', () => {
+  const tiny = generateProductStorageZPL(FULL, { widthMm: 90, heightMm: 32 });
+  expect(tiny).toContain('Label too small for a barcode');
+});
+
+test('a whitespace-only barcode is treated as none at all', () => {
+  // The section calls it missing; the printer must agree, or the label prints
+  // a bar code of nothing.
+  const z = generateProductStorageZPL({ ...FULL, barcodeValue: '   '.trim() || null }, SIZE);
+  expect(z).toContain('No barcode yet');
+});

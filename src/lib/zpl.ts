@@ -423,6 +423,13 @@ export function generateProductStorageZPL(
       y += barcodeH + gap;
       lines.push(`^FO${margin},${y}^A0N,${codeF.h},${codeF.w}^FB${printW},1,0,L,0^FD${escapeZPL(data.barcodeValue)}^FS`);
       y += codeF.h + gap;
+    } else {
+      // Too short a label to print a scannable code. Printing NOTHING here is
+      // how the barcode silently disappeared during development; the label must
+      // say what it could not do. (Codex, 2026-08-04.)
+      const warnF = font(Math.max(12, Math.round(hDots * 0.06)));
+      lines.push(`^FO${margin},${y}^A0N,${warnF.h},${warnF.w}^FB${printW},1,0,L,0^FDLabel too small for a barcode^FS`);
+      y += warnF.h + gap;
     }
   } else {
     // A shelf label with no code is not a mistake to hide — it is a job to do.
@@ -445,7 +452,9 @@ export function generateProductStorageZPL(
     const mag = Math.max(2, Math.min(10, Math.round(qrTarget / modules)));
     const qrDots = mag * modules;
     lines.push(`^FO${wDots - margin - qrDots},${hDots - margin - qrDots}^BQN,2,${mag}^FDQA,${escapeZPL(qrPayload)}^FS`);
-    locW = printW - qrDots - Math.round(3 * scale);
+    // Never negative: a very narrow label would otherwise pass a nonsense
+    // ^FB width and ZPL would lay the text out unpredictably.
+    locW = Math.max(40, printW - qrDots - Math.round(3 * scale));
   }
 
   if (data.locationLabel) {
@@ -461,9 +470,15 @@ export function generateProductStorageZPL(
 
   // Renaming a shelf silently invalidates every sticker already on it, and
   // nothing else on the label would ever betray its age.
+  //
+  // Right-aligned across the FULL width put it straight on top of the shelf QR,
+  // which is bottom-right — and stamping is ON by default, so virtually every
+  // printed label would have carried a damaged, unscannable code. It is now
+  // confined to `locW`, the width that already excludes the QR, so the two
+  // cannot share a pixel. (Codex, 2026-08-04.)
   if (data.printedOn) {
     const stampF = font(Math.max(10, Math.round(hDots * 0.042)));
-    lines.push(`^FO${margin},${hDots - margin - stampF.h}^A0N,${stampF.h},${stampF.w}^FB${printW},1,0,R,0^FD${escapeZPL(data.printedOn)}^FS`);
+    lines.push(`^FO${margin},${hDots - margin - stampF.h}^A0N,${stampF.h},${stampF.w}^FB${Math.max(40, locW)},1,0,R,0^FD${escapeZPL(data.printedOn)}^FS`);
   }
 
   lines.push('^XZ');

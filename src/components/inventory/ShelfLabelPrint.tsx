@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
 import { generateProductStorageZPL } from '@/lib/zpl';
@@ -36,6 +36,11 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
   jobs: ShelfLabelJob[];
   onClose: () => void;
 }) {
+  // Closing the sheet used to unmount the UI while the loop kept feeding the
+  // printer — and reopening started a second one, interleaving two batches onto
+  // one roll. The loop checks this and stops. (Codex, 2026-08-04.)
+  const stopped = useRef(false);
+  useEffect(() => () => { stopped.current = true; }, []);
   const ble = useZebraBluetooth();
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -43,18 +48,22 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
   const [failed, setFailed] = useState<string[]>([]);
   // Stamped so a sticker left on a shelf that was later renamed can be spotted.
   const [stamp, setStamp] = useState(true);
+  // Ethan's ZD421 is 203dpi (he read the sticker). Threaded rather than assumed,
+  // because the same model ships at 300 and a 90mm label would then print at
+  // 60mm — two thirds — with nothing on screen to explain it.
+  const [dpi, setDpi] = useState(203);
 
   const todayStamp = new Date().toLocaleDateString('de-DE');
 
   function zplFor(j: ShelfLabelJob): string {
     return generateProductStorageZPL({
       productName: j.productName,
-      barcodeValue: j.barcode || null,
+      barcodeValue: (j.barcode || '').trim() || null,
       locationLabel: j.spotLabel || null,
       locationCode: j.spotId != null ? locationCode(j.spotId) : null,
       uom: j.uom || null,
       printedOn: stamp ? todayStamp : null,
-    }, { widthMm: SHELF_SIZE.widthMm, heightMm: SHELF_SIZE.heightMm });
+    }, { widthMm: SHELF_SIZE.widthMm, heightMm: SHELF_SIZE.heightMm, dpi });
   }
 
   async function printAll() {
@@ -64,6 +73,7 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
     setDone(0);
     setFailed([]);
     for (const j of jobs) {
+      if (stopped.current) break;
       try {
         const ok = await ble.print(zplFor(j));
         if (ok) setDone((n) => n + 1);
@@ -109,6 +119,21 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
               print and say so — give the product a code first if you want it scannable.
             </div>
           )}
+
+          {/* Only two Zebras exist in this range and the wrong one prints
+              everything at two-thirds size, so it is a visible choice rather
+              than a silent assumption. */}
+          <div className="flex items-center gap-2 py-2">
+            <span className="text-[12px] text-gray-500 font-semibold">Printer</span>
+            {[203, 300].map((d) => (
+              <button key={d} onClick={() => setDpi(d)}
+                className={`px-2.5 h-8 rounded-lg text-[12px] font-bold border ${
+                  dpi === d ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-200 text-gray-600'
+                }`}>
+                {d} dpi
+              </button>
+            ))}
+          </div>
 
           <button onClick={() => setStamp(!stamp)} className="w-full flex items-center gap-2.5 py-2 text-left">
             <span className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center text-[11px] font-black flex-shrink-0 ${
