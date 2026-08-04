@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany, writeCompany } from '@/lib/inventory-floorplan/access';
 import { buildManifest, placedProductIds, type InjectedProduct } from '@/lib/inventory-floorplan/manifest';
-import { getPrimaryAnchorForLocation, initFloorplanTables } from '@/lib/inventory-floorplan/db';
+import { findAnchorForLocationOrAncestor, initFloorplanTables } from '@/lib/inventory-floorplan/db';
 import { getCountLocation } from '@/lib/inventory-db';
 import { getOdoo } from '@/lib/odoo';
 
@@ -43,6 +43,8 @@ export async function GET(request: Request) {
   // Deep link / focus resolution: the spot's row decides company AND floor.
   let focus: { locationId: number; floorId: number; cx: number; cy: number } | null = null;
   let focusMissing = false;
+  let focusAsked: { id: number; name: string } | null = null;
+  let focusVia: { id: number; name: string } | null = null;
   const spotRaw = searchParams.get('spot');
   let companyId: number | null = null;
 
@@ -53,9 +55,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Spot not found' }, { status: 404 });
     }
     companyId = loc.company_id;
-    const anchor = getPrimaryAnchorForLocation(loc.id);
-    if (anchor) focus = { locationId: loc.id, floorId: anchor.floor_id, cx: anchor.cx, cy: anchor.cy };
-    else focusMissing = true; // exists, allowed, but not placed on any published plan
+    // Itself if pinned, else the nearest ancestor that is — a drawer never has
+    // its own pin, so "no pin on this exact spot" is the ordinary case.
+    const anchor = findAnchorForLocationOrAncestor(loc.id);
+    if (anchor) {
+      focus = { locationId: anchor.via ? anchor.via.id : loc.id, floorId: anchor.floor_id, cx: anchor.cx, cy: anchor.cy };
+      // What was ASKED for, and what was actually found, so the screen can say
+      // "D4 is inside the Countertop fridge — shown here" rather than quietly
+      // highlighting something the person did not ask about.
+      focusAsked = { id: loc.id, name: loc.name };
+      focusVia = anchor.via;
+    } else {
+      focusMissing = true;   // nothing in the whole chain is on a published plan
+      focusAsked = { id: loc.id, name: loc.name };
+    }
   }
 
   if (companyId == null) {
@@ -68,10 +81,10 @@ export async function GET(request: Request) {
     companyId = writeCompany(authz.user, requested ?? fallback);
   }
   if (!companyId) {
-    return NextResponse.json({ manifest: null, focus: null, focusMissing: false });
+    return NextResponse.json({ manifest: null, focus: null, focusMissing: false, focusAsked: null, focusVia: null });
   }
 
   const products = await fetchProducts(placedProductIds(companyId));
   const manifest = buildManifest(companyId, { products });
-  return NextResponse.json({ manifest, focus, focusMissing });
+  return NextResponse.json({ manifest, focus, focusMissing, focusAsked, focusVia });
 }

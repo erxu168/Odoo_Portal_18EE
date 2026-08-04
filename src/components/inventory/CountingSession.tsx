@@ -20,6 +20,8 @@ import PackCountSheet from './PackCountSheet';
 import GuidedCountingFlow from './GuidedCountingFlow';
 import { parseLocationCode } from '@/lib/location-code';
 import { useTopBar } from '@/components/ui/TopBarContext';
+import dynamic from 'next/dynamic';
+const FloorplanOverlay = dynamic(() => import('@/components/inventory/floorplan/FloorplanOverlay'), { ssr: false });
 
 interface CountingSessionProps {
   sessionId: number;
@@ -163,6 +165,10 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
   const [hwBarcode, setHwBarcode] = useState<string | undefined>();
+  // The OTHER place a product is kept, opened from its "Also in:" line. Separate
+  // from the walk's own crosshair: that one asks about the spot you are standing
+  // at, this one about somewhere else entirely.
+  const [siblingMap, setSiblingMap] = useState<number | null>(null);
 
   // -- Offline / sync queue --
   const sync = useSyncQueue();
@@ -1255,7 +1261,19 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
         {siblings.length > 0 && (
           <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">
             <span className="font-semibold text-gray-600">Also in:</span>{' '}
-            {siblings.map((sl) => spotFullPath(sl)).join(' \u00B7 ')}
+            {/* TAPPABLE — Ethan, 2026-08-04: a product kept in two places should
+                let you go and look at the other one, not just be told about it.
+                Each opens the map on that spot, switching floor if it is on a
+                different one. */}
+            {siblings.map((sl, i) => (
+              <React.Fragment key={sl}>
+                {i > 0 && ' \u00B7 '}
+                <button type="button" onClick={() => setSiblingMap(sl)}
+                  className="underline decoration-dotted underline-offset-2 text-blue-700 font-semibold active:opacity-60 text-left">
+                  {spotFullPath(sl)}
+                </button>
+              </React.Fragment>
+            ))}
           </p>
         )}
         {/* The product's standing description (supplier, price per kilo, pack
@@ -1895,6 +1913,9 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
           }}
           onClose={() => setCrateSheet({ open: false, product: null, loc: 0 })}
         />
+      )}
+      {siblingMap != null && (
+        <FloorplanOverlay locationId={siblingMap} onClose={() => setSiblingMap(null)} />
       )}
     </div>
   );
