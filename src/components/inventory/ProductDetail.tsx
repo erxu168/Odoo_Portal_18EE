@@ -17,6 +17,7 @@ import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
 import { currentCompanyTax, hasConflictingTax, type TaxOption } from '@/lib/product-tax';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
+import ShelfLabelSection from './ShelfLabelSection';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -1401,7 +1402,20 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           <input id="pd-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={readOnly}
             placeholder="Scan or type…"
             onBlur={() => { const v = barcode.trim(); if (v !== (product.barcode || '')) saveMaster({ barcode: v }); }}
-            className={`${box} font-mono mb-8`} />
+            className={`${box} font-mono mb-2`} />
+
+          {/* THE SHELF LABEL — what he asked for: "each product to have a section
+              where I have a label for that product… attached to their storage
+              location". Sits under Barcode because the two are the same subject:
+              a label cannot be scanned until the product has a code. */}
+          <ShelfLabelSection
+            product={product}
+            barcode={barcode}
+            homeSpots={homeSpots}
+            spotLabels={spotLabels}
+            readOnly={readOnly}
+            onCodeAssigned={(code) => { setBarcode(code); }}
+          />
 
           {/* A DRAFT is not archived and must not be offered the archive/delete
               pair: it is a product scanned mid-count that nobody has finished, so
