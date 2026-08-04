@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
+import { FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
 import { type ContainerShape } from '@/components/ui/ContainerLevelPicker';
@@ -10,6 +10,7 @@ import PhotoCaptureStrip from './PhotoCaptureStrip';
 import OfflineBanner from './OfflineBanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { combineLines, combineStops, mergeByProduct, walkTitle, type SessionPayload } from '@/lib/combined-walk';
+import AppHeader from '@/components/ui/AppHeader';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { patchCachedSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
@@ -1001,7 +1002,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   if (loadFailed) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <BackHeader onBack={onBack} title="Today’s Count" subtitle="" />
+        <AppHeader title="Today’s Count" showBack onBack={onBack} />
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center gap-3">
           <div className="text-3xl" aria-hidden="true">⚠️</div>
           <p className="text-[var(--fs-base)] font-bold text-gray-900">Couldn’t load today’s count</p>
@@ -1540,13 +1541,13 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   // ============================
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <BackHeader onBack={onBack}
+      <AppHeader showBack onBack={onBack}
         title={combined ? walkTitle(walkSessions.map((x) => ({ sessionId: x.id, session: x, items: [] }))).title
           : (session?.template_name || `Session #${sessionId}`)}
         subtitle={combined
           ? `${walkSessions.map((x) => x.template_name).filter(Boolean).join(' + ')} \u00B7 ${totalCount} ${hasSpots ? 'count lines' : 'products'}`
           : `${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} ${hasSpots ? 'count lines' : 'products'}`}
-        right={scanButton}
+        action={scanButton}
       />
 
       <OfflineBanner sync={sync} />

@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { BackHeader, SearchBar, ProductThumb, leafCategory } from './ui';
+import { SearchBar, ProductThumb, leafCategory } from './ui';
 import SpotSheet from './SpotSheet';
 import AddProductsSheet from './AddProductsSheet';
 import ProductDetail from './ProductDetail';
 import CountPreview from './CountPreview';
+import AppHeader from '@/components/ui/AppHeader';
 import CreateProductSheet from '@/components/products/CreateProductSheet';
 import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import RecordLink from '@/components/ui/RecordLink';
@@ -609,7 +610,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   // ========== CONFIG STEP ==========
   return (
     <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
-      <BackHeader onBack={onCancel}
+      <AppHeader showBack onBack={onCancel}
         title={isEdit ? `Edit: ${template.name}` : 'New counting list'}
       />
 
