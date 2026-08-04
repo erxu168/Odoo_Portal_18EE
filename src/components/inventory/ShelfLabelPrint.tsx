@@ -1,0 +1,157 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
+import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
+import { generateProductStorageZPL } from '@/lib/zpl';
+import { locationCode } from '@/lib/location-code';
+import { LABEL_SIZE_PRESETS } from '@/types/labeling';
+
+/**
+ * Sending shelf labels to the printer.
+ *
+ * One label per (product, place). A batch prints in the order it was given —
+ * for a whole shelf that is walking order, so the stack comes off the printer in
+ * the order the person sticks them on.
+ *
+ * The 500ms pause between labels is not superstition: the existing print screens
+ * all have it, because a Bluetooth Zebra drops labels when ZPL arrives faster
+ * than it can feed.
+ */
+
+export interface ShelfLabelJob {
+  productId: number;
+  productName: string;
+  /** Empty → the label prints "No barcode yet" rather than a silent gap. */
+  barcode?: string | null;
+  /** null → "No storage place set". */
+  spotId: number | null;
+  spotLabel?: string | null;
+  uom?: string | null;
+}
+
+const SHELF_SIZE = LABEL_SIZE_PRESETS.find((s) => s.id === '90x60')!;
+
+export default function ShelfLabelPrint({ jobs, onClose }: {
+  jobs: ShelfLabelJob[];
+  onClose: () => void;
+}) {
+  const ble = useZebraBluetooth();
+  const [error, setError] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [done, setDone] = useState(0);
+  const [failed, setFailed] = useState<string[]>([]);
+  // Stamped so a sticker left on a shelf that was later renamed can be spotted.
+  const [stamp, setStamp] = useState(true);
+
+  const todayStamp = new Date().toLocaleDateString('de-DE');
+
+  function zplFor(j: ShelfLabelJob): string {
+    return generateProductStorageZPL({
+      productName: j.productName,
+      barcodeValue: j.barcode || null,
+      locationLabel: j.spotLabel || null,
+      locationCode: j.spotId != null ? locationCode(j.spotId) : null,
+      uom: j.uom || null,
+      printedOn: stamp ? todayStamp : null,
+    }, { widthMm: SHELF_SIZE.widthMm, heightMm: SHELF_SIZE.heightMm });
+  }
+
+  async function printAll() {
+    if (printing || !ble.isConnected) return;
+    setPrinting(true);
+    setError(null);
+    setDone(0);
+    setFailed([]);
+    for (const j of jobs) {
+      try {
+        const ok = await ble.print(zplFor(j));
+        if (ok) setDone((n) => n + 1);
+        // A failure names the label rather than aborting the batch: with 40
+        // stickers you need to know WHICH three to run again, not that
+        // "printing failed".
+        else setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
+      } catch {
+        setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    setPrinting(false);
+  }
+
+  const noCode = jobs.filter((j) => !j.barcode).length;
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl pb-8 max-h-[90vh] overflow-y-auto"
+           onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-5">
+          <h3 className="text-[var(--fs-lg)] font-bold">
+            {jobs.length === 1 ? 'Print this label' : `Print ${jobs.length} labels`}
+          </h3>
+          <p className="text-[var(--fs-sm)] text-gray-500 mt-1">
+            {SHELF_SIZE.name} · one for each place
+          </p>
+        </div>
+
+        <ZebraPrinterBar ble={ble} onError={setError} />
+
+        <div className="px-5 pt-3">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-red-700 text-[var(--fs-xs)] mb-3">
+              {error}
+            </div>
+          )}
+
+          {noCode > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-amber-800 text-[var(--fs-xs)] mb-3 leading-relaxed">
+              {noCode === 1 ? 'One label has' : `${noCode} labels have`} no barcode to scan. They will
+              print and say so — give the product a code first if you want it scannable.
+            </div>
+          )}
+
+          <button onClick={() => setStamp(!stamp)} className="w-full flex items-center gap-2.5 py-2 text-left">
+            <span className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center text-[11px] font-black flex-shrink-0 ${
+              stamp ? 'bg-green-600 border-green-600 text-white' : 'border-gray-300 text-transparent'
+            }`}>✓</span>
+            <span className="text-[13px] text-gray-700">
+              Print today’s date in the corner
+              <span className="block text-[11px] text-gray-400">so a sticker on a renamed shelf can be spotted</span>
+            </span>
+          </button>
+
+          <ul className="mt-2 mb-4 max-h-40 overflow-y-auto">
+            {jobs.map((j, i) => (
+              <li key={`${j.productId}-${j.spotId}-${i}`} className="flex items-center gap-2 py-1.5 text-[13px] border-t border-gray-100 first:border-t-0">
+                <span className="min-w-0 flex-1 font-semibold text-gray-800 [overflow-wrap:anywhere]">{j.productName}</span>
+                <span className="text-[11px] text-gray-500 flex-shrink-0 max-w-[45%] truncate">{j.spotLabel || 'no place'}</span>
+              </li>
+            ))}
+          </ul>
+
+          {(done > 0 || failed.length > 0) && (
+            <div className="mb-3 text-[13px]">
+              <span className="font-bold text-green-700">{done} printed</span>
+              {failed.length > 0 && (
+                <div className="mt-1.5 text-red-700">
+                  <div className="font-bold">{failed.length} did not print:</div>
+                  {failed.map((f) => <div key={f} className="text-[12px]">· {f}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button onClick={printAll} disabled={!ble.isConnected || printing}
+            className="w-full py-3.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">
+            {printing ? `Printing ${done + 1} of ${jobs.length}…`
+              : !ble.isConnected ? 'Connect a printer first'
+              : jobs.length === 1 ? 'Print' : `Print ${jobs.length} labels`}
+          </button>
+          <button onClick={onClose} className="w-full py-3 text-[var(--fs-sm)] text-gray-500 font-semibold mt-1">
+            {done > 0 ? 'Done' : 'Cancel'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

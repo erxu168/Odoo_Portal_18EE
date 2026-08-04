@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { houseCode, needsHouseCode } from '@/lib/product-code';
 import { locationCode } from '@/lib/location-code';
+import ShelfLabelPrint, { type ShelfLabelJob } from './ShelfLabelPrint';
 
 /**
  * THE SHELF LABEL, on the product's own page.
@@ -39,9 +40,12 @@ export default function ShelfLabelSection({
 }: Props) {
   // Which places to print for. All of them, until the manager says otherwise.
   const [chosen, setChosen] = useState<Set<number> | null>(null);
-  const picked = chosen ?? new Set(homeSpots);
+  // Memoised: rebuilding the Set on every render made the memo below recompute
+  // every time, which is the whole point of it not to.
+  const picked = useMemo(() => chosen ?? new Set(homeSpots), [chosen, homeSpots]);
   const [assigning, setAssigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   const noCode = needsHouseCode(barcode);
   const uom = product.uom_id?.[1] || null;
@@ -157,6 +161,34 @@ export default function ShelfLabelSection({
           )}
         </div>
       </div>
+
+      {/* One job per ticked place — a product with no place still prints one
+          label, which is how you discover the place is missing. */}
+      {!readOnly && (
+        <button
+          onClick={() => setPrinting(true)}
+          disabled={homeSpots.length > 0 && picked.size === 0}
+          className="w-full mt-3 py-3 rounded-xl bg-green-600 text-white text-[14px] font-bold disabled:opacity-40">
+          {homeSpots.length > 1 && picked.size > 1
+            ? `Print ${picked.size} labels`
+            : 'Print label'}
+        </button>
+      )}
+
+      {printing && (
+        <ShelfLabelPrint
+          jobs={((homeSpots.length > 0 ? homeSpots.filter((s) => picked.has(s)) : [null]) as (number | null)[])
+            .map((sid): ShelfLabelJob => ({
+              productId: product.id,
+              productName: product.name,
+              barcode: barcode || null,
+              spotId: sid,
+              spotLabel: sid != null ? (spotLabels[sid] || `Spot ${sid}`) : null,
+              uom,
+            }))}
+          onClose={() => setPrinting(false)}
+        />
+      )}
 
       {homeSpots.length === 0 && (
         <p className="mt-2 text-[12px] text-amber-700 leading-snug">
