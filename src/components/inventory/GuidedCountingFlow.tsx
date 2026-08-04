@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { typeIcon, typeLabel } from '@/lib/location-types';
+import { CrosshairIcon } from '@/components/ui/ChromeIcons';
 
 // Loaded only when someone actually opens the map — keeps Leaflet out of the
 // counting bundle. Rendered as an OVERLAY so the count state stays mounted.
@@ -320,8 +321,8 @@ export default function GuidedCountingFlow({
                 {loneUnit && (
                   <button onClick={() => setMapSpotId(loneUnit.unit!.id)}
                     aria-label={`Show ${loneUnit.unit!.name} on the floorplan`}
-                    className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
-                    🗺️
+                    className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white flex items-center justify-center active:scale-95">
+                    <CrosshairIcon size={16} className="text-gray-500" />
                   </button>
                 )}
               </div>
@@ -402,8 +403,8 @@ export default function GuidedCountingFlow({
                           {s.bucket_id > 0 && (
                             <button onClick={() => setMapSpotId(s.bucket_id)}
                               aria-label={`Show ${shelf} on the floorplan`}
-                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
-                              🗺️
+                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white flex items-center justify-center active:scale-95">
+                              <CrosshairIcon size={16} className="text-gray-500" />
                             </button>
                           )}
                         </div>
@@ -479,8 +480,8 @@ export default function GuidedCountingFlow({
                             </span>
                             <button onClick={() => setMapSpotId(g.unit!.id)}
                               aria-label={`Show ${g.unit.name} on the floorplan`}
-                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95">
-                              🗺️
+                              className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white flex items-center justify-center active:scale-95">
+                              <CrosshairIcon size={16} className="text-gray-500" />
                             </button>
                           </div>
                         </div>

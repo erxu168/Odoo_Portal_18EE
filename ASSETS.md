@@ -181,6 +181,7 @@ list told only about the room keeps rendering orphans.
 | `TopBarContext` | `ui/TopBarContext.tsx` | Hide the global top bar for one screen | 10 |
 | `SortableTileGrid` | `ui/SortableTileGrid.tsx` | Drag-reorderable tiles, order persisted | 1 |
 | `DragRow` | `ui/DragRow.tsx` | dnd-kit sortable row with a drag handle | 2 |
+| `ChromeIcons` | `ui/ChromeIcons.tsx` | THE thin-line icon set for interface machinery — Home, Back, Close, ChevronDown/Right, Check, **Crosshair** ("show me exactly where this is"). Emoji carry meaning on action cards; chrome uses these. Never a second icon style | 12 |
 
 **KNOWN GAP:** **39 files hand-roll a `rounded-t` overlay** instead of using
 `BottomSheet`, and `shifts/ui.tsx` has a rival `Sheet`.
