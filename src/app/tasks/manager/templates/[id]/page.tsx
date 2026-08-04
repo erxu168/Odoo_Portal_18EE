@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
 import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
+import { useConfirm } from '@/components/ui/useConfirm';
 import AppHeader from '@/components/ui/AppHeader';
 import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
@@ -186,6 +187,7 @@ export default function TemplateEditPage({ params }: PageProps) {
   const [showAddLine, setShowAddLine] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
+  const { confirm, confirmElement } = useConfirm();
   const { companyId: activeCompanyId } = useCompany();
 
   // Two ordering tokens keep overlapping loads correct for the common case:
@@ -255,7 +257,12 @@ export default function TemplateEditPage({ params }: PageProps) {
   }
 
   async function archive() {
-    if (!confirm('Archive this template? Daily spawning will stop. (You can unarchive later.)')) return;
+    if (!await confirm({
+      title: 'Archive this template?',
+      message: 'Daily spawning will stop. You can unarchive it later.',
+      confirmLabel: 'Archive',
+      variant: 'danger',
+    })) return;
     const res = await fetch(`/api/tasks/templates/${tplId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -267,7 +274,12 @@ export default function TemplateEditPage({ params }: PageProps) {
   }
 
   async function deleteLine(lineId: number) {
-    if (!confirm('Delete this task from the template?')) return;
+    if (!await confirm({
+      title: 'Delete this task?',
+      message: 'It is removed from the template, so it stops appearing on future days. Days that already ran keep their copy.',
+      confirmLabel: 'Delete task',
+      variant: 'danger',
+    })) return;
     const res = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}`, { method: 'DELETE' });
     const body = await res.json();
     if (!body.ok) { showToast(body.error || 'Failed to delete', 'error'); return; }
@@ -518,6 +530,7 @@ export default function TemplateEditPage({ params }: PageProps) {
         />
       )}
       {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
+      {confirmElement}
     </div>
   );
 }

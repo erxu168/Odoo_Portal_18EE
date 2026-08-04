@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useConfirm } from '@/components/ui/useConfirm';
 import dynamic from 'next/dynamic';
 import type { TaskAttachment } from '@/lib/odoo-tasks';
 
@@ -35,6 +36,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
   const [imgOpen, setImgOpen] = useState<TaskAttachment | null>(null);
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const { confirm, confirmElement } = useConfirm();
 
   if (attachments.length === 0) return null;
 
@@ -57,7 +59,12 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
   }
 
   async function deleteAttachment(att: TaskAttachment) {
-    if (!confirm(`Delete "${att.name}"? This cannot be undone.`)) return;
+    if (!await confirm({
+      title: `Delete "${att.name}"?`,
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete file',
+      variant: 'danger',
+    })) return;
     setDeleting(att.id);
     try {
       const res = await fetch(`/api/tasks/attachments/${att.id}`, { method: 'DELETE' });
@@ -73,6 +80,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
 
   return (
     <>
+      {confirmElement}
       {/* Photos → thumbnail tiles (tap to enlarge), matching inventory counting. */}
       {images.length > 0 && (
         <div className={`flex flex-wrap gap-2 ${compact ? 'mt-1' : 'mt-2'}`}>

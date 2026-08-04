@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import { useConfirm } from '@/components/ui/useConfirm';
 import Toast from '@/components/ui/Toast';
 import ManagerTabs from '../../_components/ManagerTabs';
 import GuidedTutorialEditor from '../../_components/GuidedTutorialEditor';
@@ -92,9 +93,15 @@ export default function GuideLibraryPage() {
 
   // ── Delete a guide. 409 = still linked by a task → keep the row, show the reason.
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const { confirm, confirmElement } = useConfirm();
   async function handleDelete(g: LibraryGuideSummary) {
     if (deletingId) return;
-    if (!confirm(`Delete "${g.name}"? This permanently removes the guide. Tasks that already ran keep their own copy. This can't be undone.`)) return;
+    if (!await confirm({
+      title: `Delete "${g.name}"?`,
+      message: "This permanently removes the guide. Tasks that already ran keep their own copy. This can't be undone.",
+      confirmLabel: 'Delete guide',
+      variant: 'danger',
+    })) return;
     setDeletingId(g.id);
     try {
       const res = await fetch(`/api/tasks/guides/${g.id}`, { method: 'DELETE', credentials: 'same-origin' });
@@ -245,6 +252,7 @@ export default function GuideLibraryPage() {
         visible={!!toast}
         onDismiss={() => setToast(null)}
       />
+      {confirmElement}
     </div>
   );
 }

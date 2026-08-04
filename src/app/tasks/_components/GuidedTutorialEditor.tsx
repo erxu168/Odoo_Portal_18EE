@@ -39,6 +39,7 @@ import {
 import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
+import { useConfirm } from '@/components/ui/useConfirm';
 
 /*
  * GuidedTutorialEditor — manager/admin editor for a REUSABLE library guide
@@ -174,6 +175,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
   const [dirty, setDirty] = useState(false);
   /** Staff-player preview of the SAVED guide (opens over the editor). */
   const [previewOpen, setPreviewOpen] = useState(false);
+  const { confirm, confirmElement } = useConfirm();
 
   // Hide the global top bar while this full-height editor is open.
   const { setHidden } = useTopBar();
@@ -287,7 +289,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (previewOpenRef.current) return;
-      if (e.key === 'Escape') requestClose();
+      if (e.key === 'Escape') void requestClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -383,14 +385,22 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       (s.youtube_url || '').trim());
   }
 
-  function removeStep(key: string) {
+  async function removeStep(key: string) {
     if (savingRef.current) return;
     const idx = steps.findIndex(s => s.key === key);
     if (idx === -1) return;
     // Confirm only when there's something to lose — an empty just-added step goes
     // quietly. Mirrors the "Remove guide" confirm wording.
-    if (stepHasContent(steps[idx]) &&
-        !confirm(`Remove step ${idx + 1}? Its photo and notes will be deleted. This can't be undone.`)) return;
+    if (stepHasContent(steps[idx]) && !await confirm({
+      title: `Remove step ${idx + 1}?`,
+      message: "Its photo and notes are deleted with it. This can't be undone.",
+      confirmLabel: 'Remove step',
+      variant: 'danger',
+    })) return;
+    // Re-check AFTER the dialog: the old browser confirm() froze the tab, so a
+    // save could not begin while it was open. This one does not, so the guard
+    // has to hold on both sides of the await.
+    if (savingRef.current) return;
     setSteps(prev => prev.filter(s => s.key !== key));
     setActivePin(a => (a?.key === key ? null : a));
     markDirty();
@@ -615,7 +625,12 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       setError(`This guide is used by ${usedCount} task${usedCount === 1 ? '' : 's'}. Detach it from those tasks first, then delete it.`);
       return;
     }
-    if (!confirm('Delete this whole guide? Every step is permanently removed. Tasks that already ran keep their own copy. This cannot be undone.')) return;
+    if (!await confirm({
+      title: 'Delete this whole guide?',
+      message: 'Every step is permanently removed. Tasks that already ran keep their own copy. This cannot be undone.',
+      confirmLabel: 'Delete guide',
+      variant: 'danger',
+    })) return;
     setError(null); setNotice(null);
     savingRef.current = true; setSaving(true);
     try {
@@ -638,16 +653,26 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
     }
   }
 
-  function requestClose() {
+  async function requestClose() {
     if (savingRef.current || pendingMediaRef.current > 0) return;
-    if (dirty && !confirm('Discard your unsaved changes?')) return;
+    if (dirty && !await confirm({
+      title: 'Discard your unsaved changes?',
+      message: 'Anything you have edited since the last save is lost.',
+      confirmLabel: 'Discard changes',
+      variant: 'danger',
+    })) return;
     onClose();
   }
 
-  function reloadStale() {
+  async function reloadStale() {
     if (savingRef.current) return;
     // Never auto-discard the manager's in-memory work — always confirm first.
-    if (!confirm('This discards your unsaved changes. Continue?')) return;
+    if (!await confirm({
+      title: 'Reload and discard your changes?',
+      message: 'Someone else saved this guide while you were editing. Reloading brings in their version and drops yours.',
+      confirmLabel: 'Reload',
+      variant: 'danger',
+    })) return;
     load();
   }
 
@@ -865,6 +890,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
     {previewOpen && (
       <GuidedTutorialPlayer source={{ kind: 'library-manager', guideId }} onClose={() => setPreviewOpen(false)} />
     )}
+    {confirmElement}
     </>
   );
 }
@@ -1090,6 +1116,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
   const [capHit, setCapHit] = useState(false);
   /** Index of the mark the author tapped — movable, stretchable, deletable. */
   const [selectedMark, setSelectedMark] = useState<number | null>(null);
+  const { confirm, confirmElement } = useConfirm();
   const photo = hasPhoto(step);
   const shapes = step.drawings;
   // Keep the selection valid: undo/clear/erase can remove the selected mark, and
@@ -1130,13 +1157,17 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
    * dropped replacement must hit the same pin-wipe confirmation, or dragging a
    * new photo onto a pinned step would silently discard its notes.
    */
-  function acceptPhoto(f: File | null | undefined) {
+  async function acceptPhoto(f: File | null | undefined) {
     if (!f) return;
     // Replacing a photo wipes its pins AND drawings — both point at the old
     // image, so their coordinates go stale. Confirm before discarding either.
     const marks = step.pins.length + shapes.length;
-    if (photo && marks > 0 &&
-        !confirm('Replace this photo? Its note-pins and drawings will be removed because they point to the old photo.')) return;
+    if (photo && marks > 0 && !await confirm({
+      title: 'Replace this photo?',
+      message: 'Its note-pins and drawings are removed, because they point at the old photo.',
+      confirmLabel: 'Replace photo',
+      variant: 'danger',
+    })) return;
     onPickPhoto(f);
   }
 
@@ -1152,6 +1183,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
 
   return (
     <div className="space-y-2">
+      {confirmElement}
       {chooser && (
         <PhotoSourceSheet
           title="Step photo"
@@ -1280,8 +1312,13 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           <ToolButton
             label="Clear"
             disabled={disabled || shapes.length === 0}
-            onClick={() => {
-              if (!confirm('Remove all drawings from this photo?')) return;
+            onClick={async () => {
+              if (!await confirm({
+                title: 'Remove all drawings?',
+                message: 'Every mark on this photo goes. The numbered note-pins stay.',
+                confirmLabel: 'Remove all',
+                variant: 'danger',
+              })) return;
               setCapHit(false);
               setSelectedMark(null);
               onDrawings([]);

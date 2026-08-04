@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useConfirm } from '@/components/ui/useConfirm';
 import PinnableImage from '@/components/ui/PinnableImage';
 
 export interface GuidePin {
@@ -61,6 +62,7 @@ export default function SetupGuideEditor({
   const [activeGlobal, setActiveGlobal] = useState<number | null>(null);
   const [activeSeq, setActiveSeq] = useState<number | null>(photos[0]?.seq ?? null);
   const [imgError, setImgError] = useState<Set<number>>(new Set());
+  const { confirm, confirmElement } = useConfirm();
   // Mirrors `disabled` so ASYNC callbacks read the CURRENT value at resolve time,
   // not the (stale, still-enabled) value captured when they were kicked off —
   // e.g. an addNewItem() POST that resolves after Save froze the editor.
@@ -167,6 +169,7 @@ export default function SetupGuideEditor({
     // get `disabled={disabled}` so a KEYBOARD-focused file input or button can't
     // fire and mutate photos while a save is in flight.
     <div className={`rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}>
+      {confirmElement}
       <p className="text-[11px] text-gray-600 leading-snug">
         📍 Add one or more photos of the finished station, then tap a photo to drop a numbered
         pin for each item — drag a pin to move it. Staff check off each pin as they set it up.
@@ -265,7 +268,15 @@ export default function SetupGuideEditor({
               <button
                 type="button"
                 disabled={disabled}
-                onClick={() => { if (confirm('Remove this photo and its pins?')) onRemovePhoto(activePhoto.seq); }}
+                onClick={async () => {
+                  if (!await confirm({
+                    title: 'Remove this photo?',
+                    message: 'Its numbered pins go with it, because they point at this photo.',
+                    confirmLabel: 'Remove photo',
+                    variant: 'danger',
+                  })) return;
+                  onRemovePhoto(activePhoto.seq);
+                }}
                 className="text-[11px] font-semibold text-red-500 hover:text-red-600 disabled:opacity-50"
               >
                 Remove

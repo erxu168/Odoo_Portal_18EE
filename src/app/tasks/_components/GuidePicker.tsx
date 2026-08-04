@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConfirm } from '@/components/ui/useConfirm';
 import GuidedTutorialEditor from './GuidedTutorialEditor';
 import type { LibraryGuideSummary, GuideLink } from '@/lib/task-guide';
 
@@ -33,6 +34,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
   const [editGuide, setEditGuide] = useState<{ id: number; name: string } | null>(null);
   // Attach-picker modal open?
   const [picking, setPicking] = useState(false);
+  const { confirm, confirmElement } = useConfirm();
 
   const gen = useRef(0);
   const loadLink = useCallback(async () => {
@@ -82,6 +84,7 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
 
   return (
     <div>
+      {confirmElement}
       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
 
       {loading ? (
@@ -120,7 +123,15 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
             <button
               type="button"
               disabled={busy}
-              onClick={() => { if (confirm('Unlink this guide from the task? The guide itself is kept in the library.')) void attach(null); }}
+              onClick={async () => {
+                if (!await confirm({
+                  title: 'Unlink this guide?',
+                  message: 'The task stops showing it. The guide itself stays in the library.',
+                  confirmLabel: 'Unlink',
+                  variant: 'danger',
+                })) return;
+                void attach(null);
+              }}
               className="py-2 px-3 rounded-lg border border-gray-200 text-[13px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
             >
               Unlink
