@@ -273,3 +273,25 @@ test('monthly lists fire on their day, and a 31st list fires on a short month’
   expect(shouldFire(31, '2026-03-31')).toBe(true);
   expect(shouldFire(31, '2026-04-30'), 'April has 30 days').toBe(true);
 });
+
+test('a rejected count is NOT reopened over a product another count already answered', () => {
+  // The exclusion cannot protect this path — reopening does not re-freeze the
+  // lines — so a submitted count's products block it. Reject that one first.
+  const co = CO + 70;
+  makeList({ frequency: 'daily', productIds: [701], companyId: co, name: 'First' });
+  db.generateTodaySessions([co]);
+  const first = openSessionsToday(co)[0];
+  db.updateSessionStatus(first.id, 'rejected');
+
+  const other = makeList({ frequency: 'adhoc', productIds: [701], companyId: co, adhocDate: db.todayStr(), name: 'Recount' });
+  const made = db.createSessionGuarded({
+    template_id: other, scheduled_date: db.todayStr(),
+    location_id: LOC, company_id: co, product_ids: [701],
+  });
+  expect(made.id, 'a rejected count releases its products, so the recount opens').not.toBeNull();
+  db.updateSessionStatus(made.id, 'submitted');
+
+  const reopened = db.reopenRejectedSessionGuarded(first.id);
+  expect(reopened.result, 'the number for today already exists on the recount').toBe('clash');
+  expect(reopened.clash).toEqual([701]);
+});

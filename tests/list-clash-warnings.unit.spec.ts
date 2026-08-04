@@ -19,6 +19,15 @@ import path from 'path';
  * 1. templatesClashingProducts — tell him BEFORE he saves.
  * 2. ensureTodaySessionForTemplate — when a count is already running that covers
  *    these products, say so plainly instead of reporting "not scheduled today".
+ *
+ * UPDATED 4 August 2026. The first answer was to DEFER the whole new list to its
+ * next scheduled day — safe, but it meant a list Ethan made today counted
+ * nothing today, and pulling the shared products out by hand was "confusion and
+ * a lot of manual work". The rule now works per product instead of per list: the
+ * new list opens today carrying only what no other count of the day already
+ * holds. The shared products stay with the count that has them, the running
+ * count is never touched, and the invariant these tests exist for — one product,
+ * one count per day — is unchanged.
  */
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'kw-clash-'));
@@ -93,7 +102,7 @@ test('no products, or no restaurant, means nothing to warn about', () => {
   expect(db.templatesClashingProducts(null, [51])).toEqual([]);
 });
 
-test('THE 13:32 CASE: a new list beside a count ALREADY BEING COUNTED defers, and says which products', () => {
+test('THE 13:32 CASE: a new list beside a count ALREADY BEING COUNTED opens with only its OWN products', () => {
   const c = ++co;
   // The daily count exists AND staff have started it — which is what made
   // 3 August unfixable. (An untouched day merges instead; see the test below.)
@@ -107,9 +116,14 @@ test('THE 13:32 CASE: a new list beside a count ALREADY BEING COUNTED defers, an
   const weekly = makeList({ companyId: c, productIds: [62, 63], name: 'Weekly', frequency: 'daily' });
   const gen = db.ensureTodaySessionForTemplate(weekly);
 
-  expect(gen.deferred, 'it must not open a second count over the same product').toBe(true);
-  expect(gen.sessionId).toBeNull();
-  expect(gen.clash, 'and it must name the product that clashed').toEqual([62]);
+  expect(gen.deferred, 'the list is not sent away — it counts today').toBe(false);
+  expect(gen.sessionId, 'it gets a count of its own').toBeTruthy();
+  const weeklyItems = db.getSessionItems(gen.sessionId).map((i: any) => i.odoo_product_id).sort();
+  expect(weeklyItems, '62 stays with the count already holding it; 63 is the weekly\u2019s own').toEqual([63]);
+
+  // The running count is untouched — same lines, same number already entered.
+  expect(db.getSessionItems(open[0].id).map((i: any) => i.odoo_product_id).sort()).toEqual([61, 62]);
+  expect(db.getSessionEntries(open[0].id).find((e: any) => e.product_id === 61)?.counted_qty).toBe(2);
 
   // THE invariant: no product in two open counts today.
   const seen = new Map<number, number>();
@@ -181,7 +195,7 @@ test('a clash on an UNTOUCHED day is MERGED, not deferred — the good outcome f
   expect(products, 'the union, each product once').toEqual([111, 112, 113]);
 });
 
-test('a clash on a day somebody has ALREADY counted still defers', () => {
+test('a clash on a day somebody has ALREADY counted leaves that day\u2019s work alone', () => {
   const c = ++co;
   const daily = makeList({ companyId: c, productIds: [121, 122], name: 'Daily' });
   db.generateTodaySessions([c]);
@@ -191,8 +205,13 @@ test('a clash on a day somebody has ALREADY counted still defers', () => {
 
   const weekly = makeList({ companyId: c, productIds: [122, 123], name: 'Weekly' });
   const gen = db.ensureTodaySessionForTemplate(weekly);
-  expect(gen.deferred, 'work has started — do not rearrange the day').toBe(true);
-  expect(gen.clash).toEqual([122]);
+  expect(gen.deferred, 'the weekly still counts today').toBe(false);
+  expect(db.getSessionItems(gen.sessionId).map((i: any) => i.odoo_product_id).sort(),
+    '122 is already spoken for; only 123 is left').toEqual([123]);
+
+  // Work already done is never rearranged.
+  expect(db.getSessionItems(s.id).map((i: any) => i.odoo_product_id).sort()).toEqual([121, 122]);
+  expect(db.getSessionEntries(s.id).find((e: any) => e.product_id === 121)?.counted_qty).toBe(3);
   expect(daily).toBeTruthy();
 });
 
@@ -209,9 +228,13 @@ test('an OPENED count with no numbers in it yet is still safe from being rearran
   const weekly = makeList({ companyId: c, productIds: [132, 133], name: 'Weekly' });
   const gen = db.ensureTodaySessionForTemplate(weekly);
 
-  expect(gen.deferred, 'an open count is not rearranged under the person holding it').toBe(true);
+  expect(gen.deferred).toBe(false);
   const after = db.listSessions({ company_ids: [c], scheduled_date: db.todayStr() });
   expect(after.some((x: any) => x.id === s.id), 'the opened count still exists').toBe(true);
+  expect(db.getSessionItems(s.id).map((i: any) => i.odoo_product_id).sort(),
+    'and its lines are exactly what the person on the tablet already sees').toEqual([131, 132]);
+  expect(db.getSessionItems(gen.sessionId).map((i: any) => i.odoo_product_id).sort(),
+    'the new list takes only what nobody is holding').toEqual([133]);
 });
 
 test('a list that already HAS today’s count gets it back, even when another count clashes', () => {
@@ -220,9 +243,15 @@ test('a list that already HAS today’s count gets it back, even when another co
   db.generateTodaySessions([c]);
   const own = db.listSessions({ company_ids: [c], scheduled_date: db.todayStr() })[0];
   db.updateSessionStatus(own.id, 'in_progress');
-  // A second, overlapping open count exists (allowed duplicates, or legacy data).
-  const other = makeList({ companyId: c, productIds: [141], name: 'Other' });
-  db.createSession({ template_id: other, scheduled_date: db.todayStr(), location_id: LOC, company_id: c, assigned_user_id: null });
+  // A second, overlapping open count exists. Creating one is no longer possible
+  // — the overlapping product would be dropped and an empty count refused — so
+  // this is the legacy shape: a count from before the rule, still open.
+  const other = makeList({ companyId: c, productIds: [142], name: 'Other' });
+  const otherId = db.createSession({ template_id: other, scheduled_date: db.todayStr(), location_id: LOC, company_id: c, assigned_user_id: null });
+  db.snapshotSessionItems(otherId, [
+    { odoo_product_id: 142, count_location_id: 0, shelf_sort: 0 },
+    { odoo_product_id: 141, count_location_id: 0, shelf_sort: 1 },
+  ]);
 
   const gen = db.ensureTodaySessionForTemplate(mine);
   expect(gen.sessionId, 'its own count must never be hidden by someone else’s clash').toBe(own.id);

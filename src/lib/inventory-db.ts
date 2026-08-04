@@ -1085,7 +1085,7 @@ export function createSession(data: {
   location_id: number;
   assigned_user_id?: number | null;
   company_id?: number | null;
-}): number {
+}, opts: { recount?: boolean } = {}): number {
   const db = getDb();
   // Snapshot the company at creation; derive from the template when the caller
   // didn't pass it (so the session's company never shifts if the template is
@@ -1105,7 +1105,9 @@ export function createSession(data: {
       VALUES (?, ?, ?, ?, ?, 'pending', ?)
     `).run(data.template_id, data.scheduled_date, data.location_id, companyId, data.assigned_user_id || null, now());
     const sessionId = r.lastInsertRowid as number;
-    snapshotSessionFromTemplate(sessionId, data.template_id);
+    snapshotSessionFromTemplate(sessionId, data.template_id, opts);
+    const wanted = (getTemplate(data.template_id)?.product_ids as number[]) || [];
+    if (wanted.length > 0 && countSessionItems(sessionId) === 0) throw new EmptyCountRefused();
     return sessionId;
   });
   return tx();
@@ -1382,6 +1384,17 @@ export function productsAlreadyCountedToday(
  *  between the outside check and the write — rolls the whole thing back. */
 class MergeAborted extends Error {}
 
+/**
+ * Thrown inside a session's creation transaction when its lines froze to
+ * NOTHING — every product it wanted is already held by another of today's
+ * counts. Rolling back is the only safe outcome: an empty modern snapshot is
+ * indistinguishable from a legacy/category session, and those fall back to
+ * counting the whole live template — which would re-create the exact duplicate
+ * this rule exists to prevent. The prechecks avoid getting here; this makes it
+ * impossible even when one of them read a stale template. (Codex, 2026-08-04.)
+ */
+export class EmptyCountRefused extends Error {}
+
 /** Re-verify INSIDE the transaction that a session is still safe to absorb —
  *  the outside check can go stale under a concurrent writer (another process). */
 function assertStillReplaceable(sessionId: number): void {
@@ -1414,6 +1427,10 @@ function insertMergedWalkSession(companyId: number, locationId: number, members:
   `).run(walkTemplateId, scheduledDate, locationId, companyId, sharedAssignee, now());
   const sessionId = r.lastInsertRowid as number;
   snapshotSessionFromProducts(sessionId, union, companyId);
+  // Same rule as a solo count: never leave an empty session behind. Reconciliation
+  // only checks OPEN counts, but the freeze also yields products to counts already
+  // answered today — so the union can come out empty here. (Codex, 2026-08-04.)
+  if (union.length > 0 && countSessionItems(sessionId) === 0) throw new MergeAborted();
   const ins = db.prepare('INSERT INTO session_source_templates (session_id, template_id, name, frequency) VALUES (?, ?, ?, ?)');
   for (const m of members) ins.run(sessionId, m.id, m.name, m.frequency);
   return sessionId;
@@ -1476,9 +1493,11 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
         'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
       ).get(tmpl.id, today);
       if (existing) return;
-      // Never open a second count for products already being counted today —
-      // that is the double-count this whole feature exists to prevent.
-      if (productsAlreadyCountedToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || []).length > 0) return;
+      // A product another of today's counts already holds is dropped from this
+      // one at freeze time, not counted twice (snapshotSessionFromProducts).
+      // So the list still opens — unless EVERY product is spoken for, in which
+      // case there is nothing here to count and an empty count is just noise.
+      if (nothingLeftToCount(tmpl, today)) return;
 
       let assignedUserId: number | null = null;
       if (tmpl.assign_type === 'person' && tmpl.assign_id) {
@@ -1496,6 +1515,8 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
     try {
       run.immediate();
     } catch (e) {
+      // Nothing left of its own to count — no session, and nothing is wrong.
+      if (e instanceof EmptyCountRefused) { skipped++; return; }
       // Lost a create race — another caller already made today's session.
       // Anything that is NOT the unique-index violation is a real failure.
       if (!isUniqueViolation(e)) throw e;
@@ -1528,6 +1549,18 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
       soloDue.push(tmpl);
     }
   }
+
+  // FREEZE THE MOST FREQUENT LIST FIRST. A product on two of today's lists is
+  // kept by whichever count freezes it first (see snapshotSessionFromProducts),
+  // so the order here decides who keeps the staples — and it should be the list
+  // that runs every day, not the weekly deep-count.
+  const byCadence = (a: CountingTemplate, b: CountingTemplate) => {
+    const rank: Record<string, number> = { daily: 0, weekly: 1, monthly: 2, adhoc: 3 };
+    const ra = rank[a.frequency] ?? 99;
+    const rb = rank[b.frequency] ?? 99;
+    return ra !== rb ? ra - rb : a.id - b.id;
+  };
+  soloDue.sort(byCadence);
 
   // Ad-hoc, category-defined and company-less lists: exactly the old behavior.
   for (const tmpl of soloDue) createSolo(tmpl);
@@ -1639,6 +1672,9 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
     try {
       run.immediate();
     } catch (e) {
+      // Nothing left to merge today (every product is already counted), or the
+      // day gained work mid-transaction. Either way the rollback is the answer.
+      if (e instanceof MergeAborted) { skipped++; return; }
       if (!isUniqueViolation(e)) throw e;
       // A concurrent generator won the walk row. Its own transaction already
       // reconciled the group; ours rolled back cleanly, so there is nothing to
@@ -1653,6 +1689,7 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
   };
 
   for (const [companyId, members] of Array.from(mergeGroups.entries())) {
+    members.sort(byCadence);
     // The walk writes back to ONE Odoo location at approval, so only lists that
     // share it may merge. (In practice one company = one warehouse; a mixed
     // group is a legacy oddity and simply stays per-list.) Either way this goes
@@ -1745,18 +1782,31 @@ export function ensureTodaySessionForTemplate(
       const joined = walkSessionForTemplateToday(templateId);
       if (joined) return { sessionId: joined.id, joinedWalk: true, deferred: false };
     }
-    const stillClashing = openCountClashToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || [], ownToday?.id);
-    if (stillClashing.length > 0) {
-      // This list may ALREADY have today's count (the merge can leave it, or it
-      // predates the clash). Nothing is being created, so a clash with some
-      // OTHER open session must not hide the session that exists — returning
-      // null there would read as "no count today" when there plainly is one.
-      // (Codex, 2026-08-03.)
-      const own = db.prepare(
-        'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
-      ).get(templateId, todayStr()) as { id: number } | undefined;
-      if (own) return { sessionId: own.id, joinedWalk: false, deferred: false };
-      return { sessionId: null, joinedWalk: false, deferred: true, clash: stillClashing };
+    // This list may ALREADY have today's count (the merge can leave it, or it
+    // predates the clash). Nothing is being created, so a clash with some
+    // OTHER open session must not hide the session that exists — returning
+    // null there would read as "no count today" when there plainly is one.
+    // (Codex, 2026-08-03.)
+    const own = db.prepare(
+      'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+    ).get(templateId, todayStr()) as { id: number } | undefined;
+    if (own) return { sessionId: own.id, joinedWalk: false, deferred: false };
+    // Overlap alone no longer sends a list away. Its shared products are dropped
+    // when it freezes its lines, so it opens today carrying what nobody else
+    // holds; only a list with NOTHING of its own left is deferred. The old
+    // whole-list deferral is what made a list created mid-service count nothing
+    // at all that day. Asked per product AND per Odoo location, so a product
+    // open at another stock location can't send this one away. (Codex,
+    // 2026-08-04.)
+    // Report the SAME products the decision was made on, not a differently
+    // scoped set — the manager is told exactly why nothing opened.
+    const held = productsFrozenElsewhereToday(
+      tmpl.company_id ?? null, tmpl.location_id, todayStr(),
+      Array.from(new Set((tmpl.product_ids as number[]) || [])),
+      { excludeSessionId: ownToday?.id },
+    );
+    if (nothingLeftToCount(tmpl, todayStr(), ownToday?.id)) {
+      return { sessionId: null, joinedWalk: false, deferred: true, clash: Array.from(held) };
     }
   }
 
@@ -1775,13 +1825,17 @@ export function ensureTodaySessionForTemplate(
         const joined = walkSessionForTemplateToday(templateId);
         if (joined) return { sessionId: joined.id, joinedWalk: true, deferred: false };
       }
-      // The walk has work in it. A second session may only exist if it shares
-      // NO product with the walk — otherwise those products would be counted
-      // twice into the same Odoo location. Overlap → no count today.
+      // The walk has work in it, so it keeps every product it already holds —
+      // a second session freezing those would count them twice into the same
+      // Odoo location. Everything ELSE on this list is still countable today,
+      // and the freeze drops the overlap by itself; only a list entirely
+      // inside the walk has no reason to open. (Codex, 2026-08-04.)
       const walkProductIds = new Set(getSessionItems(walk.id).map((i) => i.odoo_product_id));
-      const overlapping = ((tmpl.product_ids as number[]) || []).filter((pid) => walkProductIds.has(pid));
-      if (overlapping.length > 0) return { sessionId: null, joinedWalk: false, deferred: true, clash: overlapping };
-      // Disjoint products — an ordinary session is safe.
+      const wantedHere = Array.from(new Set((tmpl.product_ids as number[]) || []));
+      const overlapping = wantedHere.filter((pid) => walkProductIds.has(pid));
+      if (wantedHere.length > 0 && overlapping.length === wantedHere.length) {
+        return { sessionId: null, joinedWalk: false, deferred: true, clash: overlapping };
+      }
       return { sessionId: createIfNoWalk ? generateSessionForTemplate(templateId) : null, joinedWalk: false, deferred: false };
     }
   }
@@ -1808,8 +1862,19 @@ export function createSessionGuarded(data: {
       'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
     ).get(data.template_id, data.scheduled_date) as { id: number } | undefined;
     if (already) return { id: already.id, existing: true, clash: [] };
-    const clash = productsAlreadyCountedToday(data.company_id ?? null, data.product_ids, { date: data.scheduled_date });
-    if (clash.length > 0) return { id: null, existing: false, clash };
+    // A HUMAN pressed start, so this is a deliberate count: it may re-ask for a
+    // product a FINISHED count already answered today (Ethan, 2026-08-03 — a
+    // submitted count is off the floor). What it must never do is collide with a
+    // count someone is walking right now, so open counts still hold their
+    // products, and a list left with nothing of its own is refused outright.
+    // Never flag-gated: a rule that protects the numbers must not switch off.
+    const wanted = Array.from(new Set(data.product_ids));
+    const taken = productsFrozenElsewhereToday(
+      data.company_id ?? null, data.location_id, data.scheduled_date, wanted, { openOnly: true },
+    );
+    if (wanted.length > 0 && taken.size === wanted.length) {
+      return { id: null, existing: false, clash: Array.from(taken) };
+    }
     return {
       id: createSession({
         template_id: data.template_id,
@@ -1817,12 +1882,18 @@ export function createSessionGuarded(data: {
         location_id: data.location_id,
         company_id: data.company_id ?? null,
         assigned_user_id: data.assigned_user_id ?? null,
-      }),
+      }, { recount: true }),
       existing: false,
       clash: [],
     };
   });
-  return run.immediate();
+  try {
+    return run.immediate();
+  } catch (e) {
+    // The template changed under us and nothing was left to freeze.
+    if (e instanceof EmptyCountRefused) return { id: null, existing: false, clash: data.product_ids };
+    throw e;
+  }
 }
 
 /**
@@ -1834,13 +1905,20 @@ export function createSessionGuarded(data: {
 export function reopenRejectedSessionGuarded(sessionId: number): { result: 'ok' | 'not-rejected' | 'clash'; clash: number[] } {
   const db = getDb();
   const run = db.transaction((): { result: 'ok' | 'not-rejected' | 'clash'; clash: number[] } => {
-    const row = db.prepare('SELECT status, company_id, scheduled_date FROM counting_sessions WHERE id = ?')
-      .get(sessionId) as { status: string; company_id: number | null; scheduled_date: string } | undefined;
+    const row = db.prepare('SELECT status, company_id, location_id, scheduled_date FROM counting_sessions WHERE id = ?')
+      .get(sessionId) as { status: string; company_id: number | null; location_id: number; scheduled_date: string } | undefined;
     if (!row || row.status !== 'rejected') return { result: 'not-rejected', clash: [] };
     const pids = getSessionItems(sessionId).map((i) => i.odoo_product_id);
-    const clash = productsAlreadyCountedToday(row.company_id, pids, {
-      excludeSessionId: sessionId, date: row.scheduled_date,
-    });
+    // Reopening does NOT re-freeze the lines, so the snapshot-time exclusion
+    // can't protect this path: whatever another count picked up while this one
+    // sat rejected would genuinely be counted twice. ANY overlap refuses —
+    // including a count already submitted or approved, because its number for
+    // today exists and recounting into a second row would contradict it. Reject
+    // that one first. Never flag-gated (see createSessionGuarded).
+    const clash = Array.from(productsFrozenElsewhereToday(
+      row.company_id, row.location_id, row.scheduled_date, pids,
+      { excludeSessionId: sessionId },
+    ));
     if (clash.length > 0) return { result: 'clash', clash };
     const changed = db.prepare(
       "UPDATE counting_sessions SET status = 'pending' WHERE id = ? AND status = 'rejected'",
@@ -1881,8 +1959,9 @@ export function generateSessionForTemplate(templateId: number): number | null {
         'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
       ).get(templateId, today) as { id: number } | undefined;
       if (existing) return existing.id;
-      // Would double-count products another open session already covers today.
-      if (productsAlreadyCountedToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || []).length > 0) return -1;
+      // Same rule as generateTodaySessions: shared products are dropped at
+      // freeze time, and only a list with nothing left of its own is refused.
+      if (nothingLeftToCount(tmpl, today)) return -1;
       return createSession({
         template_id: templateId,
         scheduled_date: today,
@@ -1894,6 +1973,7 @@ export function generateSessionForTemplate(templateId: number): number | null {
     const out = run.immediate();
     return out === -1 ? null : out;   // -1 = refused (would double-count today)
   } catch (e) {
+    if (e instanceof EmptyCountRefused) return null;
     // Lost a create race (unique index) — return the winner's session instead.
     // Any other failure is real and must surface, not read as "not scheduled".
     if (!isUniqueViolation(e)) throw e;
@@ -2277,7 +2357,14 @@ export function regenerateTodaySession(templateId: number): number | null {
           for (const s of memberSolos) deleteSessionArtifacts(s.id);
           if (members.length === 1) {
             const sid = generateSessionForTemplate(members[0].id);
-            if (sid == null) throw new Error(`regenerateTodaySession: could not rebuild solo session for template ${members[0].id}`);
+            if (sid == null) {
+              // "Nothing left to count" is a legitimate answer, not a failure:
+              // another of today's counts holds every product on this list. Abort
+              // the rebuild and leave the day exactly as it was, rather than
+              // surfacing an error for a day that simply needs no session here.
+              if (nothingLeftToCount(members[0], today)) throw new MergeAborted();
+              throw new Error(`regenerateTodaySession: could not rebuild solo session for template ${members[0].id}`);
+            }
             return sid;
           }
           return insertMergedWalkSession(companyId, locationIds[0], members, today);
@@ -2849,6 +2936,13 @@ export function getSessionPackagingLevels(sessionId: number): Map<number, PackLe
 }
 
 /** Freeze a session's items at creation. Replaces any existing snapshot. */
+/** How many lines a session actually froze. */
+function countSessionItems(sessionId: number): number {
+  const row = getDb().prepare('SELECT COUNT(*) AS n FROM session_count_items WHERE session_id = ?')
+    .get(sessionId) as { n: number };
+  return row.n;
+}
+
 export function snapshotSessionItems(
   sessionId: number,
   items: Omit<SessionCountItem, 'session_id'>[],
@@ -2874,11 +2968,15 @@ export function snapshotSessionItems(
  * for legacy templates. Captures each product's current unit settings so a later
  * flag/template edit can't change an already-open session.
  */
-export function snapshotSessionFromTemplate(sessionId: number, templateId: number): void {
+export function snapshotSessionFromTemplate(
+  sessionId: number,
+  templateId: number,
+  opts: { recount?: boolean } = {},
+): void {
   const tmpl = getTemplate(templateId);
   if (!tmpl) return;
   const pids: number[] = Array.isArray(tmpl.product_ids) ? (tmpl.product_ids as number[]) : [];
-  snapshotSessionFromProducts(sessionId, pids, tmpl.company_id ?? null);
+  snapshotSessionFromProducts(sessionId, pids, tmpl.company_id ?? null, opts);
 }
 
 /**
@@ -2887,8 +2985,93 @@ export function snapshotSessionFromTemplate(sessionId: number, templateId: numbe
  * deduped union of every due list's products). Same company-scoping, same
  * catch-all rule, same spot/packaging freezing — one implementation.
  */
-export function snapshotSessionFromProducts(sessionId: number, productIds: number[], companyId: number | null): void {
-  const pids: number[] = Array.from(new Set(productIds));
+/**
+ * Is this product already part of another of today's counts at the same
+ * restaurant AND the same Odoo stock location? Then this count must not freeze
+ * it too — the number would exist twice, and approval writes one absolute
+ * quantity per product per location.
+ *
+ * Counts that are finished with (missed, rejected) release their products: a
+ * rejected count is going to be recounted, and a missed one never happened.
+ */
+export function productsFrozenElsewhereToday(
+  companyId: number | null,
+  locationId: number,
+  date: string,
+  productIds: number[],
+  opts: { excludeSessionId?: number; openOnly?: boolean } = {},
+): Set<number> {
+  if (companyId == null || productIds.length === 0) return new Set();
+  const db = getDb();
+  // Two different questions share this query:
+  //   default   — "does today's number for this product already exist somewhere?"
+  //               A submitted or approved count HAS the number, so it counts.
+  //   openOnly  — "is anyone counting this right now?" A submitted count is
+  //               finished as far as the floor is concerned (Ethan, 2026-08-03),
+  //               so only pending/in_progress block.
+  const statuses = opts.openOnly
+    ? "'pending','in_progress'"
+    : "'pending','in_progress','submitted','approved'";
+  const ex = opts.excludeSessionId ?? null;
+  const rows = db.prepare(`
+    SELECT DISTINCT i.odoo_product_id AS pid
+      FROM session_count_items i
+      JOIN counting_sessions s ON s.id = i.session_id
+     WHERE s.company_id = ? AND s.location_id = ? AND s.scheduled_date = ?
+       AND s.status IN (${statuses})
+       AND (? IS NULL OR s.id != ?)
+  `).all(companyId, locationId, date, ex, ex) as { pid: number }[];
+  const held = new Set(rows.map((r) => r.pid));
+  return new Set(productIds.filter((pid) => held.has(pid)));
+}
+
+/**
+ * True when every product on this list is already held by another of today's
+ * counts — the one case where opening the list would produce an empty count.
+ * A list with anything left of its own still opens (minus the shared items).
+ */
+function nothingLeftToCount(tmpl: CountingTemplate, date: string, excludeSessionId?: number): boolean {
+  const wanted = Array.from(new Set((tmpl.product_ids as number[]) || []));
+  if (wanted.length === 0) return false;   // category/legacy list: contents unknown, never refuse
+  return productsFrozenElsewhereToday(
+    tmpl.company_id ?? null, tmpl.location_id, date, wanted, { excludeSessionId },
+  ).size === wanted.length;
+}
+
+/** The same question asked from inside a session that already exists. */
+function frozenElsewhereFor(sessionId: number, productIds: number[], openOnly = false): Set<number> {
+  const db = getDb();
+  const me = db.prepare(
+    'SELECT company_id, location_id, scheduled_date FROM counting_sessions WHERE id = ?',
+  ).get(sessionId) as { company_id: number | null; location_id: number; scheduled_date: string } | undefined;
+  if (!me) return new Set();
+  return productsFrozenElsewhereToday(
+    me.company_id, me.location_id, me.scheduled_date, productIds,
+    { excludeSessionId: sessionId, openOnly },
+  );
+}
+
+export function snapshotSessionFromProducts(
+  sessionId: number,
+  productIds: number[],
+  companyId: number | null,
+  opts: { recount?: boolean } = {},
+): void {
+  // ONE PRODUCT, ONE COUNT PER DAY.
+  //
+  // A weekly deep-count naturally repeats staples the daily list covers. Rather
+  // than reconcile two counts of one product afterwards — which has to be
+  // defended at every write, review and report — the duplicate is never created:
+  // a product already frozen into another of today's counts (same restaurant,
+  // same Odoo stock location) is simply not frozen into this one. Downstream
+  // there is nothing special about the day at all.
+  //
+  // Generation freezes the most frequent list FIRST, so the daily keeps the
+  // staples and the weekly is the one that gives them up. Whoever freezes first
+  // holds them either way, so the number always exists exactly once.
+  const wanted: number[] = Array.from(new Set(productIds));
+  const taken = frozenElsewhereFor(sessionId, wanted, opts.recount === true);
+  const pids: number[] = wanted.filter((pid) => !taken.has(pid));
   // The walking route comes from the products' GLOBAL home spots
   // (product_locations) — the one record all three editing doors write.
   // (template_product_locations is retired; its rows were folded in by the

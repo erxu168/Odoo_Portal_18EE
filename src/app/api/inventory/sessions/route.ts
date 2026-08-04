@@ -160,7 +160,7 @@ export async function POST(request: Request) {
     }
     if (gen.deferred) {
       return NextResponse.json({
-        error: 'Today\u2019s combined count is already under way and covers some of these products. This list is counted from its next scheduled day.',
+        error: 'Everything on this list is already being counted today by another list, so there is nothing left for it to count. It runs again on its next scheduled day.',
       }, { status: 409 });
     }
   }

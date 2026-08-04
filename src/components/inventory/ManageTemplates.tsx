@@ -148,16 +148,18 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
 const clashSheet = clash ? (
       <DuplicateProductsSheet
         rows={clash.rows}
+        savingFrequency={clash.data.frequency}
         onRemove={() => {
-          // Ethan's rule: when two lists want the same product, the one that
-          // already counts it keeps it. Strip them from the list being saved.
+          // Optional tidying only — the system already counts each product once.
+          // A manager who wants the list to read exactly as it counts can strip
+          // the shared products out.
           const drop = new Set(clash.rows.map((r) => r.product_id));
           const kept = (clash.data.product_ids || []).filter((id: number) => !drop.has(id));
           if (kept.length === 0) {
             // Removing them all would save a list that counts nothing, which
             // the form itself refuses — so say what to do instead of silently
             // creating an empty list (Codex, 2026-08-03).
-            alert('That would leave this list empty — every product on it is already counted by another list. Pick different products, or keep them anyway.');
+            alert('That would leave this list empty \u2014 every product on it is also on another list. Pick different products, or just save the list as it is.');
             return;
           }
           const next = { ...clash.data, product_ids: kept };
@@ -304,17 +306,21 @@ const clashSheet = clash ? (
 }
 
 /**
- * "4 of these are already counted on Daily Count."
+ * "4 of these are also on Daily Count — they'll be counted there."
  *
- * Counting one product on two lists means staff walk to the same shelf twice
- * AND the day ends with two different answers for it — on 3 Aug thyme read 0.03
- * on one list and 0.0 on the other. Overlap is nearly always an accident (daily
- * = perishables, weekly = packaging and slow movers), so removing them is the
- * main button. It is never a block: a product genuinely wanted on two lists is
- * the manager's call.
+ * Overlap between lists used to be the manager's problem to fix by hand: a
+ * product on both the daily and the weekly was counted twice, so the day ended
+ * with two different answers for it (3 Aug: thyme read 0.03 on one list, 0.0 on
+ * the other). It is now handled by the system — on any day both lists run, the
+ * product is put on ONE of them, and the list that runs most often keeps it.
+ *
+ * So this sheet informs, it no longer demands. Saving is the main button;
+ * removing the products is there for a manager who wants a tidy list, not
+ * because anything is wrong.
  */
-function DuplicateProductsSheet({ rows, onRemove, onKeep, onCancel }: {
+function DuplicateProductsSheet({ rows, savingFrequency, onRemove, onKeep, onCancel }: {
   rows: ClashRow[];
+  savingFrequency: string;
   onRemove: () => void;
   onKeep: () => void;
   onCancel: () => void;
@@ -342,34 +348,50 @@ function DuplicateProductsSheet({ rows, onRemove, onKeep, onCancel }: {
     if (!cur.includes(r.product_id)) cur.push(r.product_id);
     byList.set(r.template_name, cur);
   });
+  const listNames = Array.from(byList.keys()).join(' and ');
+
+  // WHICH list actually counts them, in the manager's words. The engine gives
+  // the product to whichever of the day's lists freezes its lines first, and
+  // generation freezes the most frequent list first — so the more often a list
+  // runs, the more surely it keeps them. Equal cadence has no stable winner, so
+  // say only what is true: one of the two, never both.
+  const rank: Record<string, number> = { daily: 0, weekly: 1, monthly: 2, adhoc: 3 };
+  const mine = rank[savingFrequency] ?? 99;
+  const others = Array.from(new Set(rows.map((r) => r.frequency)));
+  const it = ids.length === 1 ? 'it' : 'them';
+  const they = ids.length === 1 ? 'it\u2019s' : 'they\u2019re';
+  const where = others.every((f) => (rank[f] ?? 99) < mine)
+    ? `On a day both lists run, ${they} counted on ${listNames} \u2014 this list counts the rest.`
+    : others.every((f) => (rank[f] ?? 99) > mine)
+      ? `On a day both lists run, this list counts ${it} and ${listNames} skips ${it}.`
+      : `On a day both lists run, whichever starts first counts ${it} \u2014 never both.`;
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center" onClick={onCancel}>
       <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 pb-8 max-h-[90vh] overflow-y-auto"
            onClick={(e) => e.stopPropagation()}>
         <h3 className="text-[var(--fs-lg)] font-bold leading-snug">
-          {ids.length} of these {ids.length === 1 ? 'is' : 'are'} already counted on{' '}
-          {Array.from(byList.keys()).join(' and ')}
+          {ids.length} of these {ids.length === 1 ? 'is' : 'are'} also on {listNames}
         </h3>
         <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5 mb-3 leading-relaxed">
-          Counting the same thing on two lists sends staff to the same shelf twice,
-          and you get two different answers for it.
+          {where} Nobody counts the same shelf twice, and you never get two different
+          answers for one product.
         </p>
         <ul className="mb-4 space-y-1.5">
           {ids.map((pid) => (
             <li key={pid} className="flex items-center gap-2.5 text-[var(--fs-sm)] font-semibold text-gray-900">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" aria-hidden="true" />
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0" aria-hidden="true" />
               <span className="min-w-0 [overflow-wrap:anywhere]">{names[pid] || `#${pid}`}</span>
             </li>
           ))}
         </ul>
-        <button onClick={onRemove}
-          className="w-full py-3.5 rounded-xl bg-[#16A34A] text-white font-bold active:scale-[0.98] transition-transform">
-          Remove {ids.length === 1 ? 'it' : 'them'} from this list
-        </button>
         <button onClick={onKeep}
+          className="w-full py-3.5 rounded-xl bg-[#16A34A] text-white font-bold active:scale-[0.98] transition-transform">
+          Save the list
+        </button>
+        <button onClick={onRemove}
           className="w-full py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold mt-2 active:bg-gray-50">
-          Keep {ids.length === 1 ? 'it' : 'them'} anyway
+          Remove {it} from this list
         </button>
         <button onClick={onCancel}
           className="w-full py-3 text-[var(--fs-sm)] text-gray-500 font-semibold mt-1">
