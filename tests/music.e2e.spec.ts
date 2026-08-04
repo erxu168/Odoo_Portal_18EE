@@ -18,6 +18,10 @@ const STAFF = {
   password: process.env.SMOKE_STAFF_PASSWORD || 'test1234',
 };
 const STAMP = process.env.SMOKE_STAMP || String(Date.now());
+// Server mutations fail closed without a browser Origin header (csrf.ts) —
+// API-context calls must present one like a real browser would.
+const ORIGIN = process.env.SMOKE_BASE_URL || (process.env.SMOKE_ENV === 'live' ? 'https://staff.krawings.de' : 'https://portal.krawings.de');
+const H = { headers: { origin: ORIGIN } };
 // A synthetic 11-char video id: exercises the decision machinery without YouTube.
 const FAKE_VID = `zzE2E${STAMP.slice(-6)}`;
 
@@ -57,7 +61,7 @@ test('manager: manual decision round-trips (allow with genre, then reversed to d
   expect(await login(page, MGR.email, MGR.password)).toBeTruthy();
 
   const allow = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, {
-    data: { decision: 'allow', genre: 'reggae_dancehall_dub' },
+    ...H, data: { decision: 'allow', genre: 'reggae_dancehall_dub' },
   });
   expect(allow.ok(), `allow failed: ${await allow.text()}`).toBeTruthy();
 
@@ -67,10 +71,10 @@ test('manager: manual decision round-trips (allow with genre, then reversed to d
   expect(row1?.genre).toBe('reggae_dancehall_dub');
 
   // Allow without a genre must be rejected (the radio needs a shelf).
-  const bad = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, { data: { decision: 'allow' } });
+  const bad = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, { ...H, data: { decision: 'allow' } });
   expect(bad.status()).toBe(400);
 
-  const deny = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, { data: { decision: 'deny' } });
+  const deny = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, { ...H, data: { decision: 'deny' } });
   expect(deny.ok()).toBeTruthy();
   const list2 = await (await page.request.get('/api/music/decisions')).json();
   const row2 = (list2.decisions ?? []).find((d: { video_id: string }) => d.video_id === FAKE_VID);
@@ -84,11 +88,11 @@ test('player APIs refuse a manager phone — only the pinned tablet may drive pl
   expect([403, 409]).toContain(state.status());
 
   const queue = await page.request.post('/api/music/queue', {
-    data: { videoId: FAKE_VID, idempotencyKey: `e2e_${STAMP}` },
+    ...H, data: { videoId: FAKE_VID, idempotencyKey: `e2e_${STAMP}` },
   });
   expect([403, 409]).toContain(queue.status());
 
-  const skip = await page.request.post('/api/music/player/skip', { data: { version: 1 } });
+  const skip = await page.request.post('/api/music/player/skip', { ...H, data: { version: 1, videoId: FAKE_VID } });
   expect([403, 409]).toContain(skip.status());
 });
 
@@ -98,6 +102,6 @@ test('staff cannot reach the manager APIs (module gate is server-side)', async (
 
   const requests = await page.request.get('/api/music/requests');
   expect(requests.status()).toBe(403);
-  const decide = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, { data: { decision: 'deny' } });
+  const decide = await page.request.patch(`/api/music/decisions/${FAKE_VID}`, { ...H, data: { decision: 'deny' } });
   expect(decide.status()).toBe(403);
 });
