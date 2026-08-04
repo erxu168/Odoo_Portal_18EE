@@ -28,6 +28,10 @@ import {
   parseDrawings,
   serializeDrawings,
   DRAWING_COLORS,
+  DRAWING_WIDTH_LEVELS,
+  DEFAULT_DRAWING_WIDTH,
+  clampDrawingWidth,
+  drawingWidthPx,
   MAX_DRAWINGS,
   type GuideDrawing,
   type GuideDrawingType,
@@ -1080,6 +1084,8 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
   /** Active drawing tool — null means "place note-pins" (the default). */
   const [tool, setTool] = useState<GuideDrawingType | null>(null);
   const [color, setColor] = useState<string>(DRAWING_COLORS[0]);
+  /** Line weight LEVEL (1..5) for the next mark — and for the selected one. */
+  const [lineWidth, setLineWidth] = useState<number>(DEFAULT_DRAWING_WIDTH);
   /** True when the author tried to add a mark beyond the cap (so we can say so). */
   const [capHit, setCapHit] = useState(false);
   /** Index of the mark the author tapped — movable, stretchable, deletable. */
@@ -1095,6 +1101,28 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
   useEffect(() => {
     if (!tool) setSelectedMark(null);
   }, [tool]);
+  // Selecting a mark loads its style into the pickers, so the toolbar always
+  // describes what is selected instead of quietly disagreeing with it.
+  useEffect(() => {
+    if (selectedMark == null) return;
+    const s = shapes[selectedMark];
+    if (!s) return;
+    setColor(s.color);
+    setLineWidth(clampDrawingWidth(s.width));
+  }, [selectedMark, shapes]);
+
+  /**
+   * The colour / thickness pickers set the style of the NEXT mark — and, when a
+   * mark is selected, restyle that one too. Without this a line drawn too thin
+   * could only be fixed by erasing and redrawing it.
+   */
+  function applyStyle(patch: Partial<Pick<GuideDrawing, 'color' | 'width'>>) {
+    if (patch.color !== undefined) setColor(patch.color);
+    if (patch.width !== undefined) setLineWidth(patch.width);
+    if (selectedMark != null && shapes[selectedMark]) {
+      onDrawings(shapes.map((s, i) => (i === selectedMark ? { ...s, ...patch } : s)));
+    }
+  }
 
 
   /**
@@ -1166,6 +1194,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             drawings={shapes}
             drawTool={tool}
             drawColor={color}
+            drawWidth={lineWidth}
             onDrawAdd={(shape) => {
               // Never swallow the mark the author just drew: if we're at the cap,
               // say so instead of silently dropping it.
@@ -1198,7 +1227,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             <button
               key={c}
               type="button"
-              onClick={() => setColor(c)}
+              onClick={() => applyStyle({ color: c })}
               disabled={disabled}
               aria-label={`Draw in ${DRAWING_COLOR_NAMES[c]}`}
               aria-pressed={color === c}
@@ -1208,6 +1237,29 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
                 color === c ? 'ring-2 ring-gray-800 scale-110' : 'ring-1 ring-gray-300'
               }`}
             />
+          ))}
+          <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
+          {/* Five line weights, drawn at their real thickness so the picker shows
+              what you get. Thin lines disappear on a busy kitchen photo. */}
+          {DRAWING_WIDTH_LEVELS.map(lvl => (
+            <button
+              key={lvl}
+              type="button"
+              onClick={() => applyStyle({ width: lvl })}
+              disabled={disabled}
+              aria-label={`Line thickness ${lvl} of ${DRAWING_WIDTH_LEVELS.length}`}
+              aria-pressed={lineWidth === lvl}
+              title={`Thickness ${lvl}`}
+              className={`w-7 h-7 flex items-center justify-center rounded-md bg-white disabled:opacity-50 ${
+                lineWidth === lvl ? 'ring-2 ring-gray-800' : 'ring-1 ring-gray-300'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className="block w-4 rounded-full bg-gray-800"
+                style={{ height: `${drawingWidthPx(lvl)}px` }}
+              />
+            </button>
           ))}
           <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
           <ToolButton
@@ -1243,8 +1295,8 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           {tool && !capHit && (
             <span className="w-full text-[11px] text-gray-500 mt-0.5">
               {selectedMark != null
-                ? 'Drag the mark to move it, or its white handles to stretch it. Erase deletes it.'
-                : 'Drag on the photo to draw. Tap a mark to move, stretch or erase it.'}
+                ? 'Drag the mark to move it, or its white handles to stretch it. Colour and thickness restyle it; Erase deletes it.'
+                : 'Drag on the photo to draw. Tap a mark to move, stretch, restyle or erase it.'}
               {' '}Pick <strong>Dots</strong> to place numbered notes again.
             </span>
           )}

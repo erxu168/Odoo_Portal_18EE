@@ -18,6 +18,8 @@ export interface GuideDrawing {
   type: GuideDrawingType;
   /** #RRGGBB — rendered into an SVG attribute, so it is validated, not escaped. */
   color: string;
+  /** Line weight as a LEVEL 1..5, not pixels — see DRAWING_WIDTH_PX. */
+  width: number;
   points: [number, number][];
 }
 
@@ -26,6 +28,44 @@ export const MAX_DRAWINGS = 40;
 export const MAX_DRAWING_POINTS = 400;
 const DRAWING_TYPES: GuideDrawingType[] = ['arrow', 'circle', 'box', 'pen'];
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+
+/**
+ * Line weight is stored as a LEVEL (1 = fine … 5 = bold), never as pixels: the
+ * on-screen weight can then be retuned here without rewriting every stored
+ * drawing, and the level survives being deep-copied into daily snapshots as a
+ * single digit.
+ *
+ * The pixel values are what the stroke actually renders at — DrawingLayer uses
+ * `vector-effect: non-scaling-stroke`, so a stroke-width is read in screen
+ * pixels and a mark keeps the same visual weight on any photo size.
+ */
+export const DRAWING_WIDTH_LEVELS = [1, 2, 3, 4, 5] as const;
+export const DRAWING_WIDTH_PX = [1.5, 2.5, 4, 6, 9] as const;
+/** Level 2 (2.5 px) — twice the hairline the first release shipped, which read
+ * as too thin on a kitchen tablet. Drawings saved before levels existed have no
+ * stored width and land here, so they get the same welcome thickening. */
+export const DEFAULT_DRAWING_WIDTH = 2;
+
+/** Clamp anything to a usable level. Width is cosmetic, so a junk value falls
+ * back to the default rather than dropping the mark it belongs to.
+ *
+ * The rejections deliberately mirror the server's `float()` (normalize_drawings
+ * in task_guide_step.py): if the two disagreed, a hand-written value could store
+ * one thickness and render another. JS coerces where Python raises — `Number(null)`
+ * is 0 and `Number([3])` is 3 — so null / objects / blank strings are ruled out
+ * here first. */
+export function clampDrawingWidth(raw: unknown): number {
+  if (raw === null || raw === undefined || typeof raw === 'object') return DEFAULT_DRAWING_WIDTH;
+  if (typeof raw === 'string' && raw.trim() === '') return DEFAULT_DRAWING_WIDTH;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n)) return DEFAULT_DRAWING_WIDTH;
+  return Math.min(DRAWING_WIDTH_PX.length, Math.max(1, n));
+}
+
+/** Screen pixels for a stored level. */
+export function drawingWidthPx(level: number): number {
+  return DRAWING_WIDTH_PX[clampDrawingWidth(level) - 1];
+}
 
 /**
  * Parse a stored drawings JSON string into shapes, dropping anything malformed.
@@ -55,7 +95,7 @@ export function parseDrawings(raw: string | null | undefined): GuideDrawing[] {
     }
     if (!points.length) continue;
     if (type !== 'pen' && points.length !== 2) continue;
-    out.push({ type, color, points });
+    out.push({ type, color, width: clampDrawingWidth(shape.width), points });
   }
   return out;
 }
@@ -68,6 +108,7 @@ export function serializeDrawings(shapes: GuideDrawing[]): string {
   return JSON.stringify(shapes.map(s => ({
     type: s.type,
     color: s.color,
+    width: clampDrawingWidth(s.width),
     points: s.points.map(([x, y]) => [round4(x), round4(y)] as [number, number]),
   })));
 }

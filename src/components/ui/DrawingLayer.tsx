@@ -2,7 +2,10 @@
 
 import { useRef, useState } from 'react';
 import {
+  DEFAULT_DRAWING_WIDTH,
+  clampDrawingWidth,
   distanceToShape,
+  drawingWidthPx,
   hitTestDrawing,
   moveShapeHandle,
   shapeBounds,
@@ -41,6 +44,8 @@ export interface DrawingLayerProps {
   tool?: GuideDrawingType;
   /** draw: stroke colour (#RRGGBB) for new marks. */
   color?: string;
+  /** draw: line weight LEVEL (1..5) for new marks. */
+  width?: number;
   /** draw: index of the selected mark, or null. */
   selectedIndex?: number | null;
   /** draw: selection changed (null = nothing selected). */
@@ -68,7 +73,7 @@ type Gesture =
   | { kind: 'handle'; pointerId: number; handle: number; orig: GuideDrawing; index: number };
 
 export default function DrawingLayer({
-  shapes, mode, tool = 'arrow', color = '#DC2626',
+  shapes, mode, tool = 'arrow', color = '#DC2626', width = DEFAULT_DRAWING_WIDTH,
   selectedIndex = null, onSelect, onAdd, onUpdate, disabled = false,
 }: DrawingLayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -135,7 +140,7 @@ export default function DrawingLayer({
     if (g.kind === 'pending') {
       if (Math.hypot(p[0] - g.start[0], p[1] - g.start[1]) < MIN_DRAG / 2) return;
       gesture.current = { kind: 'draw', pointerId: g.pointerId, start: g.start };
-      setLive({ type: tool, color, points: [g.start, p] });
+      setLive({ type: tool, color, width: clampDrawingWidth(width), points: [g.start, p] });
       setLiveIndex(-1);
       return;
     }
@@ -259,18 +264,23 @@ function SelectionOutline({ shape }: { shape: GuideDrawing }) {
 
 function Shape({ shape }: { shape: GuideDrawing }) {
   const { type, color, points } = shape;
+  const level = clampDrawingWidth(shape.width);
+  const px = drawingWidthPx(level);
   const common = {
     stroke: color,
     fill: 'none',
-    strokeWidth: 1.2,
+    strokeWidth: px,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
     // Keep the line the same visual weight regardless of the photo's size or
     // aspect ratio (the viewBox is stretched by preserveAspectRatio="none").
+    // With non-scaling-stroke the width is read in screen pixels, so the level
+    // maps straight to px.
     vectorEffect: 'non-scaling-stroke' as const,
     // A white mark on a pale photo would vanish — a soft dark halo keeps every
-    // colour readable on any background.
-    style: { filter: 'drop-shadow(0 0 1.5px rgba(0,0,0,0.55))' },
+    // colour readable on any background. It grows with the stroke so a bold
+    // mark doesn't outrun its own outline.
+    style: { filter: `drop-shadow(0 0 ${Math.max(1.5, px * 0.4).toFixed(1)}px rgba(0,0,0,0.55))` },
   };
   const [sx, sy] = points[0];
   const [ex, ey] = points[points.length - 1];
@@ -282,7 +292,9 @@ function Shape({ shape }: { shape: GuideDrawing }) {
     // photo. Building it from the line's own end point keeps it visible and
     // correctly aimed at any size.
     const ang = Math.atan2((ey - sy) * 100, (ex - sx) * 100);
-    const HEAD = 4.5;          // viewBox units
+    // Head grows with the line: a fixed head on a bold stroke reads as a blob
+    // barely wider than the shaft. viewBox units, so it scales with the photo.
+    const HEAD = 3.4 + 1.1 * level;
     const SPREAD = Math.PI / 7;
     const x2 = ex * 100, y2 = ey * 100;
     const wing = (dir: number) => [

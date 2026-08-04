@@ -13,6 +13,10 @@ from .task_template_line import _guess_image_mime
 DRAWING_TYPES = ('arrow', 'circle', 'box', 'pen')
 MAX_DRAWINGS = 40
 MAX_POINTS_PER_SHAPE = 400
+# Line weight is stored as a LEVEL (1 = fine .. 5 = bold), never pixels, so the
+# on-screen weight can be retuned in the portal without rewriting stored data.
+DRAWING_WIDTH_LEVELS = 5
+DEFAULT_DRAWING_WIDTH = 2
 # Byte budget, mirroring the other guide fields. Unlike a photo (filestore
 # checksum-deduped), this text is deep-copied into EVERY daily snapshot, so an
 # unbounded blob would compound day after day.
@@ -95,6 +99,20 @@ def normalize_drawings(raw):
         color = (shape.get('color') or '').strip()
         if not _HEX_COLOR.match(color):
             raise ValidationError('A drawing colour must look like #RRGGBB.')
+        # Line weight is cosmetic, and rows written before levels existed carry
+        # none at all — so an absent or unusable value falls back to the default
+        # instead of failing a save the author has no way to fix. (Colour and
+        # coordinates DO raise: those can make a mark unreadable or unsafe.)
+        # int(x + 0.5), not round(): Python's round() is banker's rounding
+        # (round(2.5) == 2) while JS Math.round is half-up (3). The portal's
+        # clampDrawingWidth is the mirror of this function, and a half-integer
+        # is only reachable by a direct Odoo write — but the two must not be
+        # documented as equivalent while quietly disagreeing.
+        try:
+            width = int(float(shape.get('width', DEFAULT_DRAWING_WIDTH)) + 0.5)
+        except (TypeError, ValueError, OverflowError):
+            width = DEFAULT_DRAWING_WIDTH
+        width = min(DRAWING_WIDTH_LEVELS, max(1, width))
         points = shape.get('points')
         if not isinstance(points, (list, tuple)) or not points:
             raise ValidationError('A drawing needs points.')
@@ -119,7 +137,7 @@ def normalize_drawings(raw):
                 round(min(1.0, max(0.0, x)), COORD_DECIMALS),
                 round(min(1.0, max(0.0, y)), COORD_DECIMALS),
             ])
-        out.append({'type': kind, 'color': color.upper(), 'points': clean_points})
+        out.append({'type': kind, 'color': color.upper(), 'width': width, 'points': clean_points})
 
     return json.dumps(out) if out else None
 
@@ -185,7 +203,9 @@ class KrawingsTaskGuideStep(models.Model):
     # a JSON array of vector shapes in the SAME 0..1 fraction space as pins, so
     # they survive any screen size and never touch the photo bytes:
     #   [{"type": "arrow"|"circle"|"box"|"pen",
-    #     "color": "#DC2626", "points": [[x, y], ...]}]
+    #     "color": "#DC2626", "width": 1..5, "points": [[x, y], ...]}]
+    # "width" is a line-weight LEVEL, not pixels — the portal maps it to screen
+    # pixels, so the look can be retuned without rewriting stored drawings.
     # Geometry is polymorphic (2 points for arrow/circle/box, many for pen), so
     # this is a JSON text column rather than a relational child model like pins —
     # there is nothing to query or reference per shape.

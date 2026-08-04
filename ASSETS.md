@@ -38,7 +38,8 @@ gallery only, no camera (found live 2026-08-03, photo-required counts).
 | `DocumentUploadWidget` | `ui/DocumentUploadWidget.tsx` | Document card: preview, replace, drag **in both states** | 2 |
 | `UploadWidget` | `ui/UploadWidget.tsx` | Simple file box, **+ drag** | 1 |
 | `PdfDocumentCard` / `PdfViewer` / `DocumentViewer` | `ui/` | PDF card, in-app PDF render, image-or-PDF switch | 1 / 10 / 1 |
-| `PinnableImage` | `ui/PinnableImage.tsx` | Image with tappable annotation pins | 4 |
+| `PinnableImage` | `ui/PinnableImage.tsx` | Image with tappable annotation pins, and (edit mode) the author's drawn marks. Tap-a-pin shows its note in a popover anchored AT the pin | 4 |
+| `DrawingLayer` | `ui/DrawingLayer.tsx` | Vector overlay over any image: arrow / circle / box / freehand pen, 4 colours, **5 line weights**, select → move → stretch → erase. Coordinates are fractions 0..1 so a mark lands identically at any size; the photo bytes are never touched. Shapes + helpers live in `lib/guide-drawings.ts` (client-safe, no server imports) | 1 (via `PinnableImage`) |
 | `fetchImageFromUrl` | `lib/fetch-image-url.ts` | SSRF-guarded fetch of a pasted image URL. **Use this, never a bare fetch** | 1 |
 | `BatchPhotos` | `components/products/BatchPhotos.tsx` | The paste-and-advance grid: camera, file, drop, paste, or copied URL | 1 |
 

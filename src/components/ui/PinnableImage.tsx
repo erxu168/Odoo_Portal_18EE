@@ -50,6 +50,8 @@ interface Props {
   drawTool?: GuideDrawingType | null;
   /** edit: stroke colour for new marks. */
   drawColor?: string;
+  /** edit: line weight LEVEL (1..5) for new marks. */
+  drawWidth?: number;
   /** edit: a mark was finished. */
   onDrawAdd?: (shape: GuideDrawing) => void;
   /** edit: index of the selected mark (tap-to-select), or null. */
@@ -78,7 +80,7 @@ const DRAG_THRESHOLD = 5;
 export default function PinnableImage({
   src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '', alt,
   notePopover = false, onClearActive, imgClassName = '',
-  drawings, drawTool = null, drawColor = '#DC2626', onDrawAdd,
+  drawings, drawTool = null, drawColor = '#DC2626', drawWidth, onDrawAdd,
   drawSelected = null, onDrawSelect, onDrawUpdate,
 }: Props) {
   // While a drawing tool is active the drawing layer owns the gesture, so a
@@ -222,6 +224,7 @@ export default function PinnableImage({
           mode={drawingActive ? 'draw' : 'view'}
           tool={drawTool || 'arrow'}
           color={drawColor}
+          width={drawWidth}
           onAdd={onDrawAdd}
           selectedIndex={drawSelected}
           onSelect={onDrawSelect}
