@@ -117,6 +117,14 @@ export default function StaffPage() {
     showToast('Task completed');
   }
 
+  async function handleUncomplete(lineId: number) {
+    const res = await fetch(`/api/tasks/lines/${lineId}/complete`, { method: 'DELETE' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.ok === false) throw new Error(body.error || 'Failed to undo');
+    await load(true);   // quiet reload — the task moves back to its section
+    showToast('Task un-checked');
+  }
+
   async function handleSubtaskToggle(_lineId: number, subtaskId: number, done: boolean) {
     const res = await fetch(`/api/tasks/lines/${_lineId}/subtasks/${subtaskId}`, {
       method: 'PATCH',
@@ -319,6 +327,7 @@ export default function StaffPage() {
             <ChecklistCard
               taskList={list}
               onComplete={handleComplete}
+              onUncomplete={handleUncomplete}
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
               onNoteSave={handleNoteSave}

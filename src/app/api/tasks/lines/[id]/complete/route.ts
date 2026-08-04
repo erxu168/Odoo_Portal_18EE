@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
-import { completeLine, uncompleteLine } from '@/lib/odoo-tasks';
+import { requireAuth, AuthError } from '@/lib/auth';
+import { parseCompanyIds } from '@/lib/db';
+import { berlinToday } from '@/lib/berlin-date';
+import { completeLine, uncompleteLine, getListLineScope } from '@/lib/odoo-tasks';
 import { resolveAttribution } from '@/lib/shift-attribution';
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -23,11 +25,23 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   }
 }
 
+// DELETE — un-check a task (toggle completion off). Symmetric with POST: any
+// signed-in user may undo a completion on TODAY's list (so an accidental check
+// can be tapped off), scoped to their company. Past-day lists stay read-only.
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireCapability('tasks.completion.override');
+    const user = requireAuth();
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    const scope = await getListLineScope(id);
+    if (!scope) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    const allowed = parseCompanyIds(user.allowed_company_ids);
+    if (allowed.length && scope.companyId && !allowed.includes(scope.companyId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (scope.date && scope.date < berlinToday()) {
+      return NextResponse.json({ error: 'Past task lists are read-only' }, { status: 403 });
+    }
     await uncompleteLine(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
