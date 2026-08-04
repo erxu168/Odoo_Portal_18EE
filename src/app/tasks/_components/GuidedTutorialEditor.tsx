@@ -27,7 +27,6 @@ import { isValidYoutubeUrl, canonicalYoutubeUrl } from '@/lib/youtube-url';
 import {
   parseDrawings,
   serializeDrawings,
-  hitTestDrawing,
   DRAWING_COLORS,
   MAX_DRAWINGS,
   type GuideDrawing,
@@ -1079,17 +1078,23 @@ interface PhotoStepProps {
 function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onDrawings, onPickPhoto, onImgError }: PhotoStepProps) {
   const [chooser, setChooser] = useState(false);   // Camera·Photos·Files (photo-inputs skill)
   /** Active drawing tool — null means "place note-pins" (the default). */
-  const [tool, setTool] = useState<GuideDrawingType | 'erase' | null>(null);
+  const [tool, setTool] = useState<GuideDrawingType | null>(null);
   const [color, setColor] = useState<string>(DRAWING_COLORS[0]);
   /** True when the author tried to add a mark beyond the cap (so we can say so). */
   const [capHit, setCapHit] = useState(false);
+  /** Index of the mark the author tapped — movable, stretchable, deletable. */
+  const [selectedMark, setSelectedMark] = useState<number | null>(null);
   const photo = hasPhoto(step);
   const shapes = step.drawings;
-  // Erasing the last mark leaves Erase selected with nothing to act on — taps
-  // would do nothing and pins couldn't be placed. Fall back to Dots.
+  // Keep the selection valid: undo/clear/erase can remove the selected mark, and
+  // leaving a stale index would highlight the wrong shape.
   useEffect(() => {
-    if (tool === 'erase' && shapes.length === 0) setTool(null);
-  }, [tool, shapes.length]);
+    if (selectedMark != null && selectedMark >= shapes.length) setSelectedMark(null);
+  }, [selectedMark, shapes.length]);
+  // Selection only means something while a drawing tool is active.
+  useEffect(() => {
+    if (!tool) setSelectedMark(null);
+  }, [tool]);
 
 
   /**
@@ -1167,11 +1172,13 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
               if (shapes.length >= MAX_DRAWINGS) { setCapHit(true); return; }
               setCapHit(false);
               onDrawings([...shapes, shape]);
+              // Select it straight away, so it can be nudged or stretched
+              // without hunting for it first.
+              setSelectedMark(shapes.length);
             }}
-            onDrawEraseAt={(x, y) => {
-              const i = hitTestDrawing(shapes, x, y);
-              if (i >= 0) { onDrawings(shapes.filter((_, idx) => idx !== i)); setCapHit(false); }
-            }}
+            drawSelected={selectedMark}
+            onDrawSelect={setSelectedMark}
+            onDrawUpdate={(i, shape) => onDrawings(shapes.map((s, idx) => (idx === i ? shape : s)))}
           />
         </div>
       )}
@@ -1186,7 +1193,6 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           <ToolButton label="◯ Circle" active={tool === 'circle'} disabled={disabled} onClick={() => setTool('circle')} />
           <ToolButton label="▭ Box" active={tool === 'box'} disabled={disabled} onClick={() => setTool('box')} />
           <ToolButton label="✎ Pen" active={tool === 'pen'} disabled={disabled} onClick={() => setTool('pen')} />
-          <ToolButton label="⌫ Erase" active={tool === 'erase'} disabled={disabled || shapes.length === 0} onClick={() => setTool('erase')} />
           <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
           {DRAWING_COLORS.map(c => (
             <button
@@ -1205,9 +1211,19 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           ))}
           <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
           <ToolButton
+            label="⌫ Erase"
+            disabled={disabled || selectedMark == null}
+            onClick={() => {
+              if (selectedMark == null) return;
+              setCapHit(false);
+              onDrawings(shapes.filter((_, idx) => idx !== selectedMark));
+              setSelectedMark(null);
+            }}
+          />
+          <ToolButton
             label="↶ Undo"
             disabled={disabled || shapes.length === 0}
-            onClick={() => { setCapHit(false); onDrawings(shapes.slice(0, -1)); }}
+            onClick={() => { setCapHit(false); setSelectedMark(null); onDrawings(shapes.slice(0, -1)); }}
           />
           <ToolButton
             label="Clear"
@@ -1215,6 +1231,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             onClick={() => {
               if (!confirm('Remove all drawings from this photo?')) return;
               setCapHit(false);
+              setSelectedMark(null);
               onDrawings([]);
             }}
           />
@@ -1225,9 +1242,10 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           )}
           {tool && !capHit && (
             <span className="w-full text-[11px] text-gray-500 mt-0.5">
-              {tool === 'erase'
-                ? 'Tap a mark to remove just that one.'
-                : 'Drag on the photo to draw.'} Pick <strong>Dots</strong> to place numbered notes again.
+              {selectedMark != null
+                ? 'Drag the mark to move it, or its white handles to stretch it. Erase deletes it.'
+                : 'Drag on the photo to draw. Tap a mark to move, stretch or erase it.'}
+              {' '}Pick <strong>Dots</strong> to place numbered notes again.
             </span>
           )}
         </div>

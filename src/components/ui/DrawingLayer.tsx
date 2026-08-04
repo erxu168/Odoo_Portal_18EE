@@ -1,7 +1,16 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { GuideDrawing, GuideDrawingType } from '@/lib/guide-drawings';
+import {
+  distanceToShape,
+  hitTestDrawing,
+  moveShapeHandle,
+  shapeBounds,
+  shapeHandles,
+  translateShape,
+  type GuideDrawing,
+  type GuideDrawingType,
+} from '@/lib/guide-drawings';
 
 /**
  * Vector overlay for the marks an author draws over a photo (arrow / circle /
@@ -9,45 +18,71 @@ import type { GuideDrawing, GuideDrawingType } from '@/lib/guide-drawings';
  *
  * Renders in a 0–100 viewBox with `preserveAspectRatio="none"`, so shapes stored
  * as fractions 0..1 land on the same spot at any size — the same coordinate
- * contract as note-pins. Stroke widths are therefore given in viewBox units and
- * kept visually constant with `vector-effect: non-scaling-stroke`.
+ * contract as note-pins. Stroke widths are given in viewBox units and kept
+ * visually constant with `vector-effect: non-scaling-stroke`.
  *
  * The marks are an OVERLAY, never burned into the photo: the original bytes are
- * untouched, and every mark stays editable and undoable.
+ * untouched, and every mark stays editable.
  *
  * mode='view'  — render only (staff). Pointer-transparent so pins stay tappable.
- * mode='draw'  — capture pointer gestures to add shapes (editor, tool selected).
+ * mode='draw'  — the author's canvas:
+ *     drag on empty space   → draw a new mark with the active tool
+ *     tap a mark            → select it
+ *     drag a selected mark  → move it
+ *     drag its handle       → stretch that end / corner
+ *     tap empty space       → deselect
+ *   Manipulation requires selecting FIRST, so a drag that happens to start over
+ *   an existing mark still draws a new one rather than silently moving it.
  */
 export interface DrawingLayerProps {
   shapes: GuideDrawing[];
   mode: 'view' | 'draw';
-  /** draw: which tool the author picked ('erase' removes one mark on tap). */
-  tool?: GuideDrawingType | 'erase';
-  /** draw: stroke colour (#RRGGBB). */
+  /** draw: the active drawing tool. */
+  tool?: GuideDrawingType;
+  /** draw: stroke colour (#RRGGBB) for new marks. */
   color?: string;
-  /** draw: called with the finished shape when a gesture ends. */
+  /** draw: index of the selected mark, or null. */
+  selectedIndex?: number | null;
+  /** draw: selection changed (null = nothing selected). */
+  onSelect?: (index: number | null) => void;
+  /** draw: a new mark was finished. */
   onAdd?: (shape: GuideDrawing) => void;
-  /** draw: erase tool — the author tapped at these fractions. */
-  onEraseAt?: (x: number, y: number) => void;
+  /** draw: an existing mark was moved or stretched. */
+  onUpdate?: (index: number, shape: GuideDrawing) => void;
   /** draw: freeze while a save is in flight. */
   disabled?: boolean;
 }
 
-/** Below this movement (in fractions) a gesture is a stray tap, not a shape. */
+/** Below this movement (in fractions) a gesture is a tap, not a drag. */
 const MIN_DRAG = 0.02;
+/** How close a tap must be to count as hitting a mark or a handle. */
+const HIT_TOL = 0.04;
+const HANDLE_TOL = 0.05;
 /** Cap points per stroke so one long scribble can't bloat the payload. */
 const MAX_POINTS = 400;
 
+type Gesture =
+  | { kind: 'pending'; pointerId: number; start: [number, number] }
+  | { kind: 'draw'; pointerId: number; start: [number, number] }
+  | { kind: 'move'; pointerId: number; start: [number, number]; orig: GuideDrawing; index: number }
+  | { kind: 'handle'; pointerId: number; handle: number; orig: GuideDrawing; index: number };
+
 export default function DrawingLayer({
-  shapes, mode, tool = 'arrow', color = '#DC2626', onAdd, onEraseAt, disabled = false,
+  shapes, mode, tool = 'arrow', color = '#DC2626',
+  selectedIndex = null, onSelect, onAdd, onUpdate, disabled = false,
 }: DrawingLayerProps) {
-  const erasing = tool === 'erase';
-  const svgRef = useRef<SVGSVGElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** The shape being drawn, moved or stretched right now (render-only). */
   const [live, setLive] = useState<GuideDrawing | null>(null);
-  const gesture = useRef<{ pointerId: number; start: [number, number] } | null>(null);
+  /** Mirrors the live gesture so render can tell which shape it replaces. */
+  const [liveIndex, setLiveIndex] = useState(-1);
+  const gesture = useRef<Gesture | null>(null);
+
+  const active = mode === 'draw' && !disabled;
+  const selected = selectedIndex != null ? shapes[selectedIndex] : undefined;
 
   function fractions(e: React.PointerEvent): [number, number] | null {
-    const rect = svgRef.current?.getBoundingClientRect();
+    const rect = rootRef.current?.getBoundingClientRect();
     if (!rect || !rect.width || !rect.height) return null;
     return [
       Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
@@ -55,85 +90,170 @@ export default function DrawingLayer({
     ];
   }
 
-  function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
-    if (mode !== 'draw' || disabled || gesture.current) return;
+  function endGesture() {
+    gesture.current = null;
+    setLive(null);
+    setLiveIndex(-1);
+  }
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!active || gesture.current) return;
     const p = fractions(e);
     if (!p) return;
     e.preventDefault();
-    // Erase is a tap, not a drag: remove the mark under the finger.
-    if (erasing) { onEraseAt?.(p[0], p[1]); return; }
     e.currentTarget.setPointerCapture(e.pointerId);
-    gesture.current = { pointerId: e.pointerId, start: p };
-    setLive({ type: tool as GuideDrawingType, color, points: [p, p] });
+
+    // A selected mark is directly manipulable: handles first (they sit on the
+    // outline, so they must win over the body), then the body.
+    if (selected && selectedIndex != null) {
+      const handles = shapeHandles(selected);
+      for (let h = 0; h < handles.length; h++) {
+        if (Math.hypot(p[0] - handles[h][0], p[1] - handles[h][1]) <= HANDLE_TOL) {
+          gesture.current = { kind: 'handle', pointerId: e.pointerId, handle: h, orig: selected, index: selectedIndex };
+          setLive(selected);
+          setLiveIndex(selectedIndex);
+          return;
+        }
+      }
+      if (distanceToShape(selected, p[0], p[1]) <= HIT_TOL) {
+        gesture.current = { kind: 'move', pointerId: e.pointerId, start: p, orig: selected, index: selectedIndex };
+        setLive(selected);
+        setLiveIndex(selectedIndex);
+        return;
+      }
+    }
+    // Otherwise we don't yet know if this is a tap (select) or a drag (draw).
+    gesture.current = { kind: 'pending', pointerId: e.pointerId, start: p };
   }
 
-  function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
     const g = gesture.current;
     if (!g || e.pointerId !== g.pointerId) return;
     const p = fractions(e);
     if (!p) return;
-    setLive(prev => {
-      if (!prev) return prev;
-      if (prev.type === 'pen') {
-        if (prev.points.length >= MAX_POINTS) return prev;
-        return { ...prev, points: [...prev.points, p] };
-      }
-      return { ...prev, points: [g.start, p] };
-    });
+
+    if (g.kind === 'pending') {
+      if (Math.hypot(p[0] - g.start[0], p[1] - g.start[1]) < MIN_DRAG / 2) return;
+      gesture.current = { kind: 'draw', pointerId: g.pointerId, start: g.start };
+      setLive({ type: tool, color, points: [g.start, p] });
+      setLiveIndex(-1);
+      return;
+    }
+    if (g.kind === 'draw') {
+      setLive(prev => {
+        if (!prev) return prev;
+        if (prev.type === 'pen') {
+          if (prev.points.length >= MAX_POINTS) return prev;
+          return { ...prev, points: [...prev.points, p] };
+        }
+        return { ...prev, points: [g.start, p] };
+      });
+      return;
+    }
+    if (g.kind === 'move') {
+      setLive(translateShape(g.orig, p[0] - g.start[0], p[1] - g.start[1]));
+      return;
+    }
+    setLive(moveShapeHandle(g.orig, g.handle, p[0], p[1]));
   }
 
-  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+  function onPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const g = gesture.current;
     if (!g || e.pointerId !== g.pointerId) return;
-    gesture.current = null;
     const finished = live;
-    setLive(null);
-    if (!finished || disabled) return;
-    // Measure real travel, not point count: a jittery tap can emit several
-    // points while going nowhere, which would leave an invisible mark the author
-    // can see no way to remove.
-    let minX = 1, minY = 1, maxX = 0, maxY = 0;
-    for (const [px, py] of finished.points) {
-      if (px < minX) minX = px;
-      if (px > maxX) maxX = px;
-      if (py < minY) minY = py;
-      if (py > maxY) maxY = py;
+    endGesture();
+    if (disabled) return;
+
+    if (g.kind === 'pending') {
+      // A tap: select whatever is under it, or clear the selection.
+      const p = fractions(e) || g.start;
+      const hit = hitTestDrawing(shapes, p[0], p[1], HIT_TOL);
+      onSelect?.(hit >= 0 ? hit : null);
+      return;
     }
-    if (Math.hypot(maxX - minX, maxY - minY) < MIN_DRAG) return;
-    onAdd?.(finished);
+    if (!finished) return;
+
+    if (g.kind === 'draw') {
+      // Ignore a stray tap: measure real travel, not point count — a jittery tap
+      // emits several points while going nowhere and would leave an invisible mark.
+      const b = shapeBounds(finished);
+      if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) < MIN_DRAG) return;
+      onAdd?.(finished);
+      return;
+    }
+    // A stretch that collapsed the shape to nothing would leave an invisible
+    // mark — keep the original instead.
+    if (g.kind === 'handle') {
+      const b = shapeBounds(finished);
+      if (Math.hypot(b.x1 - b.x0, b.y1 - b.y0) < MIN_DRAG) return;
+    }
+    onUpdate?.(g.index, finished);
   }
 
-  function onPointerCancel(e: React.PointerEvent<SVGSVGElement>) {
-    if (gesture.current && e.pointerId === gesture.current.pointerId) {
-      gesture.current = null;
-      setLive(null);
-    }
+  function onPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    if (gesture.current && e.pointerId === gesture.current.pointerId) endGesture();
   }
 
-  const all = live ? [...shapes, live] : shapes;
-  const drawing = mode === 'draw' && !disabled;
+  // While a gesture is live, render it in place of the shape it belongs to.
+  const rendered = shapes.map((s, i) => (i === liveIndex && live ? live : s));
+  const all = live && liveIndex === -1 ? [...rendered, live] : rendered;
+  const shownSelected = selectedIndex != null ? rendered[selectedIndex] : undefined;
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      className={`absolute inset-0 w-full h-full ${
-        drawing ? (erasing ? 'cursor-pointer' : 'cursor-crosshair') : 'pointer-events-none'
-      }`}
-      // touch-action:none ONLY while a tool is active, so the page still scrolls
-      // normally when the author is not drawing (iOS pitfall #4).
-      style={drawing ? { touchAction: 'none' } : undefined}
+    <div
+      ref={rootRef}
+      className={`absolute inset-0 ${active ? 'cursor-crosshair' : 'pointer-events-none'}`}
+      // touch-action:none ONLY while the author is drawing, so the page still
+      // scrolls normally otherwise (iOS pitfall #4).
+      style={active ? { touchAction: 'none' } : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
     >
-      {all.map((s, i) => (
-        <Shape key={i} shape={s} />
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" className="absolute inset-0 w-full h-full">
+        {all.map((s, i) => (
+          <Shape key={i} shape={s} />
+        ))}
+        {active && shownSelected && <SelectionOutline shape={shownSelected} />}
+      </svg>
+
+      {/* Handles are HTML, not SVG: the viewBox is stretched by
+          preserveAspectRatio="none", which would squash an SVG circle out of
+          shape, and this way each handle gets a proper 44px touch target. */}
+      {active && shownSelected && shapeHandles(shownSelected).map(([hx, hy], i) => (
+        <span
+          key={i}
+          aria-hidden="true"
+          style={{ left: `${hx * 100}%`, top: `${hy * 100}%` }}
+          className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-gray-900 shadow cursor-grab"
+        >
+          <span className="absolute -inset-3.5" />
+        </span>
       ))}
-    </svg>
+    </div>
+  );
+}
+
+/** Dashed box around the selected mark, so it is obvious what is being edited. */
+function SelectionOutline({ shape }: { shape: GuideDrawing }) {
+  const b = shapeBounds(shape);
+  const pad = 1.5;
+  const x = Math.max(0, b.x0 * 100 - pad);
+  const y = Math.max(0, b.y0 * 100 - pad);
+  return (
+    <rect
+      x={x}
+      y={y}
+      width={Math.min(100 - x, (b.x1 - b.x0) * 100 + pad * 2)}
+      height={Math.min(100 - y, (b.y1 - b.y0) * 100 + pad * 2)}
+      fill="none"
+      stroke="#111827"
+      strokeWidth={1}
+      strokeDasharray="3 2"
+      vectorEffect="non-scaling-stroke"
+      style={{ filter: 'drop-shadow(0 0 1.5px rgba(255,255,255,0.9))' }}
+    />
   );
 }
 

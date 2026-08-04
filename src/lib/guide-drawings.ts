@@ -89,7 +89,7 @@ export function hitTestDrawing(shapes: GuideDrawing[], x: number, y: number, tol
   return best;
 }
 
-function distanceToShape(s: GuideDrawing, x: number, y: number): number {
+export function distanceToShape(s: GuideDrawing, x: number, y: number): number {
   const [sx, sy] = s.points[0];
   const [ex, ey] = s.points[s.points.length - 1];
   if (s.type === 'arrow') return distToSegment(x, y, sx, sy, ex, ey);
@@ -113,6 +113,47 @@ function distanceToShape(s: GuideDrawing, x: number, y: number): number {
   const cx = Math.max(x0, Math.min(x, x1));
   const cy = Math.max(y0, Math.min(y, y1));
   return Math.hypot(x - cx, y - cy);
+}
+
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+/** Bounding box of a shape, in fractions. */
+export function shapeBounds(s: GuideDrawing): { x0: number; y0: number; x1: number; y1: number } {
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  for (const [x, y] of s.points) {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+/**
+ * The drag handles for a selected shape. arrow/circle/box expose their two
+ * defining points, so either end (or corner) can be stretched. A freehand pen
+ * stroke has no meaningful handles — it is moved as a whole.
+ */
+export function shapeHandles(s: GuideDrawing): [number, number][] {
+  return s.type === 'pen' ? [] : [s.points[0], s.points[s.points.length - 1]];
+}
+
+/** Move every point by (dx, dy), clamped so the shape can't leave the photo. */
+export function translateShape(s: GuideDrawing, dx: number, dy: number): GuideDrawing {
+  // Clamp the DELTA (not each point) so the shape keeps its size and proportions
+  // when dragged against an edge, instead of collapsing.
+  const b = shapeBounds(s);
+  const ddx = Math.min(1 - b.x1, Math.max(-b.x0, dx));
+  const ddy = Math.min(1 - b.y1, Math.max(-b.y0, dy));
+  return { ...s, points: s.points.map(([x, y]) => [clamp01(x + ddx), clamp01(y + ddy)] as [number, number]) };
+}
+
+/** Move one handle (0 = start, 1 = end) to a new spot — the stretch gesture. */
+export function moveShapeHandle(s: GuideDrawing, handle: number, x: number, y: number): GuideDrawing {
+  if (s.type === 'pen' || s.points.length < 2) return s;
+  const pts = s.points.slice() as [number, number][];
+  pts[handle === 0 ? 0 : pts.length - 1] = [clamp01(x), clamp01(y)];
+  return { ...s, points: pts };
 }
 
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {

@@ -47,13 +47,17 @@ interface Props {
   drawings?: GuideDrawing[];
   /** edit: the active drawing tool — when set, drawing captures the gesture
    * INSTEAD of placing pins (so a drag can't also drop a pin). */
-  drawTool?: GuideDrawingType | 'erase' | null;
+  drawTool?: GuideDrawingType | null;
   /** edit: stroke colour for new marks. */
   drawColor?: string;
   /** edit: a mark was finished. */
   onDrawAdd?: (shape: GuideDrawing) => void;
-  /** edit: erase tool — the author tapped here; remove the mark under it. */
-  onDrawEraseAt?: (x: number, y: number) => void;
+  /** edit: index of the selected mark (tap-to-select), or null. */
+  drawSelected?: number | null;
+  /** edit: the selection changed. */
+  onDrawSelect?: (index: number | null) => void;
+  /** edit: a mark was moved or stretched. */
+  onDrawUpdate?: (index: number, shape: GuideDrawing) => void;
 }
 
 /** Movement below this (px) counts as a tap, not a drag. */
@@ -74,7 +78,8 @@ const DRAG_THRESHOLD = 5;
 export default function PinnableImage({
   src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '', alt,
   notePopover = false, onClearActive, imgClassName = '',
-  drawings, drawTool = null, drawColor = '#DC2626', onDrawAdd, onDrawEraseAt,
+  drawings, drawTool = null, drawColor = '#DC2626', onDrawAdd,
+  drawSelected = null, onDrawSelect, onDrawUpdate,
 }: Props) {
   // While a drawing tool is active the drawing layer owns the gesture, so a
   // drag can't also drop a pin underneath it.
@@ -218,7 +223,9 @@ export default function PinnableImage({
           tool={drawTool || 'arrow'}
           color={drawColor}
           onAdd={onDrawAdd}
-          onEraseAt={onDrawEraseAt}
+          selectedIndex={drawSelected}
+          onSelect={onDrawSelect}
+          onUpdate={onDrawUpdate}
           disabled={disabled}
         />
       )}
