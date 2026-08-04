@@ -717,7 +717,13 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
       if (!combined) void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
-      const res = await postLine(productId, loc, { counted_qty: qty, uom,
+      // The stored split must be cleared TOO, not only the local one. Sending
+      // just a total left crate_qty=1 sitting beside counted_qty=0 on the row —
+      // a line saying "one bunch" and "nothing" at the same time. On the next
+      // load the display distrusted that split and showed 0 while the stepper
+      // believed 1, so + jumped to 2 and − did nothing at all.
+      // (Found on Thymian at Walk in Cooler 1, Ethan 2026-08-04.)
+      const res = await postLine(productId, loc, { counted_qty: qty, uom, crate_qty: null, loose_qty: null,
           ...(note !== undefined ? { notes: note } : {}) }, () => {
         setEntries((prev) => {
           const n = { ...prev };
@@ -864,11 +870,21 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     if (!hasCrate(size)) return;
     const k = K(product.id, loc);
     const derived = splitFromTotal(entries[k] ?? 0, size);
-    const cur = crateSplits[k]?.crates ?? derived.crates;
+    // THE STEPPER MUST STEP FROM THE NUMBER ON SCREEN. A remembered split is
+    // only usable while it still adds up to the stored total — the row already
+    // applies exactly that rule when deciding what to display, and using a
+    // different source here is what let the two disagree: the row showed 0
+    // while this stepped from 1, so + went to 2 and − did nothing.
+    // (Ethan, Thymian at Walk in Cooler 1, 2026-08-04.)
+    const remembered = crateSplits[k];
+    const usable = remembered
+      && crateTotal(remembered.crates, remembered.loose, size) === (entries[k] ?? 0)
+      ? remembered : null;
+    const cur = usable?.crates ?? derived.crates;
     // Keep whatever loose remainder the line already carries. Forcing it to 0
     // made one tap move the total by less than a whole pack — a line holding
     // 16 bunches + 0.02 went to 17 bunches and LOST the 0.02.
-    const loose = crateSplits[k]?.loose ?? derived.loose;
+    const loose = usable?.loose ?? derived.loose;
     const next = Math.max(0, cur + delta);
     if (next === cur) return;
     // Stepping down to nothing means "I looked and there are none", the same as
