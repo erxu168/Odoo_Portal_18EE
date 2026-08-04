@@ -101,9 +101,28 @@ the planned waves.
 | 0 | Shared primitives + governance | ✅ migrated |
 | 0 | Shift Handover (reference) | ✅ migrated |
 | 1 | Personal home, Station home | ✅ migrated |
-| 2 | Tasks, Inventory, Purchase, Manufacturing, Chef Guide | ✅ migrated |
+| 2 | Inventory, Purchase, Manufacturing, Chef Guide | ✅ migrated |
+| 2 | Tasks — **module home only** (blue header + KPI chips) | ⚠️ partial |
+| — | Task Manager — broken layout repaired (see note below) | ✅ done |
+| — | Task Manager — colour, shared components, typography | ⏳ pending |
 | 3 | Planning, HR, Prep Planner, Rentals, Reports, Terminations, Sales, Admin | ⏳ pending |
 | 4 | KDS, cook-timer, kiosk (dark ops — typography/touch/status only) | ⏳ pending |
+
+> **Wave 2 correction (2026-08-04).** The Tasks row above used to read
+> "✅ migrated". An audit of all ten Task Manager screens found that wave 2
+> restyled the staff module home and the shared blue header — and nothing
+> beneath it. The module still hand-rolls 11 pop-ups, falls back to the browser
+> `confirm()` in 15 places, and uses none of the responsive `--fs-*` sizes, so it
+> renders phone-sized on a tablet while neighbouring modules scale.
+>
+> Repaired so far: the doubled bottom bar (the module's own `BottomNav` stacked
+> on the global `AppTabBar`), two screens double-capped at 430px inside
+> `MainWrapper`, `ManagerTabs` sticking at `top-0` beneath the fixed top bar, and
+> the header "Spawn" pill → a full-width green `PrimaryButton`.
+>
+> Lesson for the ratchet: **a migrated header is not a migrated module.** Judge a
+> wave by how many `ui/` primitives the screen actually imports, not by whether
+> it looks right in a screenshot of the top third.
 
 ---
 
