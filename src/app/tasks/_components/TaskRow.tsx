@@ -63,6 +63,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   const photoUploaded = photoCount > 0;
   const [uploading, setUploading]   = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [leaving, setLeaving] = useState(false);   // exit animation once checked, before the row moves
   const [error, setError]           = useState<string | null>(null);
   const [note, setNote]             = useState(task.note ?? '');
   const [noteOpen, setNoteOpen]     = useState(!!task.note);
@@ -92,6 +93,11 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
       return;
     }
     setCompleting(true);
+    // Apple-Reminders feel: show it checked in place, hold a beat, then let it
+    // slide out — so it doesn't snap between sections. `leaving` starts the exit.
+    await new Promise(r => setTimeout(r, 300));
+    setLeaving(true);
+    await new Promise(r => setTimeout(r, 360));
     try { await onComplete(task.id); }
     catch {
       // Never surface a raw server/Odoo string to staff — Odoo forwards long
@@ -99,6 +105,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
       // plain, actionable line instead.
       setError("Couldn't mark this done — check your connection and tap again.");
       setCompleting(false);
+      setLeaving(false);
     }
   }
 
@@ -147,8 +154,10 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   return (
     <>
     <div onClick={handleTap}
-      className={`relative flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors ${readOnly ? '' : 'cursor-pointer'} ${
-        completing ? 'opacity-40 pointer-events-none' :
+      className={`relative flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-all duration-[360ms] ${readOnly ? '' : 'cursor-pointer'} ${
+        leaving ? 'opacity-0 -translate-x-3' : ''
+      } ${
+        completing ? 'pointer-events-none' :
         task.is_ad_hoc ? 'bg-amber-50 hover:bg-amber-100/60' :
         (readOnly ? '' : 'hover:bg-gray-50')
       }`}>
@@ -158,17 +167,20 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
       )}
 
       <div className={`mt-0.5 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all text-xs font-bold ${
+        completing ? 'border-green-500 bg-green-500 text-white' :
         isLocked ? 'border-gray-200 bg-gray-50 text-gray-400' :
         task.state === 'overdue' ? 'border-red-400 bg-red-50 text-red-500' :
         task.is_ad_hoc ? 'border-amber-400 bg-white' :
         'border-gray-300 bg-white'
       }`}>
-        {isLocked ? '\u{1F512}' : task.state === 'overdue' ? '!' : ''}
+        {completing ? (
+          <svg className="w-3.5 h-3.5" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        ) : isLocked ? '\u{1F512}' : task.state === 'overdue' ? '!' : ''}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className={`font-semibold text-sm leading-snug ${task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
+          <p className={`font-semibold text-sm leading-snug transition-colors ${completing ? 'text-gray-400 line-through' : task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
             {task.name}
           </p>
           {task.is_ad_hoc && (

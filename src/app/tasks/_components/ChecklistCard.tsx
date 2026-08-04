@@ -81,13 +81,21 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
   const [open, setOpen] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
   const [undoing, setUndoing] = useState<Set<number>>(new Set());
+  const [leaving, setLeaving] = useState<Set<number>>(new Set());
   const canUndo = !readOnly && !!onUncomplete;
 
   async function undo(taskId: number) {
     if (!onUncomplete || undoing.has(taskId)) return;
+    // Apple-Reminders feel: un-check in place, hold a beat, slide out, THEN move.
     setUndoing(prev => new Set(prev).add(taskId));
+    await new Promise(r => setTimeout(r, 300));
+    setLeaving(prev => new Set(prev).add(taskId));
+    await new Promise(r => setTimeout(r, 360));
     try { await onUncomplete(taskId); }
-    finally { setUndoing(prev => { const n = new Set(prev); n.delete(taskId); return n; }); }
+    finally {
+      setUndoing(prev => { const n = new Set(prev); n.delete(taskId); return n; });
+      setLeaving(prev => { const n = new Set(prev); n.delete(taskId); return n; });
+    }
   }
 
   const active    = lines.filter(t => t.state !== 'done');
@@ -162,28 +170,31 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
               {showCompleted && (
                 <ul className="border-t border-gray-100">
                   {completed.map(task => {
-                    const busy = undoing.has(task.id);
+                    const busy = undoing.has(task.id);      // tapped — un-checking
+                    const isLeaving = leaving.has(task.id); // now sliding out to its section
                     // The check + title toggle completion OFF (tap a done task to
                     // un-check it). Read-only (past) days show it flat, not tappable.
                     const Row = canUndo ? 'button' : 'div';
                     return (
-                    <li key={task.id} className="px-4 py-3 border-b border-gray-50 last:border-0">
+                    <li key={task.id} className={`px-4 py-3 border-b border-gray-50 last:border-0 transition-all duration-[360ms] ${isLeaving ? 'opacity-0 -translate-x-3' : ''}`}>
                       <Row
                         {...(canUndo ? { type: 'button' as const, onClick: () => undo(task.id), disabled: busy, 'aria-label': `Undo “${task.name}” — mark it not done`, title: 'Tap to un-check' } : {})}
-                        className={`flex items-start gap-3 w-full text-left ${canUndo ? 'active:opacity-60 rounded-lg' : ''} ${busy ? 'opacity-50' : ''}`}
+                        className={`flex items-start gap-3 w-full text-left ${canUndo && !busy ? 'active:opacity-60 rounded-lg' : ''}`}
                       >
-                        <span className="mt-0.5 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-3 h-3 text-white" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                            <path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
+                        <span className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${busy ? 'border-gray-300 bg-white' : 'border-green-500 bg-green-500'}`}>
+                          {!busy && (
+                            <svg className="w-3 h-3 text-white" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                              <path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-gray-500 line-through">{task.name}</span>
+                          <span className={`block text-sm font-medium transition-colors ${busy ? 'text-gray-700' : 'text-gray-500 line-through'}`}>{task.name}</span>
                           <span className="block text-xs text-gray-400 mt-0.5">
                             Done at {task.completed_at ? formatTime(task.completed_at) : '—'}
                             {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
                             {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
-                            {canUndo ? <span className="text-blue-600 font-semibold"> · {busy ? 'undoing…' : 'tap to undo'}</span> : ''}
+                            {canUndo ? <span className="text-blue-600 font-semibold"> · {busy ? 'un-checking…' : 'tap to undo'}</span> : ''}
                           </span>
                         </span>
                       </Row>
