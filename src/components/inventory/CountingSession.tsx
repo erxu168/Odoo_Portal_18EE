@@ -17,6 +17,7 @@ import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralize
 import { packTotal, countableLevels, splitToLevels, type PackLevel } from '@/lib/packaging';
 import PackCountSheet from './PackCountSheet';
 import GuidedCountingFlow from './GuidedCountingFlow';
+import { parseLocationCode } from '@/lib/location-code';
 import { useTopBar } from '@/components/ui/TopBarContext';
 
 interface CountingSessionProps {
@@ -166,6 +167,18 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   const sync = useSyncQueue();
 
   function handleHardwareScan(barcode: string) {
+    // A SHELF code, not a product. Shelf labels carry both codes side by side, so
+    // an aimed-at-the-wrong-one scan is normal — and it should be useful rather
+    // than silently ignored: jump to that spot in the walk. (Ethan, 2026-08-04.)
+    const spotId = parseLocationCode(barcode);
+    if (spotId != null) {
+      const stop = (route?.stops || []).find((st: any) => st.bucket_id === spotId);
+      if (stop) {
+        document.getElementById(`walk-spot-${spotId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try { navigator.vibrate(60); } catch { /* ignore */ }
+      }
+      return;   // never fall through to the product lookup
+    }
     const product = products.find((p: any) => p.barcode && p.barcode === barcode);
     if (product) {
       setSearch('');

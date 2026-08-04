@@ -354,7 +354,10 @@ export default function GuidedCountingFlow({
                     const lidTint = skipped ? 'bg-orange-50' : full ? 'bg-green-50' : 'bg-blue-50';
 
                     return (
-                      <div key={s.bucket_id} className={divider}>
+                      // Anchored so a scanned shelf code can jump straight here.
+                      // The id lives WITH the grouping that draws it, so nothing
+                      // else has to re-derive which step a spot ended up in.
+                      <div key={s.bucket_id} id={`walk-spot-${s.bucket_id}`} className={`scroll-mt-24 ${divider}`}>
                         <div className={['flex items-start gap-2 px-3.5 py-2.5', indent, lidTint].filter(Boolean).join(' ')}>
                           <div className="min-w-0 flex-1 flex items-start gap-2">
                             <span className="text-[var(--fs-sm)] flex-shrink-0 mt-0.5" aria-hidden="true">
