@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { GuideDrawing, GuideDrawingType } from '@/lib/task-guide';
+import type { GuideDrawing, GuideDrawingType } from '@/lib/guide-drawings';
 
 /**
  * Vector overlay for the marks an author draws over a photo (arrow / circle /

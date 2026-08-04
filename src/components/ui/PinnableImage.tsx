@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import DrawingLayer from './DrawingLayer';
-import type { GuideDrawing, GuideDrawingType } from '@/lib/task-guide';
+import type { GuideDrawing, GuideDrawingType } from '@/lib/guide-drawings';
 
 export interface ImagePin {
   /** Fraction across the image, 0–1. */

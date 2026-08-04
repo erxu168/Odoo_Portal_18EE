@@ -30,13 +30,10 @@ import {
   hitTestDrawing,
   DRAWING_COLORS,
   MAX_DRAWINGS,
-  type GuideStepRead,
-  type GuideStepSave,
-  type GuidePin,
-  type GuideMediaType,
   type GuideDrawing,
   type GuideDrawingType,
-} from '@/lib/task-guide';
+} from '@/lib/guide-drawings';
+import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 

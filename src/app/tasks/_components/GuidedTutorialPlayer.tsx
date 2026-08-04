@@ -4,7 +4,8 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import PinnableImage from '@/components/ui/PinnableImage';
 import { useTopBar } from '@/components/ui/TopBarContext';
 import { youtubeEmbedUrl, youtubeWatchUrl } from '@/lib/youtube-url';
-import { parseDrawings, type StaffGuide, type StaffGuideStep, type TemplateGuide, type LibraryGuide } from '@/lib/task-guide';
+import { parseDrawings } from '@/lib/guide-drawings';
+import type { StaffGuide, StaffGuideStep, TemplateGuide, LibraryGuide } from '@/lib/task-guide';
 
 /**
  * GuidedTutorialPlayer — STAFF full-screen player for a task's guided tutorial.
