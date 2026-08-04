@@ -99,6 +99,8 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
   const [activePin, setActivePin] = useState<number | null>(null);
   // Steps whose photo failed to load — show explanation + placeholder instead.
   const [imgError, setImgError] = useState<Set<number>>(new Set());
+  // Steps where the reader has already opened a note — the tap hint retires.
+  const [pinTried, setPinTried] = useState<Set<number>>(new Set());
   // Bumped by a "Try again" tap to re-run the guide fetch.
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -149,6 +151,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
     setIndex(0);
     setActivePin(null);
     setImgError(new Set());
+    setPinTried(new Set());
 
     fetch(endpoint, { headers: { Accept: 'application/json' } })
       .then(async res => {
@@ -407,13 +410,35 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                 src={mediaSrc(step.id)}
                 broken={imgError.has(step.id)}
                 activePin={activePin}
-                onPinClick={i => setActivePin(a => (a === i ? null : i))}
+                onPinClick={i => {
+                  setActivePin(a => (a === i ? null : i));
+                  // The hint has done its job for this step once a note is opened.
+                  setPinTried(prev => (prev.has(step.id) ? prev : new Set(prev).add(step.id)));
+                }}
                 onClearActive={() => setActivePin(null)}
                 onImageError={() => setImgError(prev => new Set(prev).add(step.id))}
                 onRetry={() => retryImage(step.id)}
                 lineName={guide?.line_name || ''}
                 stepNo={index + 1}
               />
+
+              {/* Quiet nudge that the markers are tappable — the pulse alone
+                  doesn't say "press me". Deliberately one small line (the old
+                  amber banner ate the photo's space), and it retires for this
+                  step as soon as a note has been opened. */}
+              {step.media_type === 'photo' && step.pins.length > 0 &&
+                !imgError.has(step.id) && !pinTried.has(step.id) && (
+                <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500">
+                  <span
+                    aria-hidden="true"
+                    className="relative flex w-2 h-2"
+                  >
+                    <span className="absolute inline-flex w-full h-full rounded-full bg-orange-400 opacity-75 motion-safe:animate-ping" />
+                    <span className="relative inline-flex w-2 h-2 rounded-full bg-orange-500" />
+                  </span>
+                  Tap the flashing {step.pins.length > 1 ? 'circles' : 'circle'} to read the {step.pins.length > 1 ? 'notes' : 'note'}
+                </p>
+              )}
 
               {/* Explanation, always as TEXT (never HTML). Tip steps render the
                   explanation inside their own panel, so don't repeat it here. */}
