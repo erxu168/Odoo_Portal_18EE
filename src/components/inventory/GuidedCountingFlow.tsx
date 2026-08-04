@@ -162,7 +162,7 @@ export default function GuidedCountingFlow({
     ) : !full ? (
       <button onClick={() => setSkipFor(s.bucket_id)}
         className="w-full text-right text-[var(--fs-xs)] font-bold text-gray-400 px-3 py-2 border-t border-gray-100 bg-white active:text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">
-        Nothing in this drawer {'→'}
+        Nothing here {'→'}
       </button>
     ) : (
       // Finishing the last product here must NOT make this line vanish —
