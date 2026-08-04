@@ -123,3 +123,86 @@ test('nothing open at all is handled without blowing up', () => {
   expect(combineStops([])).toEqual({ guided: false, stops: [] });
   expect(walkTitle([]).title).toBe('Count');
 });
+
+/**
+ * ONE COUNT CLAIMS EACH PRODUCT.
+ *
+ * A weekly deep-count repeats staples the daily list already covers. Staff must
+ * be asked once, and exactly one number must be stored — these tests pin down
+ * who records it and who merely shows it.
+ */
+import { claimProducts, writerOf, isCoveredElsewhere } from '../src/lib/combined-walk';
+
+const dailyP: SessionPayload = {
+  sessionId: 10, session: { template_name: 'Daily Count', template_frequency: 'daily' },
+  items: [{ odoo_product_id: 500, count_location_id: 1 }, { odoo_product_id: 501, count_location_id: 1 }],
+};
+const weeklyP: SessionPayload = {
+  sessionId: 11, session: { template_name: 'Weekly Stock Check', template_frequency: 'weekly' },
+  items: [{ odoo_product_id: 500, count_location_id: 1 }, { odoo_product_id: 502, count_location_id: 2 }],
+};
+const monthlyP: SessionPayload = {
+  sessionId: 12, session: { template_name: 'Monthly', template_frequency: 'monthly' },
+  items: [{ odoo_product_id: 500, count_location_id: 1 }],
+};
+
+test('the DAILY list claims a product the weekly also lists', () => {
+  const claims = claimProducts([weeklyP, dailyP]);   // order must not matter
+  expect(claims[500], 'daily beats weekly').toBe(10);
+  expect(claims[501], 'only the daily has it').toBe(10);
+  expect(claims[502], 'only the weekly has it').toBe(11);
+});
+
+test('daily beats weekly beats monthly, whatever order they arrive in', () => {
+  expect(claimProducts([monthlyP, weeklyP, dailyP])[500]).toBe(10);
+  expect(claimProducts([monthlyP, weeklyP])[500], 'weekly beats monthly').toBe(11);
+  expect(claimProducts([monthlyP])[500], 'alone, it owns it').toBe(12);
+});
+
+test('two lists of the SAME cadence settle on the lower id — never a coin toss', () => {
+  const a: SessionPayload = { sessionId: 21, session: { template_frequency: 'weekly' }, items: [{ odoo_product_id: 9, count_location_id: 1 }] };
+  const b: SessionPayload = { sessionId: 20, session: { template_frequency: 'weekly' }, items: [{ odoo_product_id: 9, count_location_id: 1 }] };
+  expect(claimProducts([a, b])[9]).toBe(20);
+  expect(claimProducts([b, a])[9], 'stable both ways round').toBe(20);
+});
+
+test('the number is written to exactly ONE count, and the other knows it is covered', () => {
+  const payloads = [dailyP, weeklyP];
+  const lines = combineLines(payloads);
+  const claims = claimProducts(payloads);
+
+  expect(writerOf(lines, claims, 500, 1), 'the daily records it').toBe(10);
+  expect(isCoveredElsewhere(lines, claims, 500, 1, 11), 'the weekly shows it as covered').toBe(true);
+  expect(isCoveredElsewhere(lines, claims, 500, 1, 10), 'the owner is not "covered"').toBe(false);
+
+  // A product only one list holds behaves exactly as before.
+  expect(writerOf(lines, claims, 502, 2)).toBe(11);
+  expect(isCoveredElsewhere(lines, claims, 502, 2, 11)).toBe(false);
+});
+
+test('a line the claimant does not hold is still recordable — never stranded', () => {
+  // The daily claims product 500 but only lists spot 1; the weekly lists spot 7.
+  const oddWeekly: SessionPayload = {
+    sessionId: 11, session: { template_frequency: 'weekly' },
+    items: [{ odoo_product_id: 500, count_location_id: 7 }],
+  };
+  const payloads = [dailyP, oddWeekly];
+  const lines = combineLines(payloads);
+  const claims = claimProducts(payloads);
+  expect(claims[500], 'the daily still claims the product').toBe(10);
+  expect(writerOf(lines, claims, 500, 7), 'but THAT spot is recorded by the count that has it').toBe(11);
+  expect(isCoveredElsewhere(lines, claims, 500, 7, 11), 'so it is not shown as covered elsewhere').toBe(false);
+});
+
+test('a single count owns everything and nothing is ever "covered"', () => {
+  const lines = combineLines([dailyP]);
+  const claims = claimProducts([dailyP]);
+  expect(writerOf(lines, claims, 500, 1)).toBe(10);
+  expect(writerOf(lines, claims, 501, 1)).toBe(10);
+  expect(isCoveredElsewhere(lines, claims, 500, 1, 10)).toBe(false);
+});
+
+test('an unknown line writes nowhere rather than guessing', () => {
+  const lines = combineLines([dailyP]);
+  expect(writerOf(lines, claimProducts([dailyP]), 999, 1)).toBeNull();
+});

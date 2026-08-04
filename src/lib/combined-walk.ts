@@ -12,13 +12,11 @@
  * saves to its own ledger row. Staff walk each place once; the books are
  * untouched.
  *
- * The one case needing a rule: the SAME product at the SAME spot appearing in
- * two counts. It is shown once (asking twice is the very thing we're removing),
- * and the number entered is written to BOTH counts. That is safe because it is
- * one observation recorded in two places — approval sets stock to that value, so
- * applying it twice lands on the same number, and neither count is left
- * unanswerable. Two INDEPENDENT counts of one product is what must never happen,
- * and that is exactly what this prevents.
+ * The one case needing a rule: the SAME product appearing in two counts. It is
+ * shown once and counted once — the MOST FREQUENT list claims it (daily beats
+ * weekly beats monthly) and records the number; the other counts show it greyed
+ * as "counted in Daily Count ✓". Staff answer once, one number is stored, and
+ * neither count is left unanswerable. See claimProducts below.
  *
  * Pure functions only — no I/O — so the rules above are unit-testable.
  */
@@ -77,6 +75,79 @@ export function combineLines(payloads: SessionPayload[]): CombinedLine[] {
 export function ownersOf(lines: CombinedLine[], pid: number, loc: number): number[] {
   const hit = lines.find((l) => l.pid === pid && l.loc === loc);
   return hit ? hit.sids : [];
+}
+
+/**
+ * ONE COUNT CLAIMS EACH PRODUCT.
+ *
+ * A weekly deep-count naturally repeats staples that are also on the daily list.
+ * Asking staff for the same number twice is the thing we're removing, and
+ * recording two independent numbers for one product is the thing that must never
+ * happen. So when several of today's counts hold the same product, the MOST
+ * FREQUENT list claims it (Ethan, 2026-08-03: daily beats weekly beats monthly);
+ * ties go to the lower session id purely so the answer is stable.
+ *
+ * The claiming count records the number. The others still SHOW the product,
+ * greyed, as "counted in Daily Count ✓" — nothing looks missing, the manager
+ * sees the whole picture on both counts, and neither is left unanswerable.
+ *
+ * Claiming is by PRODUCT, not by (product, spot): a product is one thing on the
+ * shelf however many spots it sits in, and its spots come from the same global
+ * placements, so every count freezes the same ones.
+ */
+const CADENCE_RANK: Record<string, number> = { daily: 0, weekly: 1, monthly: 2, adhoc: 3 };
+
+/** How eagerly a count claims: lower wins. Unknown cadences rank last. */
+function cadenceRank(frequency: unknown): number {
+  const key = typeof frequency === 'string' ? frequency : '';
+  return key in CADENCE_RANK ? CADENCE_RANK[key] : 99;
+}
+
+/**
+ * product id → the session that records its number.
+ * Only products held by MORE THAN ONE count need an answer; a product in a
+ * single count is trivially owned by it and is included for a uniform lookup.
+ */
+export function claimProducts(payloads: SessionPayload[]): Record<number, number> {
+  const holders = new Map<number, SessionPayload[]>();
+  for (const p of payloads) {
+    for (const it of p.items || []) {
+      const arr = holders.get(it.odoo_product_id) || [];
+      if (!arr.includes(p)) arr.push(p);
+      holders.set(it.odoo_product_id, arr);
+    }
+  }
+  const claims: Record<number, number> = {};
+  holders.forEach((sessions, pid) => {
+    const winner = sessions.slice().sort((a, b) => {
+      const byCadence = cadenceRank(a.session?.template_frequency) - cadenceRank(b.session?.template_frequency);
+      return byCadence !== 0 ? byCadence : a.sessionId - b.sessionId;
+    })[0];
+    claims[pid] = winner.sessionId;
+  });
+  return claims;
+}
+
+/**
+ * The ONE count that records this line's number.
+ *
+ * Normally the product's claimant. If that count doesn't hold this exact spot
+ * (possible only if the two counts froze different placements), the number goes
+ * to a count that does — a line must never be unrecordable.
+ */
+export function writerOf(lines: CombinedLine[], claims: Record<number, number>, pid: number, loc: number): number | null {
+  const sids = ownersOf(lines, pid, loc);
+  if (sids.length === 0) return null;
+  const claimant = claims[pid];
+  return claimant != null && sids.includes(claimant) ? claimant : sids[0];
+}
+
+/** True when this count SHOWS the line but another count records it. */
+export function isCoveredElsewhere(
+  lines: CombinedLine[], claims: Record<number, number>, pid: number, loc: number, sessionId: number,
+): boolean {
+  const writer = writerOf(lines, claims, pid, loc);
+  return writer != null && writer !== sessionId && ownersOf(lines, pid, loc).includes(sessionId);
 }
 
 /**
