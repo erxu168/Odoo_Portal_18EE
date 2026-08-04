@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { isSameOrigin } from '@/lib/csrf';
 import { authorize, CAP } from '@/lib/music/access';
 import { jsonError } from '@/lib/music/route-helpers';
-import { logAudit } from '@/lib/db';
+import { getDb, logAudit } from '@/lib/db';
 import { ALL_GENRES, getManualDecision, setManualDecision, type MusicGenre } from '@/lib/music/db';
 
 // PATCH /api/music/decisions/[videoId] — reverse a permanent decision
@@ -22,15 +22,18 @@ export async function PATCH(request: Request, { params }: { params: { videoId: s
     if (!genre) return jsonError(400, 'Pick which genre shelf the song goes on.');
   }
   const before = getManualDecision(params.videoId);
-  setManualDecision({
-    videoId: params.videoId, decision, genre,
-    reason: 'reversed on the decisions screen',
-    byUserId: authz.actor.userId, byName: authz.actor.name,
+  const tx = getDb().transaction(() => {
+    setManualDecision({
+      videoId: params.videoId, decision, genre,
+      reason: 'reversed on the decisions screen',
+      byUserId: authz.actor.userId, byName: authz.actor.name,
+    });
+    logAudit({
+      user_id: authz.actor.userId, user_name: authz.actor.name,
+      action: 'music.decision.set', module: 'music',
+      detail: `${params.videoId}: ${before ? `${before.decision}${before.genre ? '/' + before.genre : ''} → ` : ''}${decision}${genre ? '/' + genre : ''}`,
+    });
   });
-  logAudit({
-    user_id: authz.actor.userId, user_name: authz.actor.name,
-    action: 'music.decision.set', module: 'music',
-    detail: `${params.videoId}: ${before ? `${before.decision}${before.genre ? '/' + before.genre : ''} → ` : ''}${decision}${genre ? '/' + genre : ''}`,
-  });
+  tx();
   return NextResponse.json({ ok: true });
 }

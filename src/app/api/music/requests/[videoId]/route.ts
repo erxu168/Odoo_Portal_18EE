@@ -36,12 +36,12 @@ export async function PATCH(request: Request, { params }: { params: { videoId: s
       byName: authz.actor.name,
     });
     resolveRequest(videoId, action === 'approve' ? 'approved' : 'denied', authz.actor.name);
+    logAudit({
+      user_id: authz.actor.userId, user_name: authz.actor.name,
+      action: action === 'approve' ? 'music.request.approve' : 'music.request.deny', module: 'music',
+      detail: `${videoId}: ${before ? `${before.decision}${before.genre ? '/' + before.genre : ''} → ` : ''}${action === 'approve' ? `allow/${genre}` : 'deny'}`,
+    });
   });
   tx();
-  logAudit({
-    user_id: authz.actor.userId, user_name: authz.actor.name,
-    action: action === 'approve' ? 'music.request.approve' : 'music.request.deny', module: 'music',
-    detail: `${videoId}: ${before ? `${before.decision}${before.genre ? '/' + before.genre : ''} → ` : ''}${action === 'approve' ? `allow/${genre}` : 'deny'}`,
-  });
   return NextResponse.json({ ok: true });
 }

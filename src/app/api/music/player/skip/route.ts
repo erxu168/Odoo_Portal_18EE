@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const version = Number(body?.version);
   const videoId = typeof body?.videoId === 'string' && body.videoId ? body.videoId : undefined;
-  if (!Number.isInteger(version)) return jsonError(400, 'Bad player event.');
+  if (!Number.isInteger(version) || !videoId) return jsonError(400, 'Bad player event.');
 
   const adv = advancePlayback(version, 'skip', undefined, authz.actor.name, videoId);
   if (!adv.ok) {

@@ -46,6 +46,13 @@ export async function startNextIfIdle(): Promise<Playback | null> {
   // Radio selection can take a moment (gate calls). Compare-and-swap on the
   // version we observed so a song queued DURING the await is never clobbered.
   const pick = await nextRadioTrack(gateAdapters);
+  // A staff song queued DURING the radio await takes priority over the pick.
+  const q2 = listQueue();
+  if (q2.length > 0) {
+    const head = q2[0];
+    const started = startPlayback({ videoId: head.video_id, source: 'manual', queueId: head.id, genre: head.genre, title: head.title, channel: head.channel }, observed);
+    return started ?? getPlayback();
+  }
   if (!pick) return getPlayback();
   const started = startPlayback({ videoId: pick.videoId, source: 'radio', queueId: null, genre: pick.genre, title: pick.title, channel: pick.channel }, observed);
   return started ?? getPlayback();

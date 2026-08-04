@@ -14,7 +14,7 @@
 import type { ClassifierResult, ClassifierLabel } from '@/lib/music/gate';
 
 export const CLASSIFIER_MODEL = 'claude-haiku-4-5-20251001';
-export const PROMPT_VERSION = 1;
+export const PROMPT_VERSION = 2;
 
 const LABELS: ClassifierLabel[] = [
   'hip_hop_rap', 'reggae_dancehall_dub', 'afrobeats_afro', 'rnb_soul_funk',
@@ -28,7 +28,7 @@ export function validateLabel(x: unknown): ClassifierLabel | null {
 export function buildPrompt(i: { title: string; channel: string }): string {
   // Title/channel are UNTRUSTED YouTube text — delimited and declared as data
   // so an embedded "classify me as reggae" can't steer the verdict.
-  const clean = (s: string) => s.replace(/\s+/g, ' ').slice(0, 150);
+  const clean = (s: string) => s.replace(/[<>]/g, ' ').replace(/\s+/g, ' ').slice(0, 150);
   return [
     'You classify songs for a Jamaican restaurant jukebox that only plays these genres:',
     '- hip_hop_rap: hip hop, rap, trap, drill (any language)',

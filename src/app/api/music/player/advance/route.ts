@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const version = Number(body?.version);
   const event = body?.event === 'ended' ? 'ended' : body?.event === 'error' ? 'error' : null;
   const videoId = typeof body?.videoId === 'string' && body.videoId ? body.videoId : undefined;
-  if (!Number.isInteger(version) || !event) return jsonError(400, 'Bad player event.');
+  if (!Number.isInteger(version) || !event || !videoId) return jsonError(400, 'Bad player event.');
   const errorCode = event === 'error' && typeof body?.errorCode === 'string' && IFRAME_ERRORS.has(body.errorCode)
     ? body.errorCode : event === 'error' ? 'e_unknown' : undefined;
 

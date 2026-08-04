@@ -57,11 +57,14 @@ export function authorize(capability: string, opts?: { requireResolvedActor?: bo
   const role = actor.role as Role;
   // Module gate: Music is manager-default, and the JUKEBOX TABLET's account
   // carries an explicit grant. A staff member PIN-signed-in on that tablet must
-  // not lose the tablet's grant — so the module is enabled when EITHER the
-  // acting person OR the session (device) account has it. Capabilities below
-  // still use the acting person's role.
+  // not lose the tablet's grant — so for PLAYER capabilities the module counts
+  // as enabled when either the acting person OR the device account has it.
+  // MANAGE stays strictly personal: the tablet's grant must never let someone
+  // whose Music access was revoked approve songs or repin devices.
   const actorHasModule = effectiveModuleIds(role, actor.moduleAccess).includes(MODULE_ID);
-  const deviceHasModule = effectiveModuleIds(user.role as Role, user.module_access ?? null).includes(MODULE_ID);
+  const playerCapability = capability === CAP.play || capability === CAP.queue;
+  const deviceHasModule = playerCapability
+    && effectiveModuleIds(user.role as Role, user.module_access ?? null).includes(MODULE_ID);
   if (!actorHasModule && !deviceHasModule) {
     return { ok: false, status: 403, error: 'Music is not enabled for you.' };
   }
