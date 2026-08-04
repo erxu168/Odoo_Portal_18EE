@@ -103,8 +103,7 @@ the planned waves.
 | 1 | Personal home, Station home | ✅ migrated |
 | 2 | Inventory, Purchase, Manufacturing, Chef Guide | ✅ migrated |
 | 2 | Tasks — **module home only** (blue header + KPI chips) | ⚠️ partial |
-| — | Task Manager — broken layout repaired (see note below) | ✅ done |
-| — | Task Manager — colour, shared components, typography | ⏳ pending |
+| — | Task Manager — layout, colour, confirmations, dashboard, typography | ✅ migrated |
 | 3 | Planning, HR, Prep Planner, Rentals, Reports, Terminations, Sales, Admin | ⏳ pending |
 | 4 | KDS, cook-timer, kiosk (dark ops — typography/touch/status only) | ⏳ pending |
 
@@ -115,10 +114,20 @@ the planned waves.
 > `confirm()` in 15 places, and uses none of the responsive `--fs-*` sizes, so it
 > renders phone-sized on a tablet while neighbouring modules scale.
 >
-> Repaired so far: the doubled bottom bar (the module's own `BottomNav` stacked
-> on the global `AppTabBar`), two screens double-capped at 430px inside
-> `MainWrapper`, `ManagerTabs` sticking at `top-0` beneath the fixed top bar, and
-> the header "Spawn" pill → a full-width green `PrimaryButton`.
+> **Now migrated for real**, in four reversible steps:
+> 1. Layout — the doubled bottom bar (the module's own `BottomNav` stacked on the
+>    global `AppTabBar`, and the only link to `/tasks/training`, so Training moved
+>    into the staff header first), two screens double-capped at 430px inside
+>    `MainWrapper`, `ManagerTabs` sticking at `top-0` beneath the fixed top bar,
+>    and the header "Spawn" pill → a full-width green `PrimaryButton`.
+> 2. Colour — blue is headers only, green is the one interactive colour; amber
+>    kept ONLY where it warns (tip steps, flagged photos, notices). Fixed a
+>    green→**orange** hover on the "+ Add" links.
+> 3. Confirmations + dashboard — all 12 browser `confirm()` boxes → the shared
+>    red `ConfirmDialog` via the new `ui/useConfirm`; stat cards → `KpiChip`,
+>    with red reserved for real problems and statuses spelled out in words.
+> 4. Typography + touch — 413 fixed size classes → `--fs-*`; Edit/Delete,
+>    weekday buttons and all modal fields raised to 44px.
 >
 > Lesson for the ratchet: **a migrated header is not a migrated module.** Judge a
 > wave by how many `ui/` primitives the screen actually imports, not by whether
