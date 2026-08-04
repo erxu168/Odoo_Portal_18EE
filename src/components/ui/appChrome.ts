@@ -14,7 +14,7 @@
  */
 export const NAV_HIDDEN_ROUTES = [
   '/login', '/register', '/forgot-password', '/reset-password',
-  '/hr', '/shift-handover', '/kiosk', '/confirm-shift',
+  '/hr', '/shift-handover', '/kiosk', '/confirm-shift', '/music/player',
 ];
 
 export function isRouteMatch(pathname: string, routes: string[]): boolean {

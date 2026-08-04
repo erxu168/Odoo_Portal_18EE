@@ -157,6 +157,12 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   // tablet, unauthenticated device endpoints). Only the SETUP screen (stations +
   // per-product cook profiles & step chains) is manager work. ──
   { key: 'cooktimer.config.manage',         module: 'cooktimer', label: 'Set up cooking-timer stations & profiles',             defaultRoles: ['manager', 'admin'] },
+
+  // ── WAJ Radio (music) — the jukebox tablet queues and skips; only managers
+  // approve refused songs, reverse decisions, and change which tablet plays. ──
+  { key: 'music.play',   module: 'music', label: 'Run the player (advance, skip)',   defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'music.queue',  module: 'music', label: 'Pick songs on the player',         defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'music.manage', module: 'music', label: 'Approve songs & change settings',  defaultRoles: ['manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

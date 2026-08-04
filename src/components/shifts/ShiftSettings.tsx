@@ -45,6 +45,8 @@ interface SettingsForm {
   attendanceBreakAfter6hMin: number;
   attendanceBreakAfter9hMin: number;
   attendanceBreakMinSegmentMin: number;
+  dayBeforeReminderEnabled: boolean;
+  dayBeforeReminderTime: string;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
@@ -155,6 +157,8 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         attendanceBreakAfter6hMin: minOr(s.attendanceBreakAfter6hMin, 30),
         attendanceBreakAfter9hMin: minOr(s.attendanceBreakAfter9hMin, 45),
         attendanceBreakMinSegmentMin: minOr(s.attendanceBreakMinSegmentMin, 15),
+        dayBeforeReminderEnabled: bool(s.dayBeforeReminderEnabled, false),
+        dayBeforeReminderTime: str(s.dayBeforeReminderTime, '18:00'),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -428,8 +432,8 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                         }
                       />
                       <SettingRow
-                        title="Email reminders"
-                        hint="Also email the reminder with a one-tap confirm link (on top of the app nudges)"
+                        title="Email confirmation requests"
+                        hint="Also email a one-tap confirm link (on top of the app nudges). Separate from the plain day-before reminder below."
                         divider
                         control={
                           <ToggleSwitch
@@ -439,6 +443,40 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                         }
                       />
                 </>
+              )}
+            </div>
+
+            <SectionTitle>Shift reminder (day before)</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Email a shift reminder the day before"
+                hint="The evening before, staff get one email listing their shifts tomorrow — a plain heads-up, no confirmation needed. Separate from shift confirmation."
+                divider={false}
+                control={
+                  <ToggleSwitch
+                    on={form.dayBeforeReminderEnabled}
+                    onToggle={() => update({ dayBeforeReminderEnabled: !form.dayBeforeReminderEnabled })}
+                  />
+                }
+              />
+              {form.dayBeforeReminderEnabled && (
+                <SettingRow
+                  title="Send at"
+                  hint="What time the evening before to email everyone scheduled for tomorrow"
+                  divider
+                  control={
+                    <select
+                      aria-label="Day-before reminder send time"
+                      className={selectClass}
+                      value={form.dayBeforeReminderTime}
+                      onChange={e => update({ dayBeforeReminderTime: e.target.value })}
+                    >
+                      {timeOptions(EVENING_TIMES, form.dayBeforeReminderTime).map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  }
+                />
               )}
             </div>
 

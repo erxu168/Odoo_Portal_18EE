@@ -79,3 +79,15 @@ export function CheckIcon({ size = 20, className }: ChromeIconProps) {
     </svg>
   );
 }
+
+/** Crosshair — "show me exactly where this is" (the floorplan button on a
+ *  counting spot). Chosen over a map emoji: the job is pinpointing one place,
+ *  not opening an atlas. */
+export function CrosshairIcon({ size = 20, className }: ChromeIconProps) {
+  return (
+    <svg {...svgProps(size, className)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+    </svg>
+  );
+}

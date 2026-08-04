@@ -123,7 +123,7 @@ export default function SummarySettings() {
                       onChange={e => patch(row.id, { hour: Number(e.target.value) })}
                       disabled={saving}
                       aria-label={`Send time for ${row.name}`}
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
                       {HOUR_OPTIONS.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}
                     </select>
@@ -137,7 +137,7 @@ export default function SummarySettings() {
               <button
                 onClick={save}
                 disabled={saving || !dirty}
-                className="bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:pointer-events-none"
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>

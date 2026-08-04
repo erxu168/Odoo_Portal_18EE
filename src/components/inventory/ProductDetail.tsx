@@ -17,6 +17,7 @@ import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
 import { currentCompanyTax, hasConflictingTax, type TaxOption } from '@/lib/product-tax';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
+import ShelfLabelSection from './ShelfLabelSection';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -329,6 +330,14 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     // first reply landing after a fast second would show one restaurant's tax
     // rate labelled as another's, which is a wrong number stated confidently.
     const token = ++loadRef.current;
+    // Home spots are per restaurant too, and the SHELF LABEL prints them. Left
+    // stale they would put the previous restaurant's shelf and QR on a sticker —
+    // the same class of wrong-number-stated-confidently as the tax below, but
+    // this one gets glued to a fridge. Cleared before the read, and again if it
+    // fails, so the label section shows "no storage place" rather than a lie.
+    // (Codex, 2026-08-04.)
+    setHomeSpots([]);
+    setSpotLabels({});
     // Tax is per restaurant. Clear it BEFORE the new read so a company change
     // never leaves the previous restaurant's rate on screen, labelled as this
     // one's, while the request is in flight.
@@ -416,7 +425,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         const labels: Record<number, string> = {};
         locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
         setSpotLabels(labels);
-      } catch { /* sections degrade to their defaults */ }
+      } catch {
+        // Degrade to "unknown", never to the PREVIOUS restaurant's answer.
+        if (token === loadRef.current) { setHomeSpots([]); setSpotLabels({}); }
+      }
       finally { if (token === loadRef.current) setLoading(false); }
     })();
   }, [product.id, companyId]);
@@ -1208,11 +1220,19 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </div>
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
               {packSize === '' ? (
-                <>
-                  Fill in how many {unitWords(uomName, effPack, looseLabel).looseFor(2)} are in one {effPack}
-                  {' '}and staff can count whole {pluralizePack(effPack, 2)} plus loose ones.
-                  Leave it blank and they count in {unitWords(uomName, effPack, looseLabel).looseFor(2)} only.
-                </>
+                measure && !!packLabel ? (
+                  <>
+                    Staff count whole {pluralizePack(effPack, 2)}. Fill in how many {uomName} one
+                    {' '}{effPack} weighs only if you want the {uomName} equivalent too — the count
+                    {' '}works without it.
+                  </>
+                ) : (
+                  <>
+                    Fill in how many {unitWords(uomName, effPack, looseLabel).looseFor(2)} are in one {effPack}
+                    {' '}and staff can count whole {pluralizePack(effPack, 2)} plus loose ones.
+                    Leave it blank and they count in {unitWords(uomName, effPack, looseLabel).looseFor(2)} only.
+                  </>
+                )
               ) : measure ? (
                 `Staff count whole ${pluralizePack(effPack, 2)}; Odoo gets ${uomName}.`
               ) : (
@@ -1401,7 +1421,20 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           <input id="pd-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={readOnly}
             placeholder="Scan or type…"
             onBlur={() => { const v = barcode.trim(); if (v !== (product.barcode || '')) saveMaster({ barcode: v }); }}
-            className={`${box} font-mono mb-8`} />
+            className={`${box} font-mono mb-2`} />
+
+          {/* THE SHELF LABEL — what he asked for: "each product to have a section
+              where I have a label for that product… attached to their storage
+              location". Sits under Barcode because the two are the same subject:
+              a label cannot be scanned until the product has a code. */}
+          <ShelfLabelSection
+            product={product}
+            barcode={barcode}
+            homeSpots={homeSpots}
+            spotLabels={spotLabels}
+            readOnly={readOnly}
+            onCodeAssigned={(code) => { setBarcode(code); }}
+          />
 
           {/* A DRAFT is not archived and must not be offered the archive/delete
               pair: it is a product scanned mid-count that nobody has finished, so

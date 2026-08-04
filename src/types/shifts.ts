@@ -105,6 +105,10 @@ export interface ShiftSettings {
   attendanceBreakAfter9hMin: number;
   /** Break rules: shortest gap (min) that counts as a qualifying rest break (15). */
   attendanceBreakMinSegmentMin: number;
+  /** Day-before reminder: email staff a plain reminder the evening before their shift. */
+  dayBeforeReminderEnabled: boolean;
+  /** Day-before reminder: Berlin "HH:MM" (whole hour) to send it the evening before. */
+  dayBeforeReminderTime: string;
 }
 
 /** Snapshot of the slot at cover-request creation time. */

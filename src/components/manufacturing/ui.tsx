@@ -96,19 +96,6 @@ export function Badge({ variant, children }: { variant: 'done' | 'progress' | 'r
   );
 }
 
-// --- Back Header ---
-export function BackHeader({ backLabel, onBack, title, subtitle }: { backLabel: string; onBack: () => void; title: string; subtitle?: string }) {
-  return (
-    <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-      <button type="button" onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7" /></svg>
-        {backLabel}
-      </button>
-      <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{title}</h1>
-      {subtitle && <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{subtitle}</p>}
-    </div>
-  );
-}
 
 // --- Section Title ---
 export function SectionTitle({ children }: { children: React.ReactNode }) {

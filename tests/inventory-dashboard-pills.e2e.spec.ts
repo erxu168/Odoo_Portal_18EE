@@ -42,8 +42,29 @@ test('manager: the stale-counts notice (when shown) opens Review', async ({ page
   await page.goto('/inventory');
   // Wait for the dashboard to settle, then only test the notice if data shows it.
   await page.getByText('To review', { exact: true }).waitFor({ timeout: 15_000 });
-  const notice = page.getByText(/started and never submitted/);
-  if (!(await notice.isVisible().catch(() => false))) test.skip(true, 'no stale counts on this dataset');
+  const notice = page.getByText(/from earlier days (is|are) still open/);
+  if (!(await notice.isVisible().catch(() => false))) test.skip(true, 'no stuck counts on this dataset');
   await notice.click();
+  // It must land on the list that can actually SHOW them — not on Submitted,
+  // which was the dead end this fixed.
   await expect(page.getByText('Approve or reject submitted counts')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Not submitted' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('manager: the Not submitted list shows stuck counts and Back returns to it', async ({ page }) => {
+  await login(page, MGR.email, MGR.password);
+  await page.goto('/inventory');
+  await page.locator('button', { hasText: 'Review' }).first().waitFor({ timeout: 15_000 });
+  await page.getByText('To review', { exact: true }).click();
+
+  await page.getByRole('button', { name: 'Not submitted' }).click();
+  const open = page.getByRole('button', { name: 'Open and finish it' }).first();
+  if (!(await open.isVisible({ timeout: 10_000 }).catch(() => false))) {
+    await expect(page.getByText('Nothing stuck')).toBeVisible();
+    return;                       // a clean dataset is a valid outcome
+  }
+  await open.click();
+  await page.getByRole('button', { name: /back/i }).first().click();
+  // Back must return to the STUCK list, not to Submitted.
+  await expect(page.getByRole('button', { name: 'Not submitted' })).toHaveAttribute('aria-pressed', 'true');
 });

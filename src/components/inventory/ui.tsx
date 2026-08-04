@@ -22,7 +22,9 @@ export function FilterBar({ children }: { children: React.ReactNode }) {
 
 export function FilterPill({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
   return (
-    <button onClick={onClick}
+    // aria-pressed, not colour alone: a filter's selected state must be
+    // announced to a screen reader (and assertable in a test).
+    <button onClick={onClick} type="button" aria-pressed={active}
       className={`px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold whitespace-nowrap transition-all ${
         active ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
       }`}>
@@ -127,24 +129,6 @@ export function SearchBar({ value, onChange, placeholder }: { value: string; onC
   );
 }
 
-// --- Back Header ---
-export function BackHeader({ onBack, title, subtitle, right }: {
-  onBack: () => void; title: string; subtitle?: string; right?: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
-      <div className="flex items-center justify-between mb-1">
-        <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-          Back
-        </button>
-        {right}
-      </div>
-      <h1 className="text-[var(--fs-xl)] font-bold text-gray-900">{title}</h1>
-      {subtitle && <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">{subtitle}</p>}
-    </div>
-  );
-}
 
 // --- Loading Spinner ---
 export function Spinner() {

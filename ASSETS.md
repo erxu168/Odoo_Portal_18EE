@@ -129,6 +129,7 @@ being typed into. Two standing rules:
 | Asset | Path | What | users |
 |---|---|---|---|
 | `KeyboardViewportManager` | `ui/KeyboardViewportManager.tsx` | Mounted once in the root layout. Detects the keyboard by GEOMETRY plus a focused text control (focus alone misfires on split-screen and Capacitor `adjustResize`; geometry alone mistakes pinch-zoom for a keyboard). Publishes `--keyboard-inset-bottom`, `--visual-viewport-height`, `html[data-keyboard-open]` | 1 |
+| `scrollNeededFor` | `lib/keyboard-visibility.ts` | The geometry: how far to scroll a focused control into the space it ACTUALLY has. **"Visible" is not "above the keyboard"** — a sheet's action button sits in a footer below its scrolling body, so a field can clear the keyboard and still hide behind "Post to the log". The region is the viewport INTERSECTED with the scroll container's box. Found on a real device, not in review | 1 |
 
 **There is now exactly ONE keypad.** Five had grown independently and each had
 drifted: `ui/Numpad` (Purchase, WoDetail), `inventory/NumpadModal` (counting +
@@ -180,6 +181,7 @@ list told only about the room keeps rendering orphans.
 | `TopBarContext` | `ui/TopBarContext.tsx` | Hide the global top bar for one screen | 10 |
 | `SortableTileGrid` | `ui/SortableTileGrid.tsx` | Drag-reorderable tiles, order persisted | 1 |
 | `DragRow` | `ui/DragRow.tsx` | dnd-kit sortable row with a drag handle | 2 |
+| `ChromeIcons` | `ui/ChromeIcons.tsx` | THE thin-line icon set for interface machinery — Home, Back, Close, ChevronDown/Right, Check, **Crosshair** ("show me exactly where this is"). Emoji carry meaning on action cards; chrome uses these. Never a second icon style | 12 |
 
 **KNOWN GAP:** **39 files hand-roll a `rounded-t` overlay** instead of using
 `BottomSheet`, and `shifts/ui.tsx` has a rival `Sheet`.
@@ -245,7 +247,10 @@ importers.
 | `odoo-html.ts` | `lib/odoo-html.ts` | `plainFromOdooHtml` — Odoo notes are HTML |
 | `location-tree.ts` | `lib/location-tree.ts` | `locationPathLabel` and tree walking |
 | `crate-units.ts` | `lib/crate-units.ts` | Pack/loose wording — "1 crate = 24 bottles" |
-| `zpl.ts` / `zpl-net.ts` | `lib/` | Zebra label ZPL; network send is server-only |
+| `product-code.ts` | `lib/product-code.ts` | `houseCode(id)` = `KRW-<odoo id>` — the code a product carries when it has no supplier barcode (824 of WAJ's had none). Unique by construction, stable across renames, scanner-typeable. **NEVER overwrite an existing barcode** — a supplier EAN is the real one. Pairs with `location-code.ts`: a shelf label prints BOTH, so `parseHouseCode` and `parseLocationCode` must never accept each other's codes (pinned by a test) |
+| `usage-totals.ts` | `lib/usage-totals.ts` | `sessionTotals(sessionId)` — what ONE count says a product's quantity was, and when it says NOTHING. The core of the usage report. **THE RULE: a partial sum is a lie, not a number.** A product is dropped from `qty` (and reported as a stated gap) when it was answered "couldn't find it" ANYWHERE, or when a spot it lives at was SKIPPED — a skip is "I didn't look here", and summing only the shelves that were counted used to make usage read HIGH by whatever sat on the skipped one. Out-of-stock is deliberately NOT a gap: "I looked, there is none" is a real zero. Skips are read from the count's FROZEN lines, never live placements. Use this, never a copy — the mirrored version in the route was already drifting |
+| `zpl.ts` / `zpl-net.ts` | `lib/` | Zebra label ZPL; network send is server-only. `generateProductStorageZPL` is the 90×60 SHELF label (name huge and full-width, product barcode, location path, shelf QR) — its two size floors are a real trade, pinned by tests: push the name higher and the barcode silently disappears |
+| `ZebraPrinterBar` | `ui/ZebraPrinterBar.tsx` | **THE printer bar** — status, Connect/Change, paired-device picker, and the one-tap `device.languages "zpl"` fix for a factory-fresh printer that prints ZPL as text. That fix used to exist in LabelPrint ONLY, so LocationLabels and PackageLabel stranded anyone who hit it. Takes the hook's return value, so the screen keeps ONE connection and prints from it |
 | `numeric-input.ts` | `lib/numeric-input.ts` | **What typing a number MEANS** — one buffer truth table for every pad. Modes `integer`/`decimal`/`digit-string`. **THE RULE: empty is not zero.** Blank means "nobody counted this"; a typed `0` means "there is none here, set stock to zero" — they go to different places in Odoo. `ui/Numpad` used to collapse them with `parseFloat(v) \|\| 0`. Also: German decimal comma in, dot stored; `digit-string` keeps leading zeros (postcode `01067`, barcode) and is never parsed; range rules apply at zero too (the old tolerance check's `>0` escape let `0` past a `min: 1` field) |
 | `modal-stack.ts` | `lib/modal-stack.ts` | `useEscapeStack` — who owns Escape. Only the TOP-most overlay reacts, so the numpad opened from inside a sheet can't close the sheet and discard its edits. Shared by `BottomSheet` and `NumpadProvider` |
 | `design-system.ts` / `ux-rules.ts` | `lib/` | Tokens; plain-language mappings |

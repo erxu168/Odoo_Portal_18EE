@@ -19,6 +19,8 @@ import LocationForm from '@/components/inventory/LocationForm';
 import LocationLabels from '@/components/inventory/LocationLabels';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
+import ShelfLabelPrint, { type ShelfLabelJob } from '@/components/inventory/ShelfLabelPrint';
+import { locationPathLabel } from '@/lib/location-tree';
 
 interface Loc { id: number; parent_id: number | null; name: string; kind: string; description: string | null; photo: string | null; company_id: number; }
 
@@ -38,6 +40,59 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
   // Editing uses the ONE shared LocationForm (single-canonical-form rule).
   const [editing, setEditing] = useState(false);
   const [printing, setPrinting] = useState(false);
+
+  /**
+   * Gather a label per product kept at this spot OR anywhere inside it, then
+   * open the print sheet. Names, barcodes and units come from the product API
+   * in ONE request; the spot names come from the location tree this page has
+   * already loaded, so nothing is invented locally.
+   */
+  async function buildShelfLabels() {
+    if (buildingLabels || !loc) return;
+    setBuildingLabels(true);
+    try {
+      // The whole tree, so a label can print "WAJ Kitchen › Countertop fridge › D4"
+      // rather than just the drawer's name.
+      const [pl, locsRes] = await Promise.all([
+        fetch(`/api/inventory/product-locations?count_location_id=${loc.id}&include_inside=1`)
+          .then((r) => (r.ok ? r.json() : { placements: [] })),
+        fetch(`/api/inventory/count-locations?company_id=${loc.company_id}`)
+          .then((r) => (r.ok ? r.json() : { locations: [] })),
+      ]);
+      const allLocs = locsRes.locations || [];
+      const placements: { odoo_product_id: number; count_location_id: number }[] = pl.placements || [];
+      if (placements.length === 0) { alert('Nothing is kept here yet, so there is nothing to label.'); return; }
+
+      const ids = Array.from(new Set(placements.map((p) => p.odoo_product_id)));
+      const prods = await fetch(`/api/inventory/products?ids=${ids.join(',')}`)
+        .then((r) => (r.ok ? r.json() : { products: [] }));
+      const byId = new Map<number, { name: string; barcode?: string | false; uom_id?: [number, string] }>(
+        (prods.products || []).map((p: { id: number }) => [p.id, p as never]),
+      );
+
+      const jobs: ShelfLabelJob[] = placements.map((p) => {
+        const prod = byId.get(p.odoo_product_id);
+        return {
+          productId: p.odoo_product_id,
+          productName: prod?.name || `#${p.odoo_product_id}`,
+          barcode: (prod?.barcode as string) || null,
+          spotId: p.count_location_id,
+          spotLabel: locationPathLabel(p.count_location_id, allLocs),
+          uom: prod?.uom_id?.[1] || null,
+        };
+      });
+      setLabelJobs(jobs);
+    } catch {
+      alert('Could not gather the labels. Check the connection and try again.');
+    } finally {
+      setBuildingLabels(false);
+    }
+  }
+
+  // Shelf labels for everything kept here — built on demand, because it needs
+  // product names and barcodes this page has no other reason to load.
+  const [labelJobs, setLabelJobs] = useState<ShelfLabelJob[] | null>(null);
+  const [buildingLabels, setBuildingLabels] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -179,10 +234,18 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
           {loc.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1">{loc.description}</p>}
           {savedMsg && <span className="text-[12px] font-bold text-green-600">{savedMsg}</span>}
           {canEdit && (
-            <button onClick={() => setPrinting(true)}
-              className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-50">
-              🖨 Print this label
-            </button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button onClick={() => setPrinting(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-50">
+                🖨 Print this label
+              </button>
+              {/* The shelf's OWN label says where you are. This one is a sticker
+                  per product kept here — what belongs on this shelf. */}
+              <button onClick={buildShelfLabels} disabled={buildingLabels}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-50 disabled:opacity-50">
+                🏷️ {buildingLabels ? 'Gathering…' : 'Labels for everything here'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -255,6 +318,10 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
           error={saveErr}
         />
       )}
+      {labelJobs && labelJobs.length > 0 && (
+        <ShelfLabelPrint jobs={labelJobs} onClose={() => setLabelJobs(null)} />
+      )}
+
       {printing && <LocationLabels companyId={loc.company_id} onlyId={loc.id} onClose={() => setPrinting(false)} />}
     </div>
   );

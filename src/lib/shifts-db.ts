@@ -159,6 +159,15 @@ function ensureTables(): void {
       PRIMARY KEY (slot_id, stage)
     );
 
+    -- Dedup for the standalone day-before reminder: one email per person per shift date.
+    CREATE TABLE IF NOT EXISTS shift_day_before_sent (
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      target_date TEXT NOT NULL,
+      sent_at TEXT NOT NULL,
+      PRIMARY KEY (company_id, employee_id, target_date)
+    );
+
     CREATE TABLE IF NOT EXISTS shift_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -313,6 +322,8 @@ function ensureTables(): void {
     ['attendance_break_after_6h_min', 'INTEGER NOT NULL DEFAULT 30'],
     ['attendance_break_after_9h_min', 'INTEGER NOT NULL DEFAULT 45'],
     ['attendance_break_min_segment_min', 'INTEGER NOT NULL DEFAULT 15'],
+    ['day_before_reminder_enabled', 'INTEGER NOT NULL DEFAULT 0'],
+    ['day_before_reminder_time', "TEXT NOT NULL DEFAULT '18:00'"],
   ] as const) {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
@@ -499,6 +510,20 @@ export function clearConfirmReminders(slotId: number): void {
   ensureTables();
   getDb().prepare('DELETE FROM shift_confirm_reminders WHERE slot_id=?').run(slotId);
   clearShiftConfirmTokens(slotId);
+}
+
+/**
+ * Atomically CLAIM the day-before reminder for (company, employee, date). Returns
+ * true only for the caller that won the claim (first insert); concurrent cron runs
+ * get false and must not send. Claim BEFORE emailing so a double-run can't double-send
+ * (an SMTP failure after the claim loses that one reminder — acceptable, no auto-retry).
+ */
+export function claimDayBeforeReminder(companyId: number, employeeId: number, targetDate: string): boolean {
+  ensureTables();
+  const res = getDb()
+    .prepare('INSERT OR IGNORE INTO shift_day_before_sent (company_id, employee_id, target_date, sent_at) VALUES (?,?,?,?)')
+    .run(companyId, employeeId, targetDate, nowISO());
+  return res.changes === 1;
 }
 
 // -- Kiosk PINs -----------------------------------------------------------------
@@ -741,6 +766,8 @@ interface SettingsRow {
   attendance_break_after_6h_min?: number;
   attendance_break_after_9h_min?: number;
   attendance_break_min_segment_min?: number;
+  day_before_reminder_enabled?: number;
+  day_before_reminder_time?: string;
 }
 
 /** Defaults for the employer on-cost (AG) percentages when a row predates them. */
@@ -758,6 +785,9 @@ const ATTENDANCE_DEFAULTS = {
   attendanceBreakAfter9hMin: 45,
   attendanceBreakMinSegmentMin: 15,
 } as const;
+
+/** Defaults for the standalone day-before shift reminder (independent of confirmation). */
+const DAY_BEFORE_DEFAULTS = { dayBeforeReminderEnabled: false, dayBeforeReminderTime: '18:00' } as const;
 
 /** Defaults for the email-reminder fields (also used when a settings row predates them). */
 const REMINDER_DEFAULTS = {
@@ -788,6 +818,7 @@ export function getShiftSettings(companyId: number): ShiftSettings {
       ...REMINDER_DEFAULTS,
       ...AG_COST_DEFAULTS,
       ...ATTENDANCE_DEFAULTS,
+      ...DAY_BEFORE_DEFAULTS,
     };
   }
   return {
@@ -819,7 +850,16 @@ export function getShiftSettings(companyId: number): ShiftSettings {
     attendanceBreakAfter6hMin: row.attendance_break_after_6h_min ?? ATTENDANCE_DEFAULTS.attendanceBreakAfter6hMin,
     attendanceBreakAfter9hMin: row.attendance_break_after_9h_min ?? ATTENDANCE_DEFAULTS.attendanceBreakAfter9hMin,
     attendanceBreakMinSegmentMin: row.attendance_break_min_segment_min ?? ATTENDANCE_DEFAULTS.attendanceBreakMinSegmentMin,
+    dayBeforeReminderEnabled: (row.day_before_reminder_enabled ?? 0) === 1,
+    dayBeforeReminderTime: row.day_before_reminder_time || DAY_BEFORE_DEFAULTS.dayBeforeReminderTime,
   };
+}
+
+/** company_ids that currently have the day-before shift reminder switched on. */
+export function companiesWithDayBeforeReminder(): number[] {
+  ensureTables();
+  return (getDb().prepare('SELECT company_id FROM shift_settings WHERE day_before_reminder_enabled = 1').all() as { company_id: number }[])
+    .map(r => r.company_id);
 }
 
 /** company_ids that currently have shift confirmation switched on (for the cron). */
@@ -832,8 +872,8 @@ export function companiesRequiringConfirmation(): number[] {
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, attendance_rules_enabled, attendance_rules_text, attendance_rules_cadence, attendance_break_after_6h_min, attendance_break_after_9h_min, attendance_break_min_segment_min, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, attendance_rules_enabled, attendance_rules_text, attendance_rules_cadence, attendance_break_after_6h_min, attendance_break_after_9h_min, attendance_break_min_segment_min, day_before_reminder_enabled, day_before_reminder_time, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
@@ -859,6 +899,8 @@ export function saveShiftSettings(s: ShiftSettings): void {
       attendance_break_after_6h_min = excluded.attendance_break_after_6h_min,
       attendance_break_after_9h_min = excluded.attendance_break_after_9h_min,
       attendance_break_min_segment_min = excluded.attendance_break_min_segment_min,
+      day_before_reminder_enabled = excluded.day_before_reminder_enabled,
+      day_before_reminder_time = excluded.day_before_reminder_time,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -886,6 +928,8 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.attendanceBreakAfter6hMin,
     s.attendanceBreakAfter9hMin,
     s.attendanceBreakMinSegmentMin,
+    s.dayBeforeReminderEnabled ? 1 : 0,
+    s.dayBeforeReminderTime,
     nowISO(),
   );
 }

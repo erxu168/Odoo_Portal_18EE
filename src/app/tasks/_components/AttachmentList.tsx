@@ -78,7 +78,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
             <button
               onClick={() => openAttachment(att)}
               disabled={loadingId === att.id}
-              className="flex-1 min-w-0 text-left text-gray-800 hover:text-orange-600 truncate disabled:opacity-50"
+              className="flex-1 min-w-0 text-left text-gray-800 hover:text-green-700 truncate disabled:opacity-50"
             >
               {loadingId === att.id ? 'Loading…' : att.name}
             </button>
@@ -128,7 +128,7 @@ export default function AttachmentList({ attachments, canDelete = false, onDelet
             <a
               href={`data:${open.mimetype || 'application/octet-stream'};base64,${open.data_base64}`}
               download={open.name}
-              className="mt-4 block w-full text-center py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold"
+              className="mt-4 block w-full text-center py-2.5 bg-green-600 text-white rounded-lg text-sm font-semibold"
             >
               Download
             </a>

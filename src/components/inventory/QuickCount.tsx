@@ -15,6 +15,7 @@ import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { useCompany } from '@/lib/company-context';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure, unitWords } from '@/lib/crate-units';
+import { parseLocationCode } from '@/lib/location-code';
 
 interface QuickCountProps {
   userRole: string;
@@ -67,6 +68,16 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       setCounts((prev) => ({ ...prev, [local.id]: (prev[local.id] ?? 0) + 1 }));
       showScanToast(`${local.name} +1 ${uom}`, 'ok');
       try { navigator.vibrate(60); } catch { /* ignore */ }
+      return;
+    }
+
+    // 1b. A SHELF code, not a product. Shelf labels carry a product barcode and
+    // the shelf's own code side by side, so catching the wrong one is normal —
+    // and letting it reach the lookup below meant the "unknown barcode" path
+    // offered to CREATE A PRODUCT called KWLOC-38. (Ethan, 2026-08-04.)
+    if (parseLocationCode(barcode) != null) {
+      showScanToast('That is a shelf code — scan the product\u2019s own barcode', 'warn');
+      try { navigator.vibrate([60, 30, 60]); } catch { /* ignore */ }
       return;
     }
 

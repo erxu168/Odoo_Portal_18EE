@@ -25,6 +25,10 @@ export const LABEL_SIZE_PRESETS: LabelSize[] = [
   { id: '102x76',  name: '102 × 76 mm',  category: 'medium', widthMm: 102, heightMm: 76,  description: 'Production' },
   { id: '102x102', name: '102 × 102 mm', category: 'large',  widthMm: 102, heightMm: 102, description: 'Barrel / Drum' },
   { id: '102x152', name: '102 × 152 mm', category: 'large',  widthMm: 102, heightMm: 152, description: 'Full Detail' },
+  // The shelf label: what belongs HERE. Landscape, so the product name gets the
+  // full 90mm and prints ~13mm tall at 203dpi — readable across a kitchen.
+  // Needs the ZD421; a ZQ310's 48mm head prints this chopped. (Ethan 2026-08-04.)
+  { id: '90x60',   name: '90 × 60 mm',   category: 'medium', widthMm: 90,  heightMm: 60,  description: 'Shelf label' },
 ];
 
 export const LABEL_CONSTRAINTS = {

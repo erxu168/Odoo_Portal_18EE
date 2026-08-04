@@ -10,8 +10,30 @@
  *   PORTAL_URL=http://89.167.124.0:3000
  */
 import nodemailer from 'nodemailer';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { resolveCompanySetting } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+
+/**
+ * A per-company email logo for the header, as an inline (CID) attachment so it
+ * renders in Gmail/Outlook (unlike SVG or remote images). Drop a raster PNG at
+ * `public/email-logos/<companyId>.png` to give a restaurant its own logo; absent
+ * → null and the email falls back to the KRAWINGS wordmark. Cached per process.
+ */
+const logoCache = new Map<number, Buffer | null>();
+function companyEmailLogo(companyId?: number): { filename: string; content: Buffer; cid: string } | null {
+  if (!companyId) return null;
+  if (!logoCache.has(companyId)) {
+    try {
+      logoCache.set(companyId, readFileSync(join(process.cwd(), 'public', 'email-logos', `${companyId}.png`)));
+    } catch {
+      logoCache.set(companyId, null);
+    }
+  }
+  const buf = logoCache.get(companyId) ?? null;
+  return buf ? { filename: 'logo.png', content: buf, cid: `logo-${companyId}` } : null;
+}
 
 /**
  * Restaurant display name for a company, used for email branding under the
@@ -82,6 +104,16 @@ function getFrom(companyId?: number): string {
 }
 
 const PORTAL_URL = process.env.PORTAL_URL || 'http://89.167.124.0:3000';
+
+/** Escape text before inserting it into an HTML email body. */
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /** True only when SMTP credentials are configured (per-company, default, or env). */
 export function isEmailConfigured(companyId?: number): boolean {
@@ -380,6 +412,99 @@ export async function sendShiftReminderEmail(
         <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${location} &middot; Krawings Staff Portal</p>
       </div>
     `,
+  });
+}
+
+/**
+ * Standalone day-before reminder: a PLAIN heads-up (no confirm link/workflow)
+ * listing every shift the person works tomorrow. Independent of the confirmation
+ * feature. All Odoo-derived text is HTML-escaped.
+ */
+export async function sendDayBeforeShiftReminderEmail(
+  toEmail: string,
+  toName: string,
+  dateLabel: string,
+  shifts: { time: string; roleName: string }[],
+  upcoming: { day: string; shifts: { time: string; roleName: string }[] }[],
+  companyId?: number,
+): Promise<void> {
+  const brand = await getCompanyBrandName(companyId);
+  const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
+  const logo = companyEmailLogo(companyId);
+  const name = escapeHtml(toName || 'there');
+  const rows = shifts
+    .map(s => `  ${s.time}${s.roleName ? ` (${s.roleName})` : ''}`)
+    .join('\n');
+  const htmlRows = shifts
+    .map(
+      s => `
+        <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px 18px; margin: 10px 0;">
+          <div style="font-size: 16px; font-weight: 700; color: #111827;">${escapeHtml(s.time)}</div>
+          ${s.roleName ? `<div style="font-size: 14px; color: #6B7280; margin-top: 2px;">${escapeHtml(s.roleName)}</div>` : ''}
+        </div>`,
+    )
+    .join('');
+  const plural = shifts.length === 1 ? 'shift' : 'shifts';
+
+  // A visually-separated "upcoming days" section (rest of this week + next week),
+  // distinct from the tomorrow reminder above. Omitted when there's nothing more.
+  const upcomingText = upcoming.length
+    ? [
+        '',
+        '— — —',
+        'Your shifts for the upcoming days:',
+        ...upcoming.map(d => `  ${d.day}: ${d.shifts.map(s => `${s.time}${s.roleName ? ` (${s.roleName})` : ''}`).join(', ')}`),
+      ].join('\n')
+    : '';
+  const upcomingHtml = upcoming.length
+    ? `
+        <div style="border-top: 2px dashed #E5E7EB; margin: 24px 0 10px;"></div>
+        <p style="color: #6B7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">Your shifts for the upcoming days</p>
+        ${upcoming
+          .map(
+            d => `
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #F3F4F6;">
+            <span style="font-size: 14px; font-weight: 700; color: #374151;">${escapeHtml(d.day)}</span>
+            <span style="font-size: 14px; color: #6B7280; text-align: right;">${d.shifts
+              .map(s => `${escapeHtml(s.time)}${s.roleName ? ` · ${escapeHtml(s.roleName)}` : ''}`)
+              .join('<br/>')}</span>
+          </div>`,
+          )
+          .join('')}`
+    : '';
+
+  await getTransporter(companyId).sendMail({
+    from: `"${location} Shifts" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: `Your ${plural} tomorrow — ${dateLabel}`,
+    text: [
+      `Hi ${toName || 'there'},`,
+      '',
+      `Just a reminder — you're scheduled at ${location} tomorrow (${dateLabel}):`,
+      rows,
+      '',
+      'See you then! Can’t make it? Let your manager know as soon as you can.',
+      upcomingText,
+      '',
+      `— ${location} Shifts`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          ${logo
+            ? `<img src="cid:${logo.cid}" alt="${escapeHtml(location)}" width="180" style="display:block; margin:0 auto; width:180px; max-width:70%; height:auto;" />`
+            : `<div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div><div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px;">${escapeHtml(location)}</div>`}
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Just a reminder — you're scheduled <b>tomorrow (${escapeHtml(dateLabel)})</b>:</p>
+        ${htmlRows}
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5; margin-top: 18px;">See you then! Can’t make it? Let your manager know as soon as you can.</p>
+        ${upcomingHtml}
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${escapeHtml(location)} &middot; Krawings Staff Portal</p>
+      </div>
+    `,
+    attachments: logo ? [{ filename: logo.filename, content: logo.content, cid: logo.cid }] : undefined,
   });
 }
 

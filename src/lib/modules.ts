@@ -52,6 +52,7 @@ export const PORTAL_MODULES: PortalModule[] = [
   { id: 'sales',           label: 'Sales',            minRole: 'manager', href: '/sales',          emoji: '📈', subtitle: 'What a Jerk revenue & top sellers' },
   { id: 'hr',              label: 'HR',               minRole: 'staff',   href: '/hr',             emoji: '👤', subtitle: 'Profile & onboarding' },
   { id: 'rentals',         label: 'Rentals',          minRole: 'admin',   href: '/rentals',        emoji: '🏠', subtitle: 'Properties & tenancies' },
+  { id: 'music',           label: 'Music',            minRole: 'manager', href: '/music',          emoji: '🎵', subtitle: 'WAJ Radio jukebox' },
   { id: 'credentials',     label: 'Supplier Logins',  minRole: 'manager', href: '/admin/credentials', emoji: '🔑', subtitle: 'Vendor credentials', drawer: 'admin' },
   { id: 'tablets',         label: 'Shared Tablets',   minRole: 'manager', href: '/admin/tablets',  emoji: '📱', subtitle: 'Kitchen tablet access', drawer: 'admin' },
   { id: 'termination',     label: 'Termination',      minRole: 'admin',   href: '/hr/termination', emoji: '📄', subtitle: 'Offboarding & documents', tile: false, drawer: 'admin' },

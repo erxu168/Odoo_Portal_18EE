@@ -117,7 +117,7 @@ export default function NotificationsToggle() {
         {error && <p className="text-[11px] text-red-600 mt-0.5">{error}</p>}
       </div>
       {status === 'unsubscribed' && (
-        <button onClick={enable} className="text-xs font-semibold px-3 py-1.5 rounded-full bg-orange-500 text-white hover:bg-orange-600">
+        <button onClick={enable} className="text-xs font-semibold px-3 py-1.5 rounded-full bg-green-600 text-white hover:bg-green-700">
           Turn on
         </button>
       )}

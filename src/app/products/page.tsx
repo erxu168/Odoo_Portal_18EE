@@ -26,6 +26,7 @@ const DESTINATION: Record<ProductsScreen, string> = {
   photos: '/products/photos',
   untracked: '/products/catalog?gap=untracked',
   setup: '/products/setup',
+  codes: '/products/codes',
 };
 
 export default function ProductsPage() {

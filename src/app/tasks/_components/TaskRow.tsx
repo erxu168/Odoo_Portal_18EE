@@ -22,7 +22,7 @@ const MODULE_STYLES: Record<ModuleLink, string> = {
   purchase:      'bg-amber-50 text-amber-800 border-amber-200',
   inventory:     'bg-green-50  text-green-800  border-green-200',
   pos:           'bg-blue-50   text-blue-800   border-blue-200',
-  manufacturing: 'bg-orange-50 text-orange-800 border-orange-200',
+  manufacturing: 'bg-amber-50 text-amber-800 border-amber-200',
 };
 const MODULE_ICONS: Record<ModuleLink, string> = {
   none: '',
@@ -150,7 +150,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
       className={`relative flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors ${readOnly ? '' : 'cursor-pointer'} ${
         completing ? 'opacity-40 pointer-events-none' :
         task.is_ad_hoc ? 'bg-amber-50 hover:bg-amber-100/60' :
-        (readOnly ? '' : 'hover:bg-orange-50/30')
+        (readOnly ? '' : 'hover:bg-gray-50')
       }`}>
 
       {task.is_ad_hoc && (
@@ -187,7 +187,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
             </span>
           )}
           {task.photo_required && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
               📸 required
             </span>
           )}
@@ -238,7 +238,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
               </div>
             )}
             <button onClick={handlePhoto} disabled={uploading}
-              className="mt-2 w-full py-2.5 border-2 border-dashed border-orange-400 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold text-center hover:bg-orange-100 transition-colors disabled:opacity-60">
+              className="mt-2 w-full py-2.5 border-2 border-dashed border-green-600 rounded-lg bg-amber-50 text-amber-800 text-xs font-semibold text-center hover:bg-amber-100 transition-colors disabled:opacity-60">
               {uploading ? '⏳ Uploading...' : photoCount === 0 ? '\u{1F4F8} Tap to take / upload photo' : '\u{1F4F8} Add another photo'}
             </button>
           </>
@@ -250,7 +250,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
               <button
                 type="button"
                 onClick={() => setNoteOpen(true)}
-                className="text-xs font-semibold text-gray-500 hover:text-orange-600 inline-flex items-center gap-1"
+                className="text-xs font-semibold text-gray-500 hover:text-green-700 inline-flex items-center gap-1"
               >
                 📝 Add note
               </button>
@@ -261,7 +261,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
                   onChange={e => { setNote(e.target.value); setNoteDirty(true); }}
                   placeholder="e.g. ran out of bleach, fryer making noise…"
                   rows={2}
-                  className="w-full text-xs px-2 py-1.5 border border-yellow-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 resize-y min-h-[44px]"
+                  className="w-full text-xs px-2 py-1.5 border border-yellow-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-y min-h-[44px]"
                 />
                 <div className="flex items-center justify-between gap-2 mt-1.5">
                   <span className="text-[10px] text-yellow-700">
@@ -283,7 +283,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
                       type="button"
                       onClick={handleSaveNote}
                       disabled={noteSaving || !noteDirty}
-                      className="text-[11px] font-semibold text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-40 px-2.5 py-1 rounded-md"
+                      className="text-[11px] font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-40 px-2.5 py-1 rounded-md"
                     >
                       {noteSaving ? 'Saving…' : 'Save'}
                     </button>

@@ -990,6 +990,38 @@ export function getTemplate(id: number): CountingTemplate | null {
   return row ? parseTemplate(row) : null;
 }
 
+/**
+ * Products on this list that ANOTHER active list at the same restaurant already
+ * counts — a clash the manager should see BEFORE saving.
+ *
+ * Ethan's model (2026-08-03): the daily list is produce and perishables, the
+ * weekly list is packaging, sauces and slow movers. Overlap between them is
+ * normally an accident, and the cost is real: staff walk to the same shelf
+ * twice, and the same product ends up with two different answers on the same
+ * day (thyme read 0.03 on one list and 0.0 on the other). His rule when they
+ * DO clash: the daily list is the one that counts it.
+ *
+ * Advisory, never a block — a product genuinely wanted on two lists is rare but
+ * legitimate, and this is the manager's call to make.
+ */
+export function templatesClashingProducts(
+  companyId: number | null,
+  productIds: number[],
+  opts: { excludeTemplateId?: number } = {},
+): { product_id: number; template_id: number; template_name: string; frequency: string }[] {
+  if (companyId == null || productIds.length === 0) return [];
+  const wanted = new Set(productIds);
+  const out: { product_id: number; template_id: number; template_name: string; frequency: string }[] = [];
+  for (const t of listTemplates({ active: true, company_ids: [companyId] })) {
+    if (t.id === opts.excludeTemplateId) continue;
+    if (t.company_id !== companyId) continue;              // never leak another restaurant's list
+    for (const pid of (t.product_ids as number[]) || []) {
+      if (wanted.has(pid)) out.push({ product_id: pid, template_id: t.id, template_name: t.name, frequency: t.frequency });
+    }
+  }
+  return out;
+}
+
 export function listTemplates(filters?: { location_id?: number; active?: boolean; company_ids?: number[] }): CountingTemplate[] {
   const db = getDb();
   const where: string[] = [];
@@ -1279,8 +1311,12 @@ function deleteSessionArtifacts(sessionId: number): void {
  * behaves EXACTLY as it did before this feature.
  *
  * Enable with INVENTORY_MERGED_WALK=on once the remaining paths are covered.
+ * Read at CALL time, not module load, so the setting is honoured on restart
+ * without a rebuild (and so tests can exercise both configurations).
  */
-export const MERGED_WALK_ENABLED = process.env.INVENTORY_MERGED_WALK === 'on';
+export function mergedWalkEnabled(): boolean {
+  return process.env.INVENTORY_MERGED_WALK === 'on';
+}
 
 /**
  * THE double-count invariant, in one place: which of these products are ALREADY
@@ -1294,12 +1330,39 @@ export const MERGED_WALK_ENABLED = process.env.INVENTORY_MERGED_WALK === 'on';
  * approval is finished as far as the floor is concerned, and starting a fresh
  * count of those products is a deliberate act. Only OPEN counts block.
  */
+/**
+ * Products of this list that an OPEN count today already covers — the same
+ * question as `productsAlreadyCountedToday`, but never switched off.
+ *
+ * `productsAlreadyCountedToday` is the merged walk's own safety guard and
+ * returns nothing when the feature is off. A warning shown to a manager must
+ * not depend on a feature flag, so this one always answers. (Codex, 2026-08-03.)
+ */
+export function openCountClashToday(
+  companyId: number | null,
+  productIds: number[],
+  excludeSessionId?: number,
+): number[] {
+  if (companyId == null || productIds.length === 0) return [];
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT DISTINCT i.odoo_product_id AS pid
+      FROM counting_sessions s
+      JOIN session_count_items i ON i.session_id = s.id
+     WHERE s.company_id = ? AND s.scheduled_date = ?
+       AND s.status IN ('pending','in_progress')
+       AND (? IS NULL OR s.id != ?)
+  `).all(companyId, todayStr(), excludeSessionId ?? null, excludeSessionId ?? null) as { pid: number }[];
+  const live = new Set(rows.map((r) => r.pid));
+  return productIds.filter((pid) => live.has(pid));
+}
+
 export function productsAlreadyCountedToday(
   companyId: number | null,
   productIds: number[],
   opts: { excludeSessionId?: number; date?: string } = {},
 ): number[] {
-  if (!MERGED_WALK_ENABLED) return [];   // pre-merge behaviour: no such rule
+  if (!mergedWalkEnabled()) return [];   // pre-merge behaviour: no such rule
   if (companyId == null || productIds.length === 0) return [];
   const db = getDb();
   const day = opts.date ?? todayStr();
@@ -1457,7 +1520,7 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
       skipped++;
       continue;
     }
-    if (MERGED_WALK_ENABLED && isMergeable(tmpl)) {
+    if (mergedWalkEnabled() && isMergeable(tmpl)) {
       const arr = mergeGroups.get(tmpl.company_id!) || [];
       arr.push(tmpl);
       mergeGroups.set(tmpl.company_id!, arr);
@@ -1603,7 +1666,7 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
   // #6: a company can have TODAY'S WALK but no due mergeable lists left (every
   // source was deactivated, rescheduled or deleted). Nothing above iterates it,
   // so an obsolete walk would survive holding products nobody counts today.
-  if (MERGED_WALK_ENABLED) {
+  if (mergedWalkEnabled()) {
     const orphanWalks = db.prepare(`
       SELECT s.id, s.status, s.company_id
         FROM counting_sessions s
@@ -1646,7 +1709,7 @@ export function ensureTodaySessionForTemplate(
   /** false = only resolve the MERGE cases; leave ordinary creation to the caller
    *  (the manual sessions endpoint, which honours its own assigned_user_id). */
   opts: { createIfNoWalk?: boolean } = {},
-): { sessionId: number | null; joinedWalk: boolean; deferred: boolean } {
+): { sessionId: number | null; joinedWalk: boolean; deferred: boolean; clash?: number[] } {
   const createIfNoWalk = opts.createIfNoWalk !== false;
   const db = getDb();
   const tmpl = getTemplate(templateId);
@@ -1655,7 +1718,49 @@ export function ensureTodaySessionForTemplate(
   const already = walkSessionForTemplateToday(templateId);
   if (already) return { sessionId: already.id, joinedWalk: true, deferred: false };
 
-  if (MERGED_WALK_ENABLED && isMergeable(tmpl) && tmpl.company_id != null) {
+  // Does a count ALREADY RUNNING today cover some of these products? Creating a
+  // second session then puts one product in two open counts — which is how one
+  // shelf ended the day with two different answers on 3 Aug (Weekly created at
+  // 13:32, mid-service, beside a Daily count already under way).
+  //
+  // Deliberately NOT productsAlreadyCountedToday: that one is switched off with
+  // the merged walk (it is the merge's own guard), and a plain warning to a
+  // manager must not silently vanish with a feature flag. (Codex, 2026-08-03.)
+  // The template's OWN session is excluded — a repeated create must stay
+  // idempotent and return that session, not report a clash with itself.
+  const ownToday = db.prepare(
+    'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, todayStr()) as { id: number } | undefined;
+  const clash = openCountClashToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || [], ownToday?.id);
+
+  if (clash.length > 0) {
+    // BEFORE deferring, try the good outcome: if nobody has counted anything
+    // yet, the whole day can be rebuilt atomically as ONE walk covering both
+    // lists — which is exactly what this feature is for. Only a day somebody
+    // has already started defers. (Codex spotted that the first version never
+    // reached reconciliation and deferred a list that could simply have been
+    // merged in.)
+    if (mergedWalkEnabled() && isMergeable(tmpl) && tmpl.company_id != null) {
+      generateTodaySessions([tmpl.company_id]);
+      const joined = walkSessionForTemplateToday(templateId);
+      if (joined) return { sessionId: joined.id, joinedWalk: true, deferred: false };
+    }
+    const stillClashing = openCountClashToday(tmpl.company_id ?? null, (tmpl.product_ids as number[]) || [], ownToday?.id);
+    if (stillClashing.length > 0) {
+      // This list may ALREADY have today's count (the merge can leave it, or it
+      // predates the clash). Nothing is being created, so a clash with some
+      // OTHER open session must not hide the session that exists — returning
+      // null there would read as "no count today" when there plainly is one.
+      // (Codex, 2026-08-03.)
+      const own = db.prepare(
+        'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+      ).get(templateId, todayStr()) as { id: number } | undefined;
+      if (own) return { sessionId: own.id, joinedWalk: false, deferred: false };
+      return { sessionId: null, joinedWalk: false, deferred: true, clash: stillClashing };
+    }
+  }
+
+  if (mergedWalkEnabled() && isMergeable(tmpl) && tmpl.company_id != null) {
     const companyId = tmpl.company_id;
     const walkTemplateId = ensureWalkTemplate(companyId);
     const walk = db.prepare(
@@ -1674,8 +1779,8 @@ export function ensureTodaySessionForTemplate(
       // NO product with the walk — otherwise those products would be counted
       // twice into the same Odoo location. Overlap → no count today.
       const walkProductIds = new Set(getSessionItems(walk.id).map((i) => i.odoo_product_id));
-      const overlaps = ((tmpl.product_ids as number[]) || []).some((pid) => walkProductIds.has(pid));
-      if (overlaps) return { sessionId: null, joinedWalk: false, deferred: true };
+      const overlapping = ((tmpl.product_ids as number[]) || []).filter((pid) => walkProductIds.has(pid));
+      if (overlapping.length > 0) return { sessionId: null, joinedWalk: false, deferred: true, clash: overlapping };
       // Disjoint products — an ordinary session is safe.
       return { sessionId: createIfNoWalk ? generateSessionForTemplate(templateId) : null, joinedWalk: false, deferred: false };
     }
@@ -2031,11 +2136,79 @@ function sessionHasProgress(sessionId: number): boolean {
   ).get(sessionId);
 }
 
+/**
+ * Which of today's open counts may be WALKED together (they are never merged in
+ * the database — see src/lib/combined-walk.ts). A group must be safe on all four:
+ *
+ *  - same restaurant, and same Odoo stock location (approval writes there);
+ *  - every count has frozen product rows (a category list's contents are only
+ *    known when it is opened, so it can't be reasoned about here);
+ *  - and no PRODUCT appears in more than one of them. Not "product+spot":
+ *    approval writes one quantity per product per Odoo location, so the same
+ *    product counted in two counts collides there even at different spots.
+ *
+ * That last rule is what makes the whole thing safe: every line then has exactly
+ * ONE owning count, so walking them together is purely a matter of order — each
+ * number is written exactly where it would have been anyway.
+ *
+ * Anything that doesn't qualify is simply returned on its own, which is the
+ * per-list behaviour staff have today.
+ */
+export function walkableGroupsToday(sessionIds: number[]): number[][] {
+  const db = getDb();
+  if (sessionIds.length === 0) return [];
+  const rows = sessionIds.map((id) => db.prepare(
+    'SELECT id, company_id, location_id FROM counting_sessions WHERE id = ?',
+  ).get(id) as { id: number; company_id: number | null; location_id: number } | undefined)
+    .filter((r): r is { id: number; company_id: number | null; location_id: number } => !!r);
+
+  // Lines per count; a count with none (category/legacy) can never share a walk.
+  const linesOf = new Map<number, Set<string>>();
+  for (const r of rows) {
+    const items = getSessionItems(r.id);
+    if (items.length > 0) {
+      linesOf.set(r.id, new Set(items.map((i) => String(i.odoo_product_id))));
+    }
+  }
+
+  const byPlace = new Map<string, number[]>();
+  const solo: number[][] = [];
+  for (const r of rows) {
+    if (!linesOf.has(r.id) || r.company_id == null) { solo.push([r.id]); continue; }
+    const key = `${r.company_id}:${r.location_id}`;
+    byPlace.set(key, [...(byPlace.get(key) || []), r.id]);
+  }
+
+  const groups: number[][] = [];
+  for (const candidates of Array.from(byPlace.values())) {
+    // Greedily grow a group, only admitting a count that shares no line with it.
+    const taken = new Set<number>();
+    for (const id of candidates) {
+      if (taken.has(id)) continue;
+      const group = [id];
+      const covered = new Set(linesOf.get(id)!);
+      taken.add(id);
+      for (const other of candidates) {
+        if (taken.has(other)) continue;
+        const theirs = linesOf.get(other)!;
+        let overlaps = false;
+        for (const k of Array.from(theirs)) { if (covered.has(k)) { overlaps = true; break; } }
+        if (overlaps) continue;
+        theirs.forEach((k) => covered.add(k));
+        group.push(other);
+        taken.add(other);
+      }
+      groups.push(group);
+    }
+  }
+  return [...groups, ...solo];
+}
+
 /** The merged walk session (today) that this real list was folded into, if any. */
 export function walkSessionForTemplateToday(templateId: number): { id: number; status: string; company_id: number | null } | null {
   // Flag off = full rollback: walks are neither created NOR consulted, so
   // turning the feature off restores the per-list behaviour completely.
-  if (!MERGED_WALK_ENABLED) return null;
+  if (!mergedWalkEnabled()) return null;
   const db = getDb();
   const row = db.prepare(`
     SELECT s.id, s.status, s.company_id
@@ -3194,6 +3367,30 @@ export function getPlacements(countLocationId: number): ProductPlacement[] {
   return db.prepare(
     'SELECT odoo_product_id, count_location_id, shelf_sort FROM product_locations WHERE count_location_id = ? ORDER BY shelf_sort, odoo_product_id'
   ).all(countLocationId) as ProductPlacement[];
+}
+
+/**
+ * Every placement at a spot AND everything inside it — a fridge's drawers, and
+ * their drawers. Labelling "the Countertop fridge" means the products in its
+ * drawers too; nobody thinks of a drawer as a separate errand.
+ *
+ * Ordered by spot then shelf order, so a printed batch comes out grouped by
+ * shelf: all of D1's stickers together, then D2's, which is how a person with a
+ * roll of labels actually works.
+ */
+export function getPlacementsInSubtree(rootLocationId: number): ProductPlacement[] {
+  const db = getDb();
+  return db.prepare(`
+    WITH RECURSIVE tree(id) AS (
+      SELECT ?
+      UNION
+      SELECT l.id FROM count_locations l JOIN tree t ON l.parent_id = t.id
+    )
+    SELECT p.odoo_product_id, p.count_location_id, p.shelf_sort
+      FROM product_locations p
+      JOIN tree ON p.count_location_id = tree.id
+     ORDER BY p.count_location_id, p.shelf_sort, p.odoo_product_id
+  `).all(rootLocationId) as ProductPlacement[];
 }
 
 export function getLocationsForProduct(productId: number): number[] {

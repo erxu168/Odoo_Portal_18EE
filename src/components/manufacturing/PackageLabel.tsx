@@ -7,6 +7,7 @@ import LabelPreview from '@/components/manufacturing/LabelPreview';
 import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
+import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
 
 interface PackageLabelProps {
   moId: number;
@@ -457,34 +458,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       </div>
 
-      {/* BLE status bar (Steps 2-3) */}
-      {step !== 'split' && (
-        <div className="px-4 pt-2">
-          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-[var(--fs-xs)] font-semibold ${
-            ble.isConnected ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-gray-100 border border-gray-200 text-gray-500'
-          }`}>
-            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-              ble.isConnected ? 'bg-green-500' :
-              ble.status === 'scanning' || ble.status === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'
-            }`} />
-            <span className="flex-1 truncate">
-              {ble.isConnected ? ble.printerName :
-               ble.status === 'scanning' ? 'Scanning\u2026' :
-               ble.status === 'connecting' ? 'Connecting\u2026' : 'No printer connected'}
-            </span>
-            {ble.isConnected ? (
-              <button onClick={ble.disconnect} className="text-blue-500 active:text-blue-700">Change</button>
-            ) : (
-              <button
-                onClick={async () => { setError(null); const ok = await ble.connect(); if (!ok && ble.error) setError(ble.error); }}
-                disabled={!ble.isSupported || ble.status === 'scanning' || ble.status === 'connecting'}
-                className="text-blue-600 font-bold active:text-blue-800 disabled:opacity-50">
-                Connect
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* The shared bar — this screen previously had neither the paired-device
+          picker nor the "printer prints code instead of a label" fix, so anyone
+          who hit that here had no way out of it. */}
+      {step !== 'split' && <ZebraPrinterBar ble={ble} onError={setError} />}
 
       {error && (
         <div className="px-4 pt-2">

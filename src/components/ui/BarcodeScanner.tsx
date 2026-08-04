@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import NumberField from '@/components/ui/NumberField';
+import { parseLocationCode } from '@/lib/location-code';
 
 /* ───── Types ───── */
 
@@ -10,6 +11,7 @@ type ScanResult =
   | { kind: 'looking_up'; barcode: string }
   | { kind: 'not_in_list'; barcode: string; productName: string; isDraft?: boolean }
   | { kind: 'unknown'; barcode: string }
+  | { kind: 'location'; barcode: string }
   | { kind: 'creating'; barcode: string; name: string }
   | { kind: 'manual' };
 
@@ -142,6 +144,18 @@ export default function BarcodeScanner({
       return;
     }
 
+    // A SHELF code, not a product. Shelf labels carry the product's barcode and
+    // the shelf's own code side by side, so catching the wrong one is ordinary —
+    // and letting it reach the lookup landed on 'unknown', which offers to CREATE
+    // A PRODUCT. Anyone scanning a shelf sticker could quietly make junk products.
+    // Caught here, at the one place every screen's camera scan passes through.
+    // (Ethan, 2026-08-04.)
+    if (parseLocationCode(barcode) != null) {
+      setScanResult({ kind: 'location', barcode });
+      try { navigator.vibrate([60, 30, 60]); } catch (_e) { /* ignore */ }
+      return;
+    }
+
     setScanResult({ kind: 'looking_up', barcode });
     try { navigator.vibrate(100); } catch (_e) { /* ignore */ }
 
@@ -256,7 +270,7 @@ export default function BarcodeScanner({
   useEffect(() => {
     if (!scannerRef.current || isNative !== false) return;
     const hasResult = scanResult.kind === 'found' || scanResult.kind === 'not_in_list'
-      || scanResult.kind === 'unknown' || scanResult.kind === 'looking_up';
+      || scanResult.kind === 'unknown' || scanResult.kind === 'location' || scanResult.kind === 'looking_up';
     if (hasResult) {
       try { scannerRef.current.pause(false); } catch (_e) { /* ignore */ }
     } else if (scanResult.kind === 'scanning') {
@@ -325,7 +339,7 @@ export default function BarcodeScanner({
   /* ───── Render ───── */
 
   const hasResult = scanResult.kind === 'found' || scanResult.kind === 'not_in_list'
-    || scanResult.kind === 'unknown' || scanResult.kind === 'looking_up';
+    || scanResult.kind === 'unknown' || scanResult.kind === 'location' || scanResult.kind === 'looking_up';
 
   return (
     <div
@@ -534,6 +548,20 @@ export default function BarcodeScanner({
       )}
 
       {/* ── Unknown barcode — create draft + count ── */}
+      {scanResult.kind === 'location' && (
+        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
+          <h3 className="text-[17px] font-bold text-gray-900">That is a shelf code</h3>
+          <p className="text-[14px] text-gray-500 mt-1.5 leading-relaxed">
+            <span className="font-mono font-semibold text-gray-700">{scanResult.barcode}</span> is the
+            code for a storage place, not a product. Scan the long bar code on the label instead.
+          </p>
+          <button onClick={handleDismissResult}
+            className="w-full mt-4 py-3.5 rounded-xl bg-gray-100 font-bold text-gray-700">
+            Scan again
+          </button>
+        </div>
+      )}
+
       {scanResult.kind === 'unknown' && (
         <UnknownBarcodeSheet
           barcode={scanResult.barcode}

@@ -99,8 +99,12 @@ export async function PUT(req: NextRequest) {
     const attendanceBreakAfter6hMin = readMinutes(body.attendanceBreakAfter6hMin, current.attendanceBreakAfter6hMin);
     const attendanceBreakAfter9hMin = readMinutes(body.attendanceBreakAfter9hMin, current.attendanceBreakAfter9hMin);
     const attendanceBreakMinSegmentMin = readMinutes(body.attendanceBreakMinSegmentMin, current.attendanceBreakMinSegmentMin);
+    const dayBeforeReminderEnabled = readBool(body.dayBeforeReminderEnabled, current.dayBeforeReminderEnabled);
+    const dayBeforeReminderTime = readTime(body.dayBeforeReminderTime, current.dayBeforeReminderTime);
 
     if (
+      dayBeforeReminderEnabled === null ||
+      dayBeforeReminderTime === null ||
       attendanceRulesEnabled === null ||
       attendanceRulesText === null ||
       attendanceRulesCadence === null ||
@@ -155,6 +159,8 @@ export async function PUT(req: NextRequest) {
       attendanceBreakAfter6hMin,
       attendanceBreakAfter9hMin,
       attendanceBreakMinSegmentMin,
+      dayBeforeReminderEnabled,
+      dayBeforeReminderTime,
     };
     saveShiftSettings(settings);
 

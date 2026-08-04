@@ -1117,16 +1117,16 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           {step.pins.map((p, i) => (
             <li
               key={i}
-              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border ${activeIndex === i ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'}`}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border ${activeIndex === i ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}
             >
-              <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+              <span className="w-5 h-5 rounded-full bg-green-600 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
               <input
                 ref={el => { noteRefs.current[i] = el; }}
                 value={p.note}
                 onChange={e => onPins(step.pins.map((pp, idx) => (idx === i ? { ...pp, note: e.target.value } : pp)))}
                 onFocus={() => onSetActive(i)}
                 placeholder="What is this pin pointing at?"
-                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-md text-[13px] focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-md text-[13px] focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               <button
                 type="button"

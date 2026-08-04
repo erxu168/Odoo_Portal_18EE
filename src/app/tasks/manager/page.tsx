@@ -88,7 +88,7 @@ export default function ManagerDashboard() {
 
 function StatGrid({ data }: { data: DashboardData }) {
   const stats = [
-    { label: 'Active Lists',    value: data.active_lists,             color: 'text-orange-600', accent: 'border-orange-400' },
+    { label: 'Active Lists',    value: data.active_lists,             color: 'text-green-700', accent: 'border-green-600' },
     { label: 'Avg Completion',  value: `${data.avg_completion}%`,     color: 'text-green-600',  accent: 'border-green-400'  },
     { label: 'Overdue',         value: data.total_overdue,            color: 'text-red-600',    accent: 'border-red-400'    },
     { label: 'Photos Pending',  value: data.total_photos_pending,     color: 'text-amber-600',  accent: 'border-amber-400'  },
@@ -121,7 +121,7 @@ function DeptList({ lists }: { lists: TaskListSummary[] }) {
         <Link
           key={l.id}
           href={`/tasks/manager/dept/${l.department_id}`}
-          className={`flex items-center justify-between px-4 py-3.5 hover:bg-orange-50/30 transition-colors ${i < lists.length - 1 ? 'border-b border-gray-100' : ''}`}
+          className={`flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors ${i < lists.length - 1 ? 'border-b border-gray-100' : ''}`}
         >
           <div className="flex items-center gap-3">
             <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${

@@ -41,7 +41,7 @@ interface Counts {
   needsSetup: number;
 }
 
-export type ProductsScreen = 'catalog' | 'photos' | 'untracked' | 'setup';
+export type ProductsScreen = 'catalog' | 'photos' | 'untracked' | 'setup' | 'codes';
 
 export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen: ProductsScreen) => void }) {
   const { companyId } = useCompany();
@@ -121,6 +121,16 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
       // Red rather than green: these are products staff have already tried to
       // count and could not, so the number is a queue, not a score.
       danger: true,
+    },
+    {
+      key: 'codes' as const,
+      emoji: '🏷️',
+      label: 'Product codes',
+      sublabel: 'Needed before a shelf label can be scanned',
+      // No badge: the dashboard does not count barcodes, and a made-up number
+      // on a tile is worse than none. The screen itself opens on the real one.
+      badge: 0,
+      danger: false,
     },
     {
       key: 'photos' as const,

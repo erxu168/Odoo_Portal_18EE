@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
+import { FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
 import { type ContainerShape } from '@/components/ui/ContainerLevelPicker';
@@ -10,6 +10,7 @@ import PhotoCaptureStrip from './PhotoCaptureStrip';
 import OfflineBanner from './OfflineBanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { combineLines, combineStops, mergeByProduct, walkTitle, type SessionPayload } from '@/lib/combined-walk';
+import AppHeader from '@/components/ui/AppHeader';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { patchCachedSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
@@ -17,8 +18,8 @@ import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralize
 import { packTotal, countableLevels, splitToLevels, type PackLevel } from '@/lib/packaging';
 import PackCountSheet from './PackCountSheet';
 import GuidedCountingFlow from './GuidedCountingFlow';
+import { parseLocationCode } from '@/lib/location-code';
 import { useTopBar } from '@/components/ui/TopBarContext';
-import { plainFromOdooHtml } from '@/lib/odoo-html';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -152,6 +153,12 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   const [owners, setOwners] = useState<Record<string, number[]>>({});
   // The counts this walk covers, for the title and for submitting each of them.
   const [walkSessions, setWalkSessions] = useState<any[]>([]);
+  // A combined walk has no offline cache to fall back on, so a failed load must
+  // block with an error instead of rendering as "nothing to count".
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  // Which counts contain each stop — a skip is only recorded where it applies.
+  const [stopOwners, setStopOwners] = useState<Record<number, number[]>>({});
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -161,6 +168,18 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   const sync = useSyncQueue();
 
   function handleHardwareScan(barcode: string) {
+    // A SHELF code, not a product. Shelf labels carry both codes side by side, so
+    // an aimed-at-the-wrong-one scan is normal — and it should be useful rather
+    // than silently ignored: jump to that spot in the walk. (Ethan, 2026-08-04.)
+    const spotId = parseLocationCode(barcode);
+    if (spotId != null) {
+      const stop = (route?.stops || []).find((st: any) => st.bucket_id === spotId);
+      if (stop) {
+        document.getElementById(`walk-spot-${spotId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try { navigator.vibrate(60); } catch { /* ignore */ }
+      }
+      return;   // never fall through to the product lookup
+    }
     const product = products.find((p: any) => p.barcode && p.barcode === barcode);
     if (product) {
       setSearch('');
@@ -179,6 +198,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   });
 
   const fetchData = useCallback(async () => {
+    setLoadFailed(false);
     setLoading(true);
 
     // Helper: apply a payload (from network or cache) to state.
@@ -216,11 +236,17 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
 
     try {
       const [sessRes, ...countResults] = await Promise.all([
-        fetch('/api/inventory/sessions').then((r) => r.json()),
-        ...ids.map((id) => fetch(`/api/inventory/counts?session_id=${id}`).then((r) => r.json())),
+        fetch('/api/inventory/sessions').then((r) => { if (!r.ok) throw new Error(`sessions ${r.status}`); return r.json(); }),
+        ...ids.map((id) => fetch(`/api/inventory/counts?session_id=${id}`).then((r) => {
+          // One count failing to load must not silently shrink the walk — a
+          // missing count would look like "nothing to count here".
+          if (!r.ok) throw new Error(`count ${id} failed (${r.status})`);
+          return r.json();
+        })),
       ]);
 
       const sessionRows = ids.map((id) => (sessRes.sessions || []).find((s: any) => s.id === id)).filter(Boolean);
+      if (combined && sessionRows.length !== ids.length) throw new Error('a count in this walk is no longer open');
       setWalkSessions(sessionRows);
       // The primary count carries the screen-level facts (restaurant, status).
       const sess = sessionRows[0];
@@ -265,7 +291,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
         // be unanswerable and the count could never be sent.
         const prodRes = await fetch(
           `/api/inventory/products?ids=${productIds.join(',')}&limit=${Math.max(200, productIds.length)}`,
-        ).then(r => r.json());
+        ).then(r => { if (!r.ok) throw new Error(`products ${r.status}`); return r.json(); });
         loadedProducts = prodRes.products || [];
       } else if (categoryIds.length > 0) {
         // Same 200-row trap as the explicit-ids fetch above: a category with
@@ -296,7 +322,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       // Cache to IDB for offline use. Two effects fill this row and finish in
       // either order, so each writes ONLY its own fields — a whole-record write
       // from here used to blank the pack sizes the flags effect had just saved.
-      void patchCachedSessionData(sessionId, {
+      if (!combined) void patchCachedSessionData(sessionId, {
         session: sess,
         products: loadedProducts,
         entries: countRes.entries || [],
@@ -306,6 +332,10 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       });
     } catch (err) {
       console.warn('Network fetch failed, attempting cache fallback:', err);
+      // A combined walk is never served from the cache: the cache is per-count,
+      // so line ownership (which count each number belongs to) isn't in it, and
+      // guessing would write numbers to the wrong count.
+      if (combined) { setLoadFailed(true); return; }
       const cached = await getCachedSessionData(sessionId);
       // Only accept a COMPLETE cache row. An independent writer (pack flags, spot
       // paths) can create a partial row with just its own field; using that would
@@ -330,7 +360,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     } finally {
       setLoading(false);
     }
-  }, [sessionId, ids]);
+  }, [sessionId, ids, combined, reloadKey]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -377,11 +407,11 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       // Pack sizes and photo rules into the cache so an offline reload still
       // knows a crate is 24. This must work on a session's FIRST open, when the
       // row does not exist yet — hence a patch that creates it.
-      void patchCachedSessionData(sessionId, {
+      if (!combined) void patchCachedSessionData(sessionId, {
         flags: map, crateSizes: crateMap, crateLabels: labelMap, looseLabels: looseMap, levelShapes: levelMap,
       });
     }).catch(() => {});
-  }, [sessionId]);
+  }, [sessionId, combined]);
 
   // Which products have a picture — so each row shows a recognition thumbnail.
   useEffect(() => {
@@ -397,23 +427,32 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       fetch(`/api/inventory/sessions/${id}/route`).then(r => r.ok ? r.json() : null).catch(() => null),
     )).then((results) => {
       const got = results.filter(Boolean) as any[];
+      // Missing ANY count's route would silently drop its places from the walk.
+      if (combined && got.length !== ids.length) { setLoadFailed(true); return; }
       if (got.length === 0) return;
       // ONE route across the counts: a spot two counts both visit becomes a
       // single stop holding both counts' products, so each place is walked once.
       const d = got.length === 1 ? got[0] : combineStops(
         got.map((r, i) => ({ sessionId: ids[i], session: null, items: [], stops: r.stops || [], guided: !!r.guided })),
       );
+      const so: Record<number, number[]> = {};
+      results.forEach((r: any, i) => {
+        (r?.stops || []).forEach((st: any) => {
+          so[st.bucket_id] = [...(so[st.bucket_id] || []), ids[i]];
+        });
+      });
+      setStopOwners(so);
       setRoute(d);
       // Cache only the STATIC path labels (not the route's dynamic statuses) so
       // full-path labels survive an offline reload without going stale.
-      void patchCachedSessionData(sessionId, { spotPaths: composeSpotPaths(d.stops || []) });
+      if (!combined) void patchCachedSessionData(sessionId, { spotPaths: composeSpotPaths(d.stops || []) });
       const st: Record<number, { status: string; skip_reason: string | null }> = {};
       (d.stops || []).forEach((s: any) => {
         if (s.status && s.status !== 'pending') st[s.bucket_id] = { status: s.status, skip_reason: s.skip_reason ?? null };
       });
       setGuidedStatuses(st);
     }).catch(() => {});
-  }, [sessionId, ids]);
+  }, [sessionId, ids, combined, reloadKey]);
 
   // Mark a location counted / skipped. Offline-safe: queues + drains on reconnect
   // (submit is blocked until the queue is empty, so the server sees these first).
@@ -422,11 +461,12 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     setGuidedStatuses((p) => ({ ...p, [bucketId]: { status, skip_reason: skipReason } }));
     setStatusPending((n) => n + 1);
     try {
-      // Every count that walks this spot records the same decision — skipping a
-      // fridge skips it for the whole walk, and each count keeps its own note of
-      // it so its own submit gate is satisfied.
+      // ONLY the counts that actually contain this spot: posting to a count
+      // that never visits it is rejected by the server and would roll back a
+      // decision the others accepted.
+      const holders = ids.filter((id) => (stopOwners[bucketId] ?? ids).includes(id));
       let res = { ok: true, queued: false } as { ok: boolean; queued: boolean };
-      for (const id of ids) {
+      for (const id of (holders.length > 0 ? holders : [ids[0]])) {
         const r = await offlineSafeMutate({
           url: `/api/inventory/sessions/${id}/location-status`,
           method: 'POST',
@@ -611,7 +651,14 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
    *  A product that only one list wants has exactly one owner (the normal case);
    *  a product two lists both want is asked ONCE and recorded in both, so
    *  neither list is left unanswerable and both hold the same observation. */
-  const ownersFor = (pid: number, loc: number): number[] => owners[`${pid}:${loc}`] ?? [ids[0]];
+  const ownersFor = (pid: number, loc: number): number[] => {
+    const known = owners[`${pid}:${loc}`];
+    if (known && known.length > 0) return known;
+    // A single count owns everything by definition. In a combined walk an
+    // unknown line means the data is not what we think it is — write nothing
+    // rather than write it to the wrong count.
+    return combined ? [] : [ids[0]];
+  };
 
   /** POST the same line to every count that owns it. */
   async function postLine(pid: number, loc: number, body: Record<string, unknown>, onFail?: () => void) {
@@ -652,7 +699,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
     if (qty === null || qty === undefined) {
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
-      void updateCachedEntry(sessionId, productId, { counted_qty: null }, loc);
+      if (!combined) void updateCachedEntry(sessionId, productId, { counted_qty: null }, loc);
       const res = await deleteLine(productId, loc);
       if (res.queued) void sync.refresh();
     } else {
@@ -663,7 +710,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
-      void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
+      if (!combined) void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
       const res = await postLine(productId, loc, { counted_qty: qty, uom,
           ...(note !== undefined ? { notes: note } : {}) }, () => {
         setEntries((prev) => {
@@ -689,7 +736,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
    */
   async function saveNotFound(product: any, loc: number, on: boolean) {
     const k = K(product.id, loc);
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     const wasQty = entries[k];
     const wasNf = notFound.has(k);
     setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
@@ -697,7 +744,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       setOos((prev) => { const n = new Set(prev); n.delete(k); return n; });
       setNotFound((prev) => { const n = new Set(prev); n.add(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, not_found: true }, loc);
+      if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, not_found: true }, loc);
       await postLine(product.id, loc, { not_found: true, counted_qty: 0, uom }, () => {
         setNotFound((prev) => { const n = new Set(prev); if (!wasNf) n.delete(k); return n; });
         setEntries((prev) => { const n = { ...prev }; if (wasQty === undefined) delete n[k]; else n[k] = wasQty; return n; });
@@ -705,7 +752,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     } else {
       setNotFound((prev) => { const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
-      void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
+      if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
       await deleteLine(product.id, loc, () => {
         setNotFound((prev) => { const n = new Set(prev); if (wasNf) n.add(k); return n; });
       });
@@ -713,7 +760,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   }
 
   async function saveOutOfStock(product: any, loc: number, on: boolean, note?: string) {
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     const k = K(product.id, loc);
     // "None here" is a statement about the whole line, so the remembered crate
     // split goes with it — otherwise the row keeps displaying the old count.
@@ -723,13 +770,13 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
       if (note !== undefined) setRowNotes((p) => ({ ...p, [k]: note }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note, out_of_stock: true }, loc);
+      if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note, out_of_stock: true }, loc);
       const res = await postLine(product.id, loc, { out_of_stock: true, counted_qty: 0, uom, ...(note !== undefined ? { notes: note } : {}) });
       if (res.queued) void sync.refresh();
     } else {
       setOos((prev) => { const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
-      void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
+      if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
       const res = await deleteLine(product.id, loc);
       if (res.queued) void sync.refresh();
     }
@@ -756,14 +803,14 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     const k = K(product.id, loc);
     setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
     const size = crateSizes[product.id] || 0;
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     const total = crateTotal(crates, loose, size);
     setCrateSheet({ open: false, product: null, loc: 0 });
 
     if (total <= 0) {
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
       setCrateSplits((prev) => { const next = { ...prev }; delete next[k]; return next; });
-      void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
+      if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
       const res = await deleteLine(product.id, loc);
       if (res.queued) void sync.refresh();
       return;
@@ -772,7 +819,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     setEntries((prev) => ({ ...prev, [k]: total }));
     setCrateSplits((prev) => ({ ...prev, [k]: { crates, loose } }));
     if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
-    void updateCachedEntry(sessionId, product.id, {
+    if (!combined) void updateCachedEntry(sessionId, product.id, {
       counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
     }, loc);
     const res = await postLine(product.id, loc, {
@@ -782,12 +829,25 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     if (res.queued) void sync.refresh();
   }
 
+  /**
+   * The unit a product is COUNTED in — the word staff see and the word stored
+   * with the number. Normally the product's own unit; when a count unit was
+   * named ("piece") without a conversion, that word instead, so the settings
+   * and the phone can never disagree.
+   */
+  function countUomOf(product: any): string {
+    const uom = countUomOf(product);
+    const w = unitWords(uom, crateLabels[product.id], looseLabels[product.id]);
+    const named = w.measure && !hasCrate(crateSizes[product.id]) && !!crateLabels[product.id];
+    return named ? pluralizePack(w.pack, 2) : uom;
+  }
+
   function stepQty(product: any, loc: number, delta: number) {
     const current = entries[K(product.id, loc)];
     const val = current !== undefined ? current : 0;
     const next = Math.max(0, val + delta);
     if (next === 0 && (current === undefined || current === 0) && delta < 0) return;
-    saveCount(product.id, loc, next, product.uom_id?.[1] || 'Units');
+    saveCount(product.id, loc, next, countUomOf(product));
   }
 
   // Step WHOLE packs (bunches/crates) for a product measured in something else.
@@ -809,7 +869,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     // typing 0 anywhere else. saveCrateCount deletes a zero line, which would
     // leave the product UNCOUNTED and block the submit.
     if (next === 0 && loose === 0) {
-      void saveCount(product.id, loc, 0, product.uom_id?.[1] || 'Units');
+      void saveCount(product.id, loc, 0, countUomOf(product));
       return;
     }
     void saveCrateCount(product, loc, next, loose);
@@ -820,9 +880,9 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   async function savePhotos(product: any, loc: number, next: string[]) {
     const k = K(product.id, loc);
     const val = entries[k] ?? null;
-    const uom = product.uom_id?.[1] || 'Units';
+    const uom = countUomOf(product);
     setRowPhotos((prev) => ({ ...prev, [k]: next }));
-    void updateCachedEntry(sessionId, product.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
+    if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
     const res = await postLine(product.id, loc, { counted_qty: val, uom, photos: next });
     if (res.queued) void sync.refresh();
   }
@@ -843,8 +903,8 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     setEntries((prev) => ({ ...prev, [k]: total }));
     setPackSplits((prev) => ({ ...prev, [k]: { byLevel, loose } }));
     if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
-    const uom = product.uom_id?.[1] || 'Units';
-    void updateCachedEntry(sessionId, product.id, { counted_qty: total, uom }, loc);
+    const uom = countUomOf(product);
+    if (!combined) void updateCachedEntry(sessionId, product.id, { counted_qty: total, uom }, loc);
     const res = await postLine(product.id, loc, {
       pack_counts: byLevel, loose_qty: loose, uom,
       ...(note !== undefined ? { notes: note } : {}),
@@ -873,7 +933,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   function handleNumpadSave(value: number | null) {
     if (numpad.product) {
       const had = rowNotes[K(numpad.product.id, numpad.loc)] || '';
-      saveCount(numpad.product.id, numpad.loc, value, numpad.product.uom_id?.[1] || 'Units',
+      saveCount(numpad.product.id, numpad.loc, value, countUomOf(numpad.product),
         draftNote !== had ? draftNote : undefined);
     }
     setNumpad({ open: false, product: null, loc: 0 });
@@ -911,6 +971,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     }
     setSubmitting(true);
     setSubmitError(null);
+    const sent: number[] = [];
     try {
       // Each count is submitted on its own — they were never merged, so each
       // passes its own completeness check and reaches the manager as itself.
@@ -921,10 +982,17 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
           body: JSON.stringify({ id, status: 'submitted', staff_note: staffNote }),
         });
         const data = await res.json();
-        if (!res.ok) {
-          setSubmitError(data.error || 'Submit failed.');
+        // Already submitted (a retry after a partial failure) counts as sent —
+        // otherwise a retry would stick on the first count forever.
+        const already = res.status === 400 && /already been submitted/i.test(data?.error || '');
+        if (!res.ok && !already) {
+          const nameOf = (sid: number) => walkSessions.find((x) => x.id === sid)?.template_name || `count #${sid}`;
+          setSubmitError(sent.length > 0
+            ? `${sent.map(nameOf).join(' and ')} ${sent.length === 1 ? 'was' : 'were'} sent. ${nameOf(id)} was not: ${data.error || 'submit failed'}`
+            : (data.error || 'Submit failed.'));
           return;
         }
+        sent.push(id);
       }
       // Success → a clear confirmation (the count is now with the manager); the
       // "Done" button on it navigates away.
@@ -932,13 +1000,34 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       setSubmitOk(true);
     } catch (err) {
       console.error('Submit failed:', err);
-      setSubmitError('Connection failed. Please try again.');
+      const nameOf = (sid: number) => walkSessions.find((x) => x.id === sid)?.template_name || `count #${sid}`;
+      setSubmitError(sent.length > 0
+        ? `${sent.map(nameOf).join(' and ')} ${sent.length === 1 ? 'was' : 'were'} sent, then the connection failed. Try again to send the rest.`
+        : 'Connection failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
   if (loading) return <div className="min-h-screen bg-gray-50"><Spinner /></div>;
+  // A combined walk that didn't fully load must never look like an empty count —
+  // staff would think there was nothing to do.
+  if (loadFailed) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <AppHeader title="Today’s Count" showBack onBack={onBack} />
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center gap-3">
+          <div className="text-3xl" aria-hidden="true">⚠️</div>
+          <p className="text-[var(--fs-base)] font-bold text-gray-900">Couldn’t load today’s count</p>
+          <p className="text-[var(--fs-sm)] text-gray-500">Check your connection, then try again.</p>
+          <button onClick={() => { setLoadFailed(false); setReloadKey((n) => n + 1); }}
+            className="mt-1 h-11 rounded-full bg-green-600 px-6 text-[var(--fs-sm)] font-bold text-white active:bg-green-700">
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const canSubmit = session?.status === 'pending' || session?.status === 'in_progress';
   const isReadOnly = session?.status === 'submitted' || session?.status === 'approved' || session?.status === 'rejected';
@@ -970,6 +1059,18 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
     const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
     const label = words.pack;
     const measure = words.measure;
+    // COUNT IN WHAT THE MANAGER NAMED, even with no conversion.
+    //
+    // A product sold by weight whose count unit was set to "piece" but whose
+    // kg-per-piece is unknown used to fall back to kg — so the settings said
+    // pieces and the phone asked for kilos (Ethan, 2026-08-04: "I don't always
+    // have the equivalent of kilos"). An EXPLICITLY chosen pack word now wins:
+    // staff count pieces, and the number is stored as pieces. Nothing is lost —
+    // these counts are the portal's own ledger, so the only thing that matters
+    // is that the unit means something to the person holding the plantains.
+    // (Products with a conversion still count packs + loose exactly as before.)
+    const namedUnitOnly = measure && !isCrate && !!crateLabels[p.id];
+    const countWord = namedUnitOnly ? pluralizePack(label, 2) : words.loose;
     // A product with a frozen chain is counted level by level, not as one pack
     // size plus loose — that is what the chain is FOR.
     const chain = countableLevels(packaging[p.id] || []);
@@ -982,20 +1083,34 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
       : (val != null ? splitFromTotal(val, size) : null);
     // Sibling lines: the SAME product counted at other spots — the double-count guard.
     const siblings = (spotsOfProduct.get(p.id) || []).filter((l) => l !== loc);
+    // Answered = this line has a number, including a deliberate 0 ("none here",
+    // "couldn't find it"). Same rule the walk's progress counter uses.
+    //
+    // An answered row FADES IN PLACE — it never moves, shrinks or locks
+    // (Ethan, 2026-08-03: "fade out the product once its counted instead of
+    // collapsing the location list"). ONLY what identifies the product fades —
+    // its picture and its name — so the eye lands on the rows still blank. The
+    // number, every badge that carries a fact, and every control stay at full
+    // strength: tapping the number is how a wrong count gets corrected, and a
+    // faded control would both look dead and fall under the 3:1 contrast floor.
+    // Nothing is disabled and nothing is removed, so the page cannot shift
+    // under a thumb. Never fade a manager's read-only view — there every line
+    // is answered, so the whole list would grey out at once.
+    const fade = `transition-opacity duration-200${entries[k] !== undefined && !isReadOnly ? ' opacity-60' : ''}`;
     return (
       <div className="py-3 border-b border-gray-100">
         <div className="flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-3">
-          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} />
+          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} className={fade} />
           <div className="flex-1 min-w-0">
             <div className="flex items-start gap-1.5">
             <div className="flex-1 min-w-0 flex items-baseline gap-1.5 flex-wrap">
               {/* Wrap rather than truncate: "Beef, goula…" is useless to someone
                   holding the product. Two lines beat a cut-off name. */}
-              <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug min-w-0 [overflow-wrap:anywhere]">{p.name}</span>
+              <span className={`text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug min-w-0 [overflow-wrap:anywhere] ${fade}`}>{p.name}</span>
               {/* The unit staff COUNT in — bunches, not the kilograms it converts
                   to. The conversion is the manager's business when ordering. */}
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">
-                {isCrate && measure ? pluralizePack(label, 2) : words.loose}
+                {isCrate && measure ? pluralizePack(label, 2) : countWord}
               </span>
               {/* A pack of countable things still has to show its size, because
                   "3" means nothing until you know whether a crate is 12 or 24. */}
@@ -1075,7 +1190,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
           <div className="basis-full sm:basis-auto sm:flex-none flex justify-end items-center mt-2.5 sm:mt-0 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-gray-100">
           {isReadOnly ? (
             <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
-              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{words.loose}</span>
+              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{countWord}</span>
               {isCrate && split && val !== null && (
                 <div className="text-[10px] text-gray-400 font-normal font-mono">{formatSplit(split.crates, split.loose, words.loose, label)}</div>
               )}
@@ -1130,7 +1245,7 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
               )}
             </button>
           ) : (
-            <Stepper value={val} uom={words.loose}
+            <Stepper value={val} uom={countWord}
               onMinus={() => stepQty(p, loc, -1)}
               onPlus={() => stepQty(p, loc, 1)}
               onTap={() => openNumpad(p, loc)} />
@@ -1143,14 +1258,10 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
             {siblings.map((sl) => spotFullPath(sl)).join(' \u00B7 ')}
           </p>
         )}
-        {/* The manager's standing note about this product, as distinct from what
-            the counter writes about today. This is the whole reason the field
-            exists — a note nobody reads while counting is a note wasted. */}
-        {plainFromOdooHtml(p.description) && (
-          <p className="mt-2 text-[11px] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 leading-snug whitespace-pre-wrap">
-            {plainFromOdooHtml(p.description)}
-          </p>
-        )}
+        {/* The product's standing description (supplier, price per kilo, pack
+            maths) is NOT shown while counting: the job here is "how many are
+            there", and everything else is noise on a phone in a fridge. It
+            stays on the product's own page for managers. */}
         {rowNotes[k] && (
           <p className="mt-2 text-[var(--fs-xs)] text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 leading-snug">
             📝 {rowNotes[k]}
@@ -1455,13 +1566,13 @@ export default function CountingSession({ sessionId, sessionIds, userRole, onBac
   // ============================
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <BackHeader onBack={onBack}
+      <AppHeader showBack onBack={onBack}
         title={combined ? walkTitle(walkSessions.map((x) => ({ sessionId: x.id, session: x, items: [] }))).title
           : (session?.template_name || `Session #${sessionId}`)}
         subtitle={combined
           ? `${walkSessions.map((x) => x.template_name).filter(Boolean).join(' + ')} \u00B7 ${totalCount} ${hasSpots ? 'count lines' : 'products'}`
           : `${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} ${hasSpots ? 'count lines' : 'products'}`}
-        right={scanButton}
+        action={scanButton}
       />
 
       <OfflineBanner sync={sync} />

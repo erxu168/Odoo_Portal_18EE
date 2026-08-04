@@ -13,7 +13,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import {
-  initInventoryTables, getPlacements,
+  initInventoryTables, getPlacements, getPlacementsInSubtree,
   getLocationsForProduct, getCountLocation, listPlacementsForCompany, setProductSpots,
   listCountLocations, templatesForProduct, untouchedTodaySessionId, regenerateTodaySession,
   getSession, todayStr,
@@ -34,7 +34,10 @@ export async function GET(request: Request) {
     const loc = getCountLocation(locId);
     if (!loc || !canAccessCompany(user, loc.company_id))
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });
-    return NextResponse.json({ placements: getPlacements(locId) });
+    // ?include_inside=1 — this spot AND everything within it. Labelling a
+    // fridge means its drawers too.
+    const deep = searchParams.get('include_inside') === '1';
+    return NextResponse.json({ placements: deep ? getPlacementsInSubtree(locId) : getPlacements(locId) });
   }
   if (prodId) {
     // Filter to locations in the caller's companies (no cross-company leak).

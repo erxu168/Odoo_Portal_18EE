@@ -9,6 +9,7 @@ import BomList from '@/components/manufacturing/BomList';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
 import type { Bom } from '@/types/manufacturing';
+import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
 
 interface LabelPrintProps {
   onBack: () => void;
@@ -127,7 +128,6 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
   }, [productionDate, activeShelfLifeDays]);
 
   const [selectedSize, setSelectedSize] = useState('55x75');
-  const [langFixMsg, setLangFixMsg] = useState<string | null>(null);
   const [customWidth, setCustomWidth] = useState('55');
   const [customHeight, setCustomHeight] = useState('75');
   const [printing, setPrinting] = useState(false);
@@ -411,78 +411,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         </div>
       </div>
 
-      {step === 'print' && (
-        <div className="px-4 pt-2">
-          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-[var(--fs-xs)] font-semibold ${
-            ble.isConnected ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-gray-100 border border-gray-200 text-gray-500'
-          }`}>
-            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-              ble.isConnected ? 'bg-green-500' :
-              ble.status === 'scanning' || ble.status === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'
-            }`} />
-            <span className="flex-1 truncate">
-              {ble.isConnected ? ble.printerName :
-               ble.status === 'scanning' ? 'Scanning…' :
-               ble.status === 'connecting' ? 'Connecting…' : 'No printer connected'}
-            </span>
-            {ble.isConnected ? (
-              <button onClick={ble.disconnect} className="text-blue-500 active:text-blue-700">Change</button>
-            ) : (
-              <button
-                onClick={async () => { setError(null); const ok = await ble.connect(); if (!ok && ble.error) setError(ble.error); }}
-                disabled={!ble.isSupported || ble.status === 'scanning' || ble.status === 'connecting'}
-                className="text-blue-600 font-bold active:text-blue-800 disabled:opacity-50">
-                Connect
-              </button>
-            )}
-          </div>
-
-          {/* A factory-fresh ZQ300 is in line-print mode: it prints incoming
-              ZPL as literal text instead of a label. The cure is one SGD
-              command over the open connection; device.languages persists, so
-              this is a one-time tap per printer. */}
-          {ble.isConnected && !langFixMsg && (
-            <button
-              onClick={async () => {
-                setError(null);
-                const ok = await ble.print('! U1 setvar "device.languages" "zpl"\r\n');
-                setLangFixMsg(ok
-                  ? 'Printer switched to label mode. Tap Print again — this was a one-time fix, it stays set.'
-                  : 'Could not reach the printer. Check the connection and tap again.');
-              }}
-              className="mt-1.5 text-[11px] text-gray-400 underline active:text-gray-600">
-              Printer prints code instead of a label? Tap to fix
-            </button>
-          )}
-          {langFixMsg && (
-            <div className="mt-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2 text-green-700 text-[var(--fs-xs)]">
-              {langFixMsg}
-              <button onClick={() => setLangFixMsg(null)} className="ml-2 text-green-400 font-bold">{'✕'}</button>
-            </div>
-          )}
-
-          {/* Same picker as the inventory label screen. A Zebra that advertises
-              its SERIAL as its Bluetooth name (a ZD420 shows as "D2J203404050")
-              matches no name rule, so the only honest move is to show what IS
-              paired and let the person point at their printer. */}
-          {ble.paired.length > 0 && !ble.isConnected && (
-            <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 mb-1.5">
-                Paired devices — pick your printer
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {ble.paired.map((d) => (
-                  <button key={d.address}
-                    onClick={async () => { setError(null); const ok = await ble.connectTo(d.address, d.name); if (!ok && ble.error) setError(ble.error); }}
-                    className="px-3 h-9 rounded-lg border border-gray-300 bg-white text-[13px] font-bold text-gray-800 active:bg-gray-100">
-                    {d.name || d.address}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {step === 'print' && <ZebraPrinterBar ble={ble} onError={setError} />}
 
       {error && (
         <div className="px-4 pt-2">

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 import {
-  BackHeader,
   Badge,
   TimerChip,
   ProgressBar,
@@ -90,8 +90,9 @@ export default function WorkOrderList({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <BackHeader
-        backLabel={mo.name}
+      <AppHeader
+        supertitle={mo.name}
+        showBack
         onBack={onBack}
         title={mo.product_id[1]}
         subtitle={`${new Intl.NumberFormat('de-DE').format(mo.product_qty)}${uom} \u00b7 ${totalCount} steps \u00b7 ${mo.state}`}
