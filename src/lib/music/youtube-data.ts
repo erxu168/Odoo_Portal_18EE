@@ -47,7 +47,11 @@ export function resetBreakerForTests(): void { breaker.ok(); }
 interface ApiItem {
   id?: string;
   snippet?: { title?: string; channelId?: string; channelTitle?: string; liveBroadcastContent?: string };
-  contentDetails?: { duration?: string; regionRestriction?: { allowed?: string[]; blocked?: string[] } };
+  contentDetails?: {
+    duration?: string;
+    regionRestriction?: { allowed?: string[]; blocked?: string[] };
+    contentRating?: { ytRating?: string };
+  };
   status?: { embeddable?: boolean; madeForKids?: boolean };
   topicDetails?: { topicCategories?: string[] };
 }
@@ -65,6 +69,7 @@ export function mapApiItem(item: ApiItem): RawVideoData | null {
     madeForKids: item.status?.madeForKids === true,
     live: (item.snippet?.liveBroadcastContent ?? 'none') !== 'none',
     regionBlockedDe: isRegionBlockedDe(item.contentDetails?.regionRestriction),
+    ageRestricted: item.contentDetails?.contentRating?.ytRating === 'ytAgeRestricted',
     topicCategories: item.topicDetails?.topicCategories ?? [],
   };
 }

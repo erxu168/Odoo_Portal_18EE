@@ -11,7 +11,8 @@
  * Nothing here depends on a live InnerTube call at track-transition time.
  */
 import {
-  ALL_GENRES, lastPlayedByGenre, listManualAllowFallback, listRadioSources,
+  ALL_GENRES, getGateCache, getManualDecision, lastPlayedByGenre,
+  listManualAllowFallback, listRadioSources, manualAllowsByGenre,
   poolCandidates, queuedVideoIds, recentNoRepeatIds, replaceRadioPool,
   getPlayback,
   type MusicGenre, type RadioPick,
@@ -21,12 +22,19 @@ import type { CatalogSong } from '@/lib/music/catalog';
 
 const PLAUSIBLE_MIN = 5;       // fewer results than this = parser breakage, keep last-known-good
 const GATE_ATTEMPTS_PER_CALL = 15;
+const PREGATE_CAP_PER_REFRESH = 120; // first warm-up classifies each new song once, ever
 
 export type FetchSource = (sourceType: 'playlist' | 'search', idOrQuery: string) => Promise<CatalogSong[] | 'outage'>;
 
-export async function refreshRadioPools(fetchSource: FetchSource): Promise<{ refreshed: number; kept: number }> {
+/**
+ * Refresh every source's pool, then PRE-GATE new songs so track transitions
+ * are cache hits — the radio must never depend on a live Data-API/Claude call
+ * at the moment a song ends (spec §8).
+ */
+export async function refreshRadioPools(fetchSource: FetchSource, a: GateAdapters): Promise<{ refreshed: number; kept: number; gated: number }> {
   let refreshed = 0;
   let kept = 0;
+  const fresh: RadioPick[] = [];
   for (const src of listRadioSources()) {
     const items = await fetchSource(src.source_type, src.browse_or_playlist_id);
     if (items === 'outage' || items.length < PLAUSIBLE_MIN) {
@@ -36,8 +44,16 @@ export async function refreshRadioPools(fetchSource: FetchSource): Promise<{ ref
     }
     replaceRadioPool(src.id, items.map((s) => ({ videoId: s.videoId, title: s.title, channel: s.artist })));
     refreshed += 1;
+    for (const s of items) fresh.push({ videoId: s.videoId, genre: src.genre, title: s.title, channel: s.artist });
   }
-  return { refreshed, kept };
+  let gated = 0;
+  for (const pick of fresh) {
+    if (gated >= PREGATE_CAP_PER_REFRESH) break;
+    if (getManualDecision(pick.videoId) || getGateCache(pick.videoId)) continue; // already known
+    gated += 1;
+    await gateVideo(pick.videoId, a, { title: pick.title, channel: pick.channel });
+  }
+  return { refreshed, kept, gated };
 }
 
 /** Least-recently-played first; never-played genres lead. */
@@ -81,7 +97,11 @@ export async function nextRadioTrack(a: GateAdapters, rng: () => number = Math.r
   };
 
   for (const genre of genreRotation()) {
-    const candidates = shuffle(poolCandidates(genre), rng).map((c) => ({ videoId: c.videoId, genre, title: c.title, channel: c.channel }));
+    // Approved songs join their shelf's normal balance, not just the fallback.
+    const merged = new Map<string, RadioPick>();
+    for (const c of poolCandidates(genre)) merged.set(c.videoId, { videoId: c.videoId, genre, title: c.title, channel: c.channel });
+    for (const m of manualAllowsByGenre(genre)) merged.set(m.videoId, m);
+    const candidates = shuffle(Array.from(merged.values()), rng);
     const pick = await consider(candidates);
     if (pick) return pick;
     if (attempts >= GATE_ATTEMPTS_PER_CALL) break;

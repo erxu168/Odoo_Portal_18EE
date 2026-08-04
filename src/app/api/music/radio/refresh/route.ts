@@ -2,9 +2,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { isSameOrigin } from '@/lib/csrf';
 import { authorize, CAP } from '@/lib/music/access';
-import { jsonError, radioFetchSource } from '@/lib/music/route-helpers';
+import { gateAdapters, jsonError, radioFetchSource } from '@/lib/music/route-helpers';
 import { refreshRadioPools } from '@/lib/music/radio';
-import { poolDepths, seedDefaultRadioSources } from '@/lib/music/db';
+import { poolDepths, purgeExpiredMetadata, seedDefaultRadioSources } from '@/lib/music/db';
 
 let lastRefreshAt = 0;
 
@@ -20,7 +20,8 @@ export async function POST(request: Request) {
   lastRefreshAt = now;
 
   seedDefaultRadioSources();
-  const result = await refreshRadioPools(radioFetchSource);
+  purgeExpiredMetadata();
+  const result = await refreshRadioPools(radioFetchSource, gateAdapters);
   return NextResponse.json({ ok: true, ...result, pools: poolDepths() });
 }
 

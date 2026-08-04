@@ -24,7 +24,7 @@ import {
   setGateCache, getGateCache,
   setMetadata, getMetadata,
   upsertRequest, listRequests, resolveRequest,
-  enqueue, listQueue,
+  enqueue, listQueue, markUnplayable,
   getPlayback, startPlayback, advancePlayback,
   recentPlays,
   seedDefaultRadioSources, listRadioSources, replaceRadioPool, poolCandidates,
@@ -92,7 +92,7 @@ test('metadata expires after 30 days; fresh metadata is returned', () => {
   const stale = vid();
   setMetadata({
     videoId: stale, title: 'Old', channelId: 'c', channelTitle: 'C', durationSeconds: 200,
-    embeddable: true, madeForKids: false, live: false, regionBlockedDe: false, topicCategories: [],
+    embeddable: true, madeForKids: false, live: false, regionBlockedDe: false, ageRestricted: false, topicCategories: [],
   });
   // Backdate beyond the 30-day TTL directly in SQL.
   getDb().prepare(`UPDATE music_video_metadata SET expires_at = datetime('now', '-1 day') WHERE video_id = ?`).run(stale);
@@ -130,8 +130,8 @@ test('playback: versioned advance — stale version is a no-op, fresh advances F
 
   const q = listQueue();
   const started = startPlayback({ videoId: q[0].video_id, source: 'manual', queueId: q[0].id, genre: 'hip_hop_rap', title: q[0].title, channel: q[0].channel });
-  expect(started.video_id).toBe(a);
-  const v1 = started.version;
+  expect(started?.video_id).toBe(a);
+  const v1 = started!.version;
 
   const adv = advancePlayback(v1, 'ended');
   expect(adv.ok).toBe(true);
@@ -174,4 +174,31 @@ test('settings: player device pin round-trips', () => {
   expect(getMusicSettings().playerDeviceId).toBe(42);
   setPlayerDevice(null, 'Ethan');
   expect(getMusicSettings().playerDeviceId).toBeNull();
+});
+
+test('advance is rejected when the event names a video that is no longer current', () => {
+  getDb().exec(`DELETE FROM music_queue; DELETE FROM music_playback;`);
+  const a = vid();
+  const started = startPlayback({ videoId: a, source: 'radio', queueId: null, genre: 'hip_hop_rap', title: 'A', channel: 'X' });
+  // A delayed event from some EARLIER track must be a no-op even with the right version.
+  const wrong = advancePlayback(started!.version, 'ended', undefined, undefined, 'some_older_video');
+  expect(wrong.ok).toBe(false);
+  const right = advancePlayback(started!.version, 'ended', undefined, undefined, a);
+  expect(right.ok).toBe(true);
+});
+
+test('startPlayback compare-and-swap refuses to clobber newer playback', () => {
+  getDb().exec(`DELETE FROM music_queue; DELETE FROM music_playback;`);
+  const first = startPlayback({ videoId: vid(), source: 'radio', queueId: null, genre: 'hip_hop_rap', title: 'A', channel: 'X' });
+  expect(first).not.toBeNull();
+  // A slow radio pick that observed version 0 must NOT overwrite the running song.
+  const stale = startPlayback({ videoId: vid(), source: 'radio', queueId: null, genre: 'hip_hop_rap', title: 'B', channel: 'X' }, 0);
+  expect(stale).toBeNull();
+  expect(getPlayback()?.video_id).toBe(first!.video_id);
+});
+
+test('markUnplayable sticks even when no metadata row exists', () => {
+  const v = vid();
+  markUnplayable(v);
+  expect(getMetadata(v)?.embeddable).toBe(false);
 });

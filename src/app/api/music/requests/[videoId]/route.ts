@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { isSameOrigin } from '@/lib/csrf';
 import { authorize, CAP } from '@/lib/music/access';
 import { jsonError } from '@/lib/music/route-helpers';
-import { getDb } from '@/lib/db';
-import { ALL_GENRES, resolveRequest, setManualDecision, type MusicGenre } from '@/lib/music/db';
+import { getDb, logAudit } from '@/lib/db';
+import { ALL_GENRES, getManualDecision, resolveRequest, setManualDecision, type MusicGenre } from '@/lib/music/db';
 
 // PATCH /api/music/requests/[videoId] — approve (with a genre shelf) or reject.
 // Decision + request resolve atomically; the manual decision is permanent
@@ -25,6 +25,7 @@ export async function PATCH(request: Request, { params }: { params: { videoId: s
     if (!genre) return jsonError(400, 'Pick which genre shelf the song goes on.');
   }
 
+  const before = getManualDecision(videoId);
   const tx = getDb().transaction(() => {
     setManualDecision({
       videoId,
@@ -37,5 +38,10 @@ export async function PATCH(request: Request, { params }: { params: { videoId: s
     resolveRequest(videoId, action === 'approve' ? 'approved' : 'denied', authz.actor.name);
   });
   tx();
+  logAudit({
+    user_id: authz.actor.userId, user_name: authz.actor.name,
+    action: action === 'approve' ? 'music.request.approve' : 'music.request.deny', module: 'music',
+    detail: `${videoId}: ${before ? `${before.decision}${before.genre ? '/' + before.genre : ''} → ` : ''}${action === 'approve' ? `allow/${genre}` : 'deny'}`,
+  });
   return NextResponse.json({ ok: true });
 }

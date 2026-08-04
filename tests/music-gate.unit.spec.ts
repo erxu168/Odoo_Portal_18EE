@@ -24,7 +24,7 @@ const vid = () => `gv_${++n}_${Math.floor(Math.random() * 1e6)}`;
 const BASE: RawVideoData = {
   title: 'Some Song', channelId: 'ch1', channelTitle: 'Some Artist',
   durationSeconds: 227, embeddable: true, madeForKids: false, live: false,
-  regionBlockedDe: false, topicCategories: [],
+  regionBlockedDe: false, ageRestricted: false, topicCategories: [],
 };
 
 function makeAdapters(overrides?: {
@@ -178,4 +178,27 @@ test('classifier outage fails closed: verdict outage, NOTHING cached', async () 
   const r = await gateVideo(v, a);
   expect(r.verdict).toBe('outage');
   expect(getGateCache(v)).toBeNull();
+});
+
+test('age-restricted videos are refused regardless of genre', async () => {
+  const { a } = makeAdapters({ video: { ageRestricted: true, topicCategories: ['https://en.wikipedia.org/wiki/Reggae'] } });
+  const r = await gateVideo(vid(), a);
+  expect(r.verdict).toBe('unplayable');
+  if (r.verdict === 'unplayable') expect(r.reasonCode).toBe('age_restricted');
+});
+
+test('cached ALLOW with expired metadata re-fetches and picks up new unplayability', async () => {
+  const v = vid();
+  setGateCache({ videoId: v, decision: 'allow', genre: 'hip_hop_rap', source: 'claude', reasonCode: 'llm_allow', model: 'm', promptVersion: 1 });
+  // No metadata row exists (expired/purged). The video became embed-blocked since.
+  const { a, calls } = makeAdapters({ video: { embeddable: false } });
+  const r = await gateVideo(v, a);
+  expect(calls.fetch).toBe(1);
+  expect(r.verdict).toBe('unplayable');
+
+  // During an outage the cached allow still plays (availability over strictness).
+  const v2 = vid();
+  setGateCache({ videoId: v2, decision: 'allow', genre: 'hip_hop_rap', source: 'claude', reasonCode: 'llm_allow', model: 'm', promptVersion: 1 });
+  const r2 = await gateVideo(v2, makeAdapters({ video: 'outage' }).a);
+  expect(r2.verdict).toBe('allow');
 });

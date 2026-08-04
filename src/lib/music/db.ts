@@ -42,7 +42,7 @@ export interface GateCache {
 export interface VideoMetadataInput {
   videoId: string; title: string; channelId: string; channelTitle: string;
   durationSeconds: number | null; embeddable: boolean; madeForKids: boolean;
-  live: boolean; regionBlockedDe: boolean; topicCategories: string[];
+  live: boolean; regionBlockedDe: boolean; ageRestricted: boolean; topicCategories: string[];
 }
 export interface VideoMetadata extends VideoMetadataInput { fetchedAt: string; expiresAt: string }
 export interface MusicRequest {
@@ -104,6 +104,7 @@ export function initMusicTables(): void {
       made_for_kids INTEGER NOT NULL,
       live INTEGER NOT NULL,
       region_blocked_de INTEGER NOT NULL,
+      age_restricted INTEGER NOT NULL DEFAULT 0,
       topic_categories_json TEXT NOT NULL,
       fetched_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
@@ -189,7 +190,18 @@ export function initMusicTables(): void {
       updated_at TEXT
     );
   `);
+  // Migration guard for pre-column installs (table may predate age_restricted).
+  const metaCols = db.prepare(`PRAGMA table_info(music_video_metadata)`).all() as Array<{ name: string }>;
+  if (!metaCols.some((c) => c.name === 'age_restricted')) {
+    db.exec(`ALTER TABLE music_video_metadata ADD COLUMN age_restricted INTEGER NOT NULL DEFAULT 0`);
+  }
   ready = true;
+}
+
+/** Delete YouTube-sourced rows past their 30-day TTL (retention posture, spec §1a). */
+export function purgeExpiredMetadata(): void {
+  initMusicTables();
+  getDb().prepare(`DELETE FROM music_video_metadata WHERE expires_at <= datetime('now')`).run();
 }
 
 // ── Manual decisions (the permanent authority) ──
@@ -241,7 +253,7 @@ export function getMetadata(videoId: string): VideoMetadata | null {
     channelId: r.channel_id as string, channelTitle: r.channel_title as string,
     durationSeconds: (r.duration_seconds as number | null),
     embeddable: !!r.embeddable, madeForKids: !!r.made_for_kids, live: !!r.live,
-    regionBlockedDe: !!r.region_blocked_de,
+    regionBlockedDe: !!r.region_blocked_de, ageRestricted: !!r.age_restricted,
     topicCategories: JSON.parse(r.topic_categories_json as string) as string[],
     fetchedAt: r.fetched_at as string, expiresAt: r.expires_at as string,
   };
@@ -250,17 +262,18 @@ export function getMetadata(videoId: string): VideoMetadata | null {
 export function setMetadata(m: VideoMetadataInput): void {
   initMusicTables();
   getDb().prepare(`
-    INSERT INTO music_video_metadata (video_id, title, channel_id, channel_title, duration_seconds, embeddable, made_for_kids, live, region_blocked_de, topic_categories_json, fetched_at, expires_at)
-    VALUES (@videoId, @title, @channelId, @channelTitle, @durationSeconds, @embeddable, @madeForKids, @live, @regionBlockedDe, @topics, datetime('now'), datetime('now', '+${METADATA_TTL_DAYS} days'))
+    INSERT INTO music_video_metadata (video_id, title, channel_id, channel_title, duration_seconds, embeddable, made_for_kids, live, region_blocked_de, age_restricted, topic_categories_json, fetched_at, expires_at)
+    VALUES (@videoId, @title, @channelId, @channelTitle, @durationSeconds, @embeddable, @madeForKids, @live, @regionBlockedDe, @ageRestricted, @topics, datetime('now'), datetime('now', '+${METADATA_TTL_DAYS} days'))
     ON CONFLICT(video_id) DO UPDATE SET
       title = @title, channel_id = @channelId, channel_title = @channelTitle,
       duration_seconds = @durationSeconds, embeddable = @embeddable, made_for_kids = @madeForKids,
-      live = @live, region_blocked_de = @regionBlockedDe, topic_categories_json = @topics,
+      live = @live, region_blocked_de = @regionBlockedDe, age_restricted = @ageRestricted, topic_categories_json = @topics,
       fetched_at = datetime('now'), expires_at = datetime('now', '+${METADATA_TTL_DAYS} days')
   `).run({
     ...m,
     embeddable: m.embeddable ? 1 : 0, madeForKids: m.madeForKids ? 1 : 0,
     live: m.live ? 1 : 0, regionBlockedDe: m.regionBlockedDe ? 1 : 0,
+    ageRestricted: m.ageRestricted ? 1 : 0,
     topics: JSON.stringify(m.topicCategories),
   });
 }
@@ -329,11 +342,19 @@ export function getPlayback(): Playback | null {
   return (getDb().prepare('SELECT * FROM music_playback WHERE singleton = 1').get() as Playback | undefined) ?? null;
 }
 
-export function startPlayback(pick: { videoId: string; source: 'manual' | 'radio'; queueId: number | null; genre: MusicGenre; title: string; channel: string }): Playback {
+/**
+ * Start a track. When `expectedVersion` is given, this is compare-and-swap:
+ * if the playback row moved (someone queued/booted during our await), NOTHING
+ * is written and null is returned — the caller re-reads instead of clobbering
+ * newer state (a radio pick must never overwrite a fresh staff song).
+ */
+export function startPlayback(pick: { videoId: string; source: 'manual' | 'radio'; queueId: number | null; genre: MusicGenre; title: string; channel: string }, expectedVersion?: number): Playback | null {
   initMusicTables();
   const db = getDb();
   const tx = db.transaction(() => {
-    const cur = db.prepare('SELECT version FROM music_playback WHERE singleton = 1').get() as { version: number } | undefined;
+    const cur = db.prepare('SELECT version, state FROM music_playback WHERE singleton = 1').get() as { version: number; state: string } | undefined;
+    if (expectedVersion !== undefined && (cur?.version ?? 0) !== expectedVersion) return null;
+    if (expectedVersion !== undefined && cur?.state === 'playing') return null;
     const version = (cur?.version ?? 0) + 1;
     const ts = now();
     db.prepare(`
@@ -346,7 +367,7 @@ export function startPlayback(pick: { videoId: string; source: 'manual' | 'radio
     if (pick.queueId != null) {
       db.prepare(`UPDATE music_queue SET status = 'selected', started_at = ? WHERE id = ?`).run(ts, pick.queueId);
     }
-    return getPlayback() as Playback;
+    return getPlayback();
   });
   return tx();
 }
@@ -357,13 +378,18 @@ export function startPlayback(pick: { videoId: string; source: 'manual' | 'radio
  * `next: null` when the queue is drained (caller falls back to radio), and
  * `stale` when the observed version doesn't match (duplicate/racing event).
  */
-export function advancePlayback(observedVersion: number, event: 'ended' | 'skip' | 'error', errorCode?: string, by?: string):
+export function advancePlayback(observedVersion: number, event: 'ended' | 'skip' | 'error', errorCode?: string, by?: string, expectedVideoId?: string):
   { ok: true; next: Playback | null } | { ok: false; reason: 'stale' } {
   initMusicTables();
   const db = getDb();
   const tx = db.transaction(() => {
     const cur = db.prepare('SELECT * FROM music_playback WHERE singleton = 1').get() as Playback | undefined;
     if (!cur || cur.version !== observedVersion || cur.state !== 'playing') {
+      return { ok: false as const, reason: 'stale' as const };
+    }
+    // A delayed ENDED/error from an EARLIER track must not advance the current
+    // one — the event names the video it belongs to.
+    if (expectedVideoId && cur.video_id !== expectedVideoId) {
       return { ok: false as const, reason: 'stale' as const };
     }
     const ts = now();
@@ -484,6 +510,11 @@ export function queuedVideoIds(): Set<string> {
   return new Set(rows.map((r) => r.video_id));
 }
 
+/** Manually approved songs OF ONE GENRE — they join that shelf's normal radio balance. */
+export function manualAllowsByGenre(genre: MusicGenre): RadioPick[] {
+  return listManualAllowFallback().filter((p) => p.genre === genre);
+}
+
 /** Manually approved songs as a last-resort radio pool (titles best-effort from requests/metadata). */
 export function listManualAllowFallback(): RadioPick[] {
   initMusicTables();
@@ -499,10 +530,18 @@ export function listManualAllowFallback(): RadioPick[] {
   return rows.map((r) => ({ videoId: r.video_id, genre: r.genre, title: r.title, channel: r.channel }));
 }
 
-/** Player hit an embed error — remember the video is unplayable so it never comes back. */
+/**
+ * Player hit an embed error — remember the video is unplayable so it never
+ * comes back. Upserts a minimal row so the mark sticks even when no metadata
+ * was ever fetched (e.g. the song was allowed via the hint path in an outage).
+ */
 export function markUnplayable(videoId: string): void {
   initMusicTables();
-  getDb().prepare(`UPDATE music_video_metadata SET embeddable = 0 WHERE video_id = ?`).run(videoId);
+  getDb().prepare(`
+    INSERT INTO music_video_metadata (video_id, title, channel_id, channel_title, duration_seconds, embeddable, made_for_kids, live, region_blocked_de, age_restricted, topic_categories_json, fetched_at, expires_at)
+    VALUES (?, '', '', '', NULL, 0, 0, 0, 0, 0, '[]', datetime('now'), datetime('now', '+${METADATA_TTL_DAYS} days'))
+    ON CONFLICT(video_id) DO UPDATE SET embeddable = 0, expires_at = datetime('now', '+${METADATA_TTL_DAYS} days')
+  `).run(videoId);
 }
 
 export interface ManualDecisionRow extends ManualDecision { title: string; channel: string }
@@ -522,15 +561,22 @@ export function listManualDecisions(): ManualDecisionRow[] {
 
 export interface StationDeviceOption { id: number; name: string | null; label: string | null; company_id: number }
 
-/** Active shared-tablet devices a manager can pin as THE player. */
-export function stationDeviceOptions(): StationDeviceOption[] {
+/**
+ * Active shared-tablet devices a manager can pin as THE player, limited to the
+ * companies that manager may access (undefined = unrestricted admin).
+ */
+export function stationDeviceOptions(allowedCompanyIds?: number[]): StationDeviceOption[] {
   initMusicTables();
-  return getDb().prepare(`SELECT id, name, label, company_id FROM station_devices WHERE revoked = 0 AND disabled = 0 ORDER BY company_id, id`).all() as StationDeviceOption[];
+  const rows = getDb().prepare(`SELECT id, name, label, company_id FROM station_devices WHERE revoked = 0 AND disabled = 0 ORDER BY company_id, id`).all() as StationDeviceOption[];
+  if (!allowedCompanyIds) return rows;
+  return rows.filter((r) => allowedCompanyIds.includes(r.company_id));
 }
 
-export function stationDeviceExists(id: number): boolean {
+export function stationDeviceExists(id: number, allowedCompanyIds?: number[]): boolean {
   initMusicTables();
-  return !!getDb().prepare(`SELECT 1 AS x FROM station_devices WHERE id = ? AND revoked = 0 AND disabled = 0`).get(id);
+  const row = getDb().prepare(`SELECT company_id FROM station_devices WHERE id = ? AND revoked = 0 AND disabled = 0`).get(id) as { company_id: number } | undefined;
+  if (!row) return false;
+  return !allowedCompanyIds || allowedCompanyIds.includes(row.company_id);
 }
 
 /** Radio pool depth per genre — the settings screen's health view. */

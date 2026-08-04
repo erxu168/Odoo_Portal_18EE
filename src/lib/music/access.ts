@@ -55,7 +55,14 @@ export function authorize(capability: string, opts?: { requireResolvedActor?: bo
     return { ok: false, status: 403, error: 'Sign in with your name on this tablet first.' };
   }
   const role = actor.role as Role;
-  if (!effectiveModuleIds(role, actor.moduleAccess).includes(MODULE_ID)) {
+  // Module gate: Music is manager-default, and the JUKEBOX TABLET's account
+  // carries an explicit grant. A staff member PIN-signed-in on that tablet must
+  // not lose the tablet's grant — so the module is enabled when EITHER the
+  // acting person OR the session (device) account has it. Capabilities below
+  // still use the acting person's role.
+  const actorHasModule = effectiveModuleIds(role, actor.moduleAccess).includes(MODULE_ID);
+  const deviceHasModule = effectiveModuleIds(user.role as Role, user.module_access ?? null).includes(MODULE_ID);
+  if (!actorHasModule && !deviceHasModule) {
     return { ok: false, status: 403, error: 'Music is not enabled for you.' };
   }
   if (!roleCan(role, capability, getPermissionOverrides())) {

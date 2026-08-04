@@ -108,8 +108,10 @@ export default function MusicPlayerApp() {
     return () => { document.removeEventListener('visibilitychange', onVis); lock?.release?.(); };
   }, []);
 
-  const advance = useCallback(async (event: 'ended' | 'error', errorCode?: string) => {
-    const { data } = await post('/api/music/player/advance', { version: versionRef.current, event, errorCode });
+  const advance = useCallback(async (event: 'ended' | 'error', errorCode: string | undefined, videoId: string | null) => {
+    // videoId comes from the PLAYER (the track that emitted the event) — the
+    // server drops the event if that track is no longer the current one.
+    const { data } = await post('/api/music/player/advance', { version: versionRef.current, event, errorCode, videoId: videoId ?? undefined });
     applyState(data);
   }, [applyState]);
 
@@ -135,10 +137,10 @@ export default function MusicPlayerApp() {
   }, [playback, boot, showToast]);
 
   const onSkip = useCallback(async () => {
-    const { status, data } = await post('/api/music/player/skip', { version: versionRef.current });
+    const { status, data } = await post('/api/music/player/skip', { version: versionRef.current, videoId: playback?.video_id ?? undefined });
     if (status === 200) { applyState(data); showToast({ kind: 'ok', text: '⏭ Skipped' }); }
     else showToast({ kind: 'warn', text: String(data.error ?? 'Could not skip.') });
-  }, [applyState, showToast]);
+  }, [applyState, showToast, playback]);
 
   if (blocked) {
     return (
@@ -160,8 +162,8 @@ export default function MusicPlayerApp() {
         <div className="relative flex-1 min-h-[270px] bg-black">
           <YouTubeIFramePlayer
             videoId={playback?.video_id ?? null}
-            onEnded={() => advance('ended')}
-            onError={(code) => advance('error', `e${code}`)}
+            onEnded={(vid) => advance('ended', undefined, vid)}
+            onError={(code, vid) => advance('error', `e${code}`, vid)}
             onAutoplayBlocked={() => setSplash(true)}
             onPlaying={() => setSplash(false)}
             registerKick={(k) => { kickRef.current = k; }}

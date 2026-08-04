@@ -17,17 +17,21 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const version = Number(body?.version);
   const event = body?.event === 'ended' ? 'ended' : body?.event === 'error' ? 'error' : null;
+  const videoId = typeof body?.videoId === 'string' && body.videoId ? body.videoId : undefined;
   if (!Number.isInteger(version) || !event) return jsonError(400, 'Bad player event.');
   const errorCode = event === 'error' && typeof body?.errorCode === 'string' && IFRAME_ERRORS.has(body.errorCode)
     ? body.errorCode : event === 'error' ? 'e_unknown' : undefined;
 
   const current = getPlayback();
-  const adv = advancePlayback(version, event, errorCode);
+  // videoId ties the event to the track that emitted it — a delayed duplicate
+  // from an earlier song can never advance the current one.
+  const adv = advancePlayback(version, event, errorCode, undefined, videoId);
   if (!adv.ok) {
     // Stale = someone else already advanced; just report the current state.
     return NextResponse.json({ ok: true, playback: getPlayback(), queue: listQueue(), stale: true });
   }
-  if (event === 'error' && current?.video_id && (errorCode === 'e101' || errorCode === 'e150' || errorCode === 'e153')) {
+  const PERMANENT = new Set(['e100', 'e101', 'e150', 'e153']); // deleted/private or embed-blocked
+  if (event === 'error' && current?.video_id && errorCode && PERMANENT.has(errorCode)) {
     markUnplayable(current.video_id);
   }
   const playback = adv.next ?? await startNextIfIdle();

@@ -39,7 +39,7 @@ test('Data API item maps to RawVideoData; embeddable defaults true, live detecte
   expect(raw).toEqual({
     title: 'Song', channelId: 'ch', channelTitle: 'Artist', durationSeconds: 240,
     embeddable: true, madeForKids: false, live: true, regionBlockedDe: false,
-    topicCategories: ['https://en.wikipedia.org/wiki/Reggae'],
+    ageRestricted: false, topicCategories: ['https://en.wikipedia.org/wiki/Reggae'],
   });
   expect(mapApiItem({ id: 'x' })).toBeNull(); // no title → not usable
 });

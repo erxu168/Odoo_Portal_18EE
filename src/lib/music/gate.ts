@@ -28,7 +28,7 @@ import {
 export interface RawVideoData {
   title: string; channelId: string; channelTitle: string;
   durationSeconds: number | null; embeddable: boolean; madeForKids: boolean;
-  live: boolean; regionBlockedDe: boolean; topicCategories: string[];
+  live: boolean; regionBlockedDe: boolean; ageRestricted: boolean; topicCategories: string[];
 }
 
 export type ClassifierLabel = MusicGenre | 'electronic' | 'other' | 'unsure';
@@ -60,11 +60,12 @@ function topicSuffix(url: string): string {
   return i >= 0 ? url.slice(i + 1) : url;
 }
 
-function playabilityProblem(m: { embeddable: boolean; live: boolean; durationSeconds: number | null; madeForKids: boolean; regionBlockedDe: boolean }): string | null {
+function playabilityProblem(m: { embeddable: boolean; live: boolean; durationSeconds: number | null; madeForKids: boolean; regionBlockedDe: boolean; ageRestricted: boolean }): string | null {
   if (!m.embeddable) return 'not_embeddable';
   if (m.live) return 'live';
   if (m.durationSeconds != null && m.durationSeconds > MAX_DURATION_SECONDS) return 'too_long';
   if (m.madeForKids) return 'made_for_kids';
+  if (m.ageRestricted) return 'age_restricted';
   if (m.regionBlockedDe) return 'region_blocked';
   return null;
 }
@@ -84,17 +85,34 @@ export async function gateVideo(videoId: string, a: GateAdapters, hint?: { title
   const manual = getManualDecision(videoId);
   if (manual?.decision === 'deny') return { verdict: 'deny', reasonCode: 'manual_deny' };
 
-  // Cheap paths first: a cached verdict (or manual allow) must not cost an API
-  // call on every tap. Playability is still enforced against any FRESH local
-  // metadata; when none exists, the player's error handling enforces it lazily.
+  // Cheap paths first: a cached DENY/UNSURE never costs an API call. A cached
+  // ALLOW is only free while fresh metadata exists — once the 30-day TTL runs
+  // out we re-fetch before allowing, so embeddability/availability changes are
+  // picked up and a `markUnplayable` can never be forgotten by expiry. During
+  // an outage the cached allow still plays (the player error-skips if needed).
   const localMeta = getMetadata(videoId);
   const localProblem = localMeta ? playabilityProblem(localMeta) : null;
 
   if (manual?.decision !== 'allow') {
     const cached = getGateCache(videoId);
     if (cached) {
-      if (cached.decision === 'allow' && localProblem) return { verdict: 'unplayable', reasonCode: localProblem };
-      return fromCache(cached.decision, cached.genre as MusicGenre | null, cached.reason_code, cached.decision_source);
+      if (cached.decision !== 'allow') {
+        return fromCache(cached.decision, cached.genre as MusicGenre | null, cached.reason_code, cached.decision_source);
+      }
+      if (localMeta) {
+        if (localProblem) return { verdict: 'unplayable', reasonCode: localProblem };
+        return fromCache('allow', cached.genre as MusicGenre | null, cached.reason_code, cached.decision_source);
+      }
+      const fetched = await a.fetchVideoData([videoId]);
+      if (fetched === 'outage') {
+        return fromCache('allow', cached.genre as MusicGenre | null, cached.reason_code, cached.decision_source);
+      }
+      const raw = fetched.get(videoId);
+      if (!raw) return { verdict: 'unplayable', reasonCode: 'not_found' };
+      setMetadata({ videoId, ...raw });
+      const problem = playabilityProblem(raw);
+      if (problem) return { verdict: 'unplayable', reasonCode: problem };
+      return fromCache('allow', cached.genre as MusicGenre | null, cached.reason_code, cached.decision_source);
     }
   }
 

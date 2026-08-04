@@ -37,7 +37,7 @@ function allowAllAdapters(): GateAdapters {
         map.set(id, {
           title: 'T', channelId: 'c', channelTitle: 'A', durationSeconds: 200,
           embeddable: true, madeForKids: false, live: false, regionBlockedDe: false,
-          topicCategories: ['https://en.wikipedia.org/wiki/Reggae'],
+          ageRestricted: false, topicCategories: ['https://en.wikipedia.org/wiki/Reggae'],
         });
       }
       return map;
@@ -71,16 +71,16 @@ test('refresh: plausible results replace the pool; empty/outage keep last-known-
   const src = listRadioSources()[0];
   const six = Array.from({ length: 6 }, (_, i) => song(vid(), i));
 
-  const r1 = await refreshRadioPools(async () => six);
+  const r1 = await refreshRadioPools(async () => six, allowAllAdapters());
   expect(r1.refreshed).toBeGreaterThan(0);
   expect(poolCandidates(src.genre).length).toBeGreaterThanOrEqual(6);
 
   const before = poolCandidates(src.genre).map((c) => c.videoId).sort();
-  const r2 = await refreshRadioPools(async () => []);           // implausible parse
+  const r2 = await refreshRadioPools(async () => [], allowAllAdapters());           // implausible parse
   expect(r2.refreshed).toBe(0);
   expect(poolCandidates(src.genre).map((c) => c.videoId).sort()).toEqual(before);
 
-  const r3 = await refreshRadioPools(async () => 'outage' as const);
+  const r3 = await refreshRadioPools(async () => 'outage' as const, allowAllAdapters());
   expect(r3.refreshed).toBe(0);
   expect(poolCandidates(src.genre).map((c) => c.videoId).sort()).toEqual(before);
 });
@@ -131,4 +131,19 @@ test('when every approved song is inside the no-repeat window, the radio repeats
   addPlay(a, 'rnb_soul_funk', 1); // just played — inside the window
   const pick = await nextRadioTrack(allowAllAdapters(), rng0);
   expect(pick?.videoId).toBe(a);
+});
+
+test('an approved song joins its genre shelf in normal rotation (not only the fallback)', async () => {
+  seedDefaultRadioSources();
+  const srcHip = listRadioSources().find((s) => s.genre === 'hip_hop_rap')!;
+  const { replaceRadioPool } = await import('../src/lib/music/db');
+  const poolSong = vid(); const approved = vid();
+  replaceRadioPool(srcHip.id, [{ videoId: poolSong, title: 'Pool', channel: 'X' }]);
+  setManualDecision({ videoId: approved, decision: 'allow', genre: 'hip_hop_rap', reason: null, byUserId: 1, byName: 'E' });
+  // Exclude the pool song via the repeat window — the approved one must surface
+  // from the SAME genre pass, proving it participates in the shelf's balance.
+  addPlay(poolSong, 'hip_hop_rap', 1);
+  const pick = await nextRadioTrack(allowAllAdapters(), rng0);
+  expect(pick?.videoId).toBe(approved);
+  expect(pick?.genre).toBe('hip_hop_rap');
 });

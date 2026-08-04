@@ -14,6 +14,7 @@ interface YTPlayer {
   loadVideoById(id: string): void;
   playVideo(): void;
   destroy(): void;
+  getVideoData?: () => { video_id?: string };
 }
 interface YTNamespace {
   Player: new (el: HTMLElement, opts: {
@@ -22,7 +23,7 @@ interface YTNamespace {
     events?: {
       onReady?: (e: { target: YTPlayer }) => void;
       onStateChange?: (e: { data: number; target: YTPlayer }) => void;
-      onError?: (e: { data: number }) => void;
+      onError?: (e: { data: number; target?: YTPlayer }) => void;
       onAutoplayBlocked?: () => void;
     };
   }) => YTPlayer;
@@ -50,8 +51,9 @@ function loadApi(): Promise<YTNamespace> {
 
 export default function YouTubeIFramePlayer(props: {
   videoId: string | null;
-  onEnded: () => void;
-  onError: (code: number) => void;
+  /** videoId = the video the PLAYER says emitted the event — ties a delayed event to its track. */
+  onEnded: (videoId: string | null) => void;
+  onError: (code: number, videoId: string | null) => void;
   onAutoplayBlocked: () => void;
   onPlaying?: () => void;
   /** Receives a function the parent's splash button calls to (re)start playback. */
@@ -77,10 +79,14 @@ export default function YouTubeIFramePlayer(props: {
         },
         events: {
           onStateChange: (e) => {
-            if (e.data === YT.PlayerState.ENDED) cbRef.current.onEnded();
+            const vid = e.target.getVideoData?.()?.video_id ?? currentIdRef.current;
+            if (e.data === YT.PlayerState.ENDED) cbRef.current.onEnded(vid ?? null);
             if (e.data === YT.PlayerState.PLAYING) cbRef.current.onPlaying?.();
           },
-          onError: (e) => cbRef.current.onError(e.data),
+          onError: (e) => {
+            const vid = e.target?.getVideoData?.()?.video_id ?? currentIdRef.current;
+            cbRef.current.onError(e.data, vid ?? null);
+          },
           onAutoplayBlocked: () => cbRef.current.onAutoplayBlocked(),
         },
       });
