@@ -29,10 +29,42 @@ import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
-import { type GuidePin, type EditorPhoto } from '../../../_components/SetupGuideEditor';
 import GuidePicker, { GuideAttachModal } from '../../../_components/GuidePicker';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
+
+/**
+ * The two editor-local shapes that used to live in SetupGuideEditor.tsx — that
+ * component was dead (imported for these types only) and has been deleted,
+ * along with the equally unreferenced SetupGuideView.tsx.
+ *
+ * The pin type was renamed on the way across: it is a SUBTASK that may carry
+ * pin coordinates, while lib/task-guide already exports a DIFFERENT shape under
+ * the old name (a note-pin on a guide step: {pin_x, pin_y, note}). Two unrelated
+ * shapes sharing one name is a trap worth not leaving behind.
+ */
+interface EditorSubtask {
+  id?: number;
+  name: string;
+  pin_x: number;
+  pin_y: number;
+  /** Sequence of the setup-guide photo this pin sits on. */
+  pin_photo_seq: number;
+  item_id?: number | null;
+}
+
+/** One reference photo as the editor sees it — a server photo or a pending upload. */
+interface EditorPhoto {
+  /** Local seq: for existing photos this is the server sequence; for a NEW photo
+   * it is a provisional value the server may reassign on append (then remapped). */
+  seq: number;
+  /** Display source: server route URL, or a local data URL while pending. */
+  url: string;
+  /** Set while the photo hasn't been uploaded yet (uploaded on save). */
+  pendingBase64?: string;
+  /** True for a photo added this session (server allocates its real seq on append). */
+  isNew?: boolean;
+}
 
 const DAY_PART_OPTIONS: { value: DayPart; label: string }[] = [
   { value: 'opening', label: 'Opening' },
@@ -673,7 +705,6 @@ export default function TemplateEditPage({ params }: PageProps) {
       {(showAddLine || editingLine) && (
         <LineModal
           tplId={tplId}
-          departmentId={tpl.department_id}
           line={editingLine}
           onClose={() => { setShowAddLine(false); setEditingLine(null); }}
           onSaved={async (msg, newLineId) => {
@@ -694,7 +725,6 @@ export default function TemplateEditPage({ params }: PageProps) {
 
 interface LineModalProps {
   tplId: number;
-  departmentId: number;
   line: TaskTemplateLine | null;
   onClose: () => void;
   /** `createdLineId` is set only when this save CREATED a task — the parent
@@ -716,7 +746,7 @@ interface PendingAttachment {
   size: number;
 }
 
-function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRefresh }: LineModalProps) {
+function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineModalProps) {
   const [name, setName]               = useState(line?.name ?? '');
   const [dayPart, setDayPart]         = useState<DayPart>(line?.day_part ?? 'opening');
   const [deadline, setDeadline]       = useState(floatToHHMM(line?.deadline_time));
@@ -725,7 +755,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   const [managerNote, setManagerNote] = useState(line?.manager_note ?? '');
   const [moduleLink, setModuleLink]   = useState<ModuleLink>(line?.module_link_type ?? 'none');
   // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/photo/item).
-  const [subtasks, setSubtasks]       = useState<GuidePin[]>(
+  const [subtasks, setSubtasks]       = useState<EditorSubtask[]>(
     line?.subtasks.map(s => ({ id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y, pin_photo_seq: s.pin_photo_seq, item_id: s.item_id })) ?? [],
   );
   const [recurrence, setRecurrence]   = useState<RecurrenceRule>(line?.recurrence ?? defaultRecurrence());

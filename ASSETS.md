@@ -103,8 +103,12 @@ returned early and skipped the DropZone entirely), `GoodsReceived`,
 `AddMeterReading`, `FloorplanSpotSheet`, `GuidedTutorialEditor`,
 `tasks/manager/templates/[id]`.
 
-**Note:** `app/tasks/_components/SetupGuideEditor.tsx` is DEAD — referenced only
-in a comment, rendered nowhere. Left alone rather than fixed or deleted.
+**DELETED 2026-08-05:** `app/tasks/_components/SetupGuideEditor.tsx` (rendered
+nowhere; imported only for two types, which moved into
+`tasks/manager/templates/[id]/page.tsx`) and `SetupGuideView.tsx` (imported by
+nothing at all). They were costing real effort — both took colour and typography
+edits in the design sweep for a UI no one can open. The setup-guide *feature*
+itself is untouched; it lives in the template editor page.
 
 `BatchPhotos` additionally accepts a copied image URL via `fetchImageFromUrl`; if
 a second screen wants that, lift it out.
