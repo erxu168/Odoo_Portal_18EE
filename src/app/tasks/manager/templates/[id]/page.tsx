@@ -7,6 +7,23 @@ import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
 import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
 import { useConfirm } from '@/components/ui/useConfirm';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import DragRow from '@/components/ui/DragRow';
 import AppHeader from '@/components/ui/AppHeader';
 import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
@@ -79,6 +96,7 @@ function recurrenceSummary(r: RecurrenceRule): string {
 interface PageProps {
   params: Promise<{ id: string }> | { id: string };
 }
+
 
 function floatToHHMM(v: number | null | undefined): string {
   if (v == null) return '';
@@ -287,6 +305,56 @@ export default function TemplateEditPage({ params }: PageProps) {
     showToast('Task removed');
   }
 
+  // ── Reorder tasks within a day-part section (drag and drop) ────────────────
+  const [reordering, setReordering] = useState(false);
+  const sensors = useSensors(
+    // 8px before a mouse drag starts, and a 200ms hold on touch — otherwise
+    // every attempt to SCROLL the task list would pick a task up instead.
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  async function onSectionDragEnd(part: DayPart, e: DragEndEvent) {
+    const { active, over } = e;
+    if (reordering) return;   // a drop delivered mid-save must not race it
+    if (!over || active.id === over.id || !tpl) return;
+    const section = tpl.lines
+      .filter(l => l.day_part === part)
+      .sort((a, b) => a.sequence - b.sequence || a.id - b.id);
+    const oldIndex = section.findIndex(l => l.id === active.id);
+    const newIndex = section.findIndex(l => l.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const orderedIds = arrayMove(section, oldIndex, newIndex).map(l => l.id);
+    // Optimistic: renumber locally with exactly the sequences the server will
+    // write (10, 20, 30 …), so the row settles where it was dropped instead of
+    // snapping back for a round trip.
+    const seqById = new Map(orderedIds.map((id, i) => [id, (i + 1) * 10]));
+    setTpl(prev => prev ? {
+      ...prev,
+      lines: prev.lines.map(l => (seqById.has(l.id) ? { ...l, sequence: seqById.get(l.id)! } : l)),
+    } : prev);
+
+    setReordering(true);
+    try {
+      const res = await fetch(`/api/tasks/templates/${tplId}/lines/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || 'Could not save the new order');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not save the new order', 'error');
+      // Put it back the way the server actually has it — never leave the screen
+      // showing an order that was not persisted.
+      await load();
+    } finally {
+      setReordering(false);
+    }
+  }
+
   /** Tasks whose linked guide is still a draft — staff receive no guide at all
    *  for these, and the preview cannot show one either. */
   // Same gate the row badge uses (guide_step_count > 0), because TaskTemplateLine
@@ -313,6 +381,12 @@ export default function TemplateEditPage({ params }: PageProps) {
 
   const grouped: Record<DayPart, TaskTemplateLine[]> = { opening: [], mid_day: [], closing: [] };
   for (const l of tpl.lines) grouped[l.day_part].push(l);
+  // Sort by sequence here, not just by arrival order: a drag renumbers lines
+  // optimistically in state, and this is what turns that into a re-render.
+  // `id` breaks ties so equal sequences (older rows) stay stable.
+  for (const part of Object.keys(grouped) as DayPart[]) {
+    grouped[part].sort((a, b) => a.sequence - b.sequence || a.id - b.id);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -461,9 +535,21 @@ export default function TemplateEditPage({ params }: PageProps) {
                   <p className="px-4 py-2 text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200">
                     {DAY_PART_OPTIONS.find(o => o.value === part)?.label}
                   </p>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={e => onSectionDragEnd(part, e)}
+                  >
+                  <SortableContext items={lines.map(l => l.id)} strategy={verticalListSortingStrategy}>
                   {lines.map((l, i) => (
-                    <div key={l.id} className={`px-4 py-3 ${i < lines.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                    <DragRow
+                      key={l.id}
+                      id={l.id}
+                      className={`bg-white px-4 py-3 ${i < lines.length - 1 ? 'border-b border-gray-100' : ''}`}
+                    >
+                      {handle => (
                       <div className="flex items-start justify-between gap-3">
+                        <div className="pt-0.5">{handle}</div>
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-[var(--fs-sm)] text-gray-800">{l.name}</p>
                           <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
@@ -523,8 +609,11 @@ export default function TemplateEditPage({ params }: PageProps) {
                           <button onClick={() => deleteLine(l.id)} className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-red-500 hover:text-red-700">Delete</button>
                         </div>
                       </div>
-                    </div>
+                      )}
+                    </DragRow>
                   ))}
+                  </SortableContext>
+                  </DndContext>
                 </div>
               );
             })}

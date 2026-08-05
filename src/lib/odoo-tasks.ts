@@ -941,6 +941,13 @@ export async function deleteAttachment(attachmentId: number): Promise<void> {
 
 // ── Spawning ──────────────────────────────────
 
+/** Persist a drag-and-drop reorder of one day-part section's template tasks.
+ * Odoo rewrites the sequences as 10, 20, 30 … and refuses ids that belong to a
+ * different template. */
+export async function reorderTemplateLines(templateId: number, orderedIds: number[]): Promise<void> {
+  await getOdoo().call('krawings.task.template', 'portal_reorder_lines', [templateId, orderedIds]);
+}
+
 export async function spawnTodayLists(): Promise<void> {
   await getOdoo().call('krawings.task.template', 'spawn_today_lists', []);
 }

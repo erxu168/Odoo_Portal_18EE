@@ -5,7 +5,7 @@ import psycopg2
 import pytz
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 from .recurrence import applies_on, rule_from_record
 
@@ -281,3 +281,42 @@ class KrawingsTaskTemplate(models.Model):
         if not any_spawned:
             raise UserError('No new list spawned (already exists for this department).')
         return True
+
+    @api.model
+    def portal_reorder_lines(self, template_id, ordered_ids):
+        """Persist a manager's drag-and-drop order for ONE day-part section.
+
+        The portal sends that section's line ids in their new order. Lines
+        outside the list keep their sequence untouched, which is safe because
+        both the editor and the daily spawn order by (day_part, sequence, id) —
+        so renumbering within a section can never disturb another one.
+
+        Sequences are rewritten as 10, 20, 30 … rather than patched, so a list
+        that arrived with duplicate or equal sequences (older data, or rows
+        created before ordering existed) comes out strictly ordered.
+        """
+        tpl = self.sudo().browse(int(template_id))
+        if not tpl.exists():
+            raise ValidationError('That template no longer exists.')
+
+        ids = [int(i) for i in (ordered_ids or [])]
+        if not ids:
+            return {'ok': True, 'reordered': 0}
+        if len(set(ids)) != len(ids):
+            raise ValidationError('The same task appears twice in the new order.')
+
+        Line = self.env['krawings.task.template.line'].sudo()
+        # browse() preserves the caller's order, and iterating the recordset
+        # yields that same order — which IS the new order being persisted.
+        lines = Line.browse(ids)
+        if len(lines.exists()) != len(ids):
+            raise ValidationError('One of those tasks no longer exists — reload and try again.')
+        # Tenant + integrity guard. Portal calls run as sudo, so record rules do
+        # not apply: without this, a crafted request could renumber lines on
+        # another department's (or another company's) template.
+        if any(line.template_id.id != tpl.id for line in lines):
+            raise ValidationError('Those tasks do not all belong to this template.')
+
+        for position, line in enumerate(lines, start=1):
+            line.sequence = position * 10
+        return {'ok': True, 'reordered': len(ids)}

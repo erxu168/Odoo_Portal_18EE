@@ -183,7 +183,7 @@ list told only about the room keeps rendering orphans.
 | `ModuleGate` | `ui/ModuleGate.tsx` | **The page gate for a whole module.** Put it in the module's `layout.tsx` and every page underneath is covered, so a screen added later cannot forget it: `<ModuleGate moduleId="rentals">{children}</ModuleGate>`. Pass an array when one folder serves two modules (`/recipes` = Chef Guide + Production Guide). Blocked users get an explanation and a way back, never a silent bounce. `tests/module-access.unit.spec.ts` FAILS if a governed module has no gate | 19 |
 | `TopBarContext` | `ui/TopBarContext.tsx` | Hide the global top bar for one screen | 10 |
 | `SortableTileGrid` | `ui/SortableTileGrid.tsx` | Drag-reorderable tiles, order persisted | 1 |
-| `DragRow` | `ui/DragRow.tsx` | dnd-kit sortable row with a drag handle | 2 |
+| `DragRow` | `ui/DragRow.tsx` | dnd-kit sortable row with a drag handle. Render-prop hands you the handle, so the row's own buttons stay clickable and only the handle claims the touch gesture | 3 |
 | `ChromeIcons` | `ui/ChromeIcons.tsx` | THE thin-line icon set for interface machinery — Home, Back, Close, ChevronDown/Right, Check, **Crosshair** ("show me exactly where this is"). Emoji carry meaning on action cards; chrome uses these. Never a second icon style | 12 |
 
 **KNOWN GAP:** **39 files hand-roll a `rounded-t` overlay** instead of using
