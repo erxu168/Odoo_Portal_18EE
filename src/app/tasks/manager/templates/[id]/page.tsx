@@ -355,6 +355,47 @@ export default function TemplateEditPage({ params }: PageProps) {
     }
   }
 
+  /**
+   * A day's list is a SNAPSHOT taken once at spawn, so a task added to the
+   * template today would otherwise only appear tomorrow — which is exactly the
+   * surprise this offer removes.
+   *
+   * The server decides whether it CAN be added (list exists, the task's own
+   * schedule fires today, not already on it), so the prompt never offers
+   * something the write would refuse. Declining is a normal outcome, not an
+   * error: the task still starts tomorrow either way.
+   */
+  async function offerAddToToday(lineId: number) {
+    let status: { can_add?: boolean; date?: string; department_name?: string };
+    try {
+      const res = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/today`);
+      status = await res.json().catch(() => ({}));
+      if (!res.ok || !status?.can_add) return;   // nothing to offer — stay quiet
+    } catch {
+      return;                                     // never block the save on this
+    }
+
+    const when = status.date
+      ? new Date(`${status.date}T00:00:00`).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+      : 'today';
+    const ok = await confirm({
+      title: 'Add it to today\u2019s list too?',
+      message: `${status.department_name || 'This department'} is already working from the list for ${when}. A new task normally starts tomorrow — put it on today\u2019s list as well?`,
+      confirmLabel: 'Add to today\u2019s list',
+      cancelLabel: 'Just from tomorrow',
+    });
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/today`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || 'Could not add it to today\u2019s list');
+      showToast(body.added ? 'Added to today\u2019s list' : 'It was already on today\u2019s list');
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Could not add it to today\u2019s list', 'error');
+    }
+  }
+
   /** Tasks whose linked guide is still a draft — staff receive no guide at all
    *  for these, and the preview cannot show one either. */
   // Same gate the row badge uses (guide_step_count > 0), because TaskTemplateLine
@@ -635,11 +676,12 @@ export default function TemplateEditPage({ params }: PageProps) {
           departmentId={tpl.department_id}
           line={editingLine}
           onClose={() => { setShowAddLine(false); setEditingLine(null); }}
-          onSaved={async (msg) => {
+          onSaved={async (msg, newLineId) => {
             setShowAddLine(false);
             setEditingLine(null);
             await load();
             if (msg) showToast(msg);
+            if (newLineId) await offerAddToToday(newLineId);
           }}
           onBackgroundRefresh={() => { void load(true); }}
         />
@@ -655,7 +697,9 @@ interface LineModalProps {
   departmentId: number;
   line: TaskTemplateLine | null;
   onClose: () => void;
-  onSaved: (toastMessage?: string) => Promise<void>;
+  /** `createdLineId` is set only when this save CREATED a task — the parent
+   *  uses it to offer adding it to today's already-running list. */
+  onSaved: (toastMessage?: string, createdLineId?: number) => Promise<void>;
   /** Refresh the parent list after a save whose own modal was dismissed
    * mid-flight. A background (non-blanking, lines-only) refresh — safe to run
    * even with another modal open. */
@@ -961,7 +1005,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
       const fileNote = uploadedCount > 0 ? ` · ${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded` : '';
       const failNote = uploadFailures > 0 ? ` · ${uploadFailures} file upload${uploadFailures === 1 ? '' : 's'} failed` : '';
       const photoNote = photoCleanupFailed ? ' · old photo not removed — reopen to retry' : '';
-      await onSaved(`${baseMsg}${fileNote}${failNote}${photoNote}`);
+      // Discriminate on the `line` PROP, not existingId: if a first Save created
+      // the task but its photo upload failed, createdLineId is already set, so
+      // existingId would be truthy on the retry and the offer would never appear
+      // for a task that genuinely is new. Matches `baseMsg`'s own test above.
+      await onSaved(`${baseMsg}${fileNote}${failNote}${photoNote}`, line ? undefined : lineId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed');
       setSubmitting(false);

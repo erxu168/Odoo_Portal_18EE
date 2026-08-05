@@ -941,6 +941,31 @@ export async function deleteAttachment(attachmentId: number): Promise<void> {
 
 // ── Spawning ──────────────────────────────────
 
+/** Reasons a template line cannot be added to today's already-spawned list.
+ * Kept in sync with _today_line_context in task_template.py. */
+export type TodayLineReason =
+  | '' | 'no_line' | 'no_department' | 'no_list_today' | 'not_due_today' | 'already_on_list';
+
+export interface TodayLineStatus {
+  can_add: boolean;
+  reason: TodayLineReason;
+  date: string;
+  department_name: string;
+}
+
+/** Read-only: may this template line still be added to today's list? */
+export async function todayLineStatus(lineId: number): Promise<TodayLineStatus> {
+  return getOdoo().call('krawings.task.template', 'portal_today_line_status', [lineId]);
+}
+
+/** Add the line to today's already-spawned list. Idempotent — Odoo re-checks
+ * the schedule and whether it is already there, so a double tap is a no-op. */
+export async function addTemplateLineToToday(
+  lineId: number,
+): Promise<{ added: boolean; reason: TodayLineReason }> {
+  return getOdoo().call('krawings.task.template', 'portal_add_line_to_today', [lineId]);
+}
+
 /** Persist a drag-and-drop reorder of one day-part section's template tasks.
  * Odoo rewrites the sequences as 10, 20, 30 … and refuses ids that belong to a
  * different template. */

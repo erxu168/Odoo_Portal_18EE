@@ -151,94 +151,7 @@ class KrawingsTaskTemplate(models.Model):
             for tline in tpl.line_ids:
                 if not applies_on(rule_from_record(tline), target_date):
                     continue
-                deadline_dt = False
-                if tline.deadline_time:
-                    hours = int(tline.deadline_time)
-                    minutes = int(round((tline.deadline_time - hours) * 60))
-                    # A Float like 7.9999 rounds minutes to 60 → time(h, 60) raises
-                    # ValueError and (being outside the savepoint) would abort the
-                    # whole department's spawn pass. Carry/clamp into a valid time.
-                    if minutes >= 60:
-                        hours += 1
-                        minutes = 0
-                    if hours >= 24:
-                        hours, minutes = 23, 59
-                    local_dt = tz.localize(datetime.combine(target_date, time(hours, minutes)))
-                    deadline_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
-                line_vals.append((0, 0, {
-                    'name': tline.name,
-                    'sequence': tline.sequence,
-                    'day_part': tline.day_part,
-                    'deadline_datetime': deadline_dt,
-                    'photo_required': tline.photo_required,
-                    'photo_instructions': tline.photo_instructions or False,
-                    'manager_note': tline.manager_note or False,
-                    'module_link_type': tline.module_link_type,
-                    'is_ad_hoc': False,
-                    'source_template_line_id': tline.id,
-                    # Setup-guide snapshot (D4): each daily line keeps its own copy
-                    # of every reference photo + the pins; photo sequences are
-                    # preserved so pin_photo_seq needs no remapping. The
-                    # filestore checksum-dedupes identical photo bytes.
-                    'is_setup_guide': tline.is_setup_guide,
-                    # Legacy setup-guide snapshot — only for lines still flagged
-                    # is_setup_guide. After the 18.0.7.0.0 migration converts a
-                    # guide (is_setup_guide→false), its retained template photos
-                    # are NOT re-copied; the guided-tutorial snapshot below takes over.
-                    'setup_photo_ids': ([
-                        (0, 0, {
-                            'sequence': p.sequence,
-                            'image': p.image,
-                            'filename': p.filename or False,
-                        })
-                        for p in tline.setup_photo_ids
-                    ] if tline.is_setup_guide else []),
-                    # Guided-tutorial snapshot: only a PUBLISHED linked guide is
-                    # copied onto the daily line (drafts stay invisible to staff).
-                    # Deep copy of every step + its note-pins; filestore checksum-
-                    # dedupes identical image/pdf bytes. Purely instructional.
-                    # guide_source_id/name are audit only — playback reads the
-                    # list-owned snapshot below, never the live guide.
-                    'guide_snapshot_revision': (
-                        tline.guide_id.revision if _guide_pub(tline) else 0
-                    ),
-                    'guide_source_id': tline.guide_id.id if _guide_pub(tline) else False,
-                    'guide_source_name': tline.guide_id.name if _guide_pub(tline) else False,
-                    'guide_step_ids': ([
-                        (0, 0, {
-                            'sequence': s.sequence,
-                            'media_type': s.media_type,
-                            'explanation': s.explanation,
-                            'image': s.image,
-                            'image_filename': s.image_filename or False,
-                            'pdf_file': s.pdf_file,
-                            'pdf_filename': s.pdf_filename or False,
-                            'youtube_url': s.youtube_url or False,
-                            'drawings': s.drawings or False,
-                            'source_guide_step_id': s.id,
-                            'pin_ids': [
-                                (0, 0, {
-                                    'sequence': pin.sequence,
-                                    'pin_x': pin.pin_x,
-                                    'pin_y': pin.pin_y,
-                                    'note': pin.note,
-                                })
-                                for pin in s.pin_ids.sorted('sequence')
-                            ],
-                        })
-                        for s in tline.guide_id.step_ids.sorted('sequence')
-                    ] if _guide_pub(tline) else []),
-                    'subtask_ids': [
-                        (0, 0, {
-                            'name': st.name,
-                            'sequence': st.sequence,
-                            'pin_photo_seq': st.pin_photo_seq,
-                            'pin_x': st.pin_x,
-                            'pin_y': st.pin_y,
-                        })
-                        for st in tline.subtask_ids
-                    ],
-                }))
+                line_vals.append((0, 0, self._line_snapshot_vals(tline, target_date, tz)))
                 if chosen_template is None:
                     chosen_template = tpl
 
@@ -281,6 +194,190 @@ class KrawingsTaskTemplate(models.Model):
         if not any_spawned:
             raise UserError('No new list spawned (already exists for this department).')
         return True
+
+
+    @api.model
+    def _line_snapshot_vals(self, tline, target_date, tz):
+        """The daily snapshot of ONE template line, as create() values.
+
+        Extracted from _build_list_for_dept_date so the nightly spawn and the
+        manager's "add this task to today's list too" build a daily line through
+        the SAME code. A second copy of ~70 lines of snapshot rules (guide steps,
+        pins, setup photos, drawings, the deadline carry/clamp) would drift the
+        first time either side gained a field — and the drift would be silent.
+        """
+        deadline_dt = False
+        if tline.deadline_time:
+            hours = int(tline.deadline_time)
+            minutes = int(round((tline.deadline_time - hours) * 60))
+            # A Float like 7.9999 rounds minutes to 60 → time(h, 60) raises
+            # ValueError and (being outside the savepoint) would abort the
+            # whole department's spawn pass. Carry/clamp into a valid time.
+            if minutes >= 60:
+                hours += 1
+                minutes = 0
+            if hours >= 24:
+                hours, minutes = 23, 59
+            local_dt = tz.localize(datetime.combine(target_date, time(hours, minutes)))
+            deadline_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
+        return {
+            'name': tline.name,
+            'sequence': tline.sequence,
+            'day_part': tline.day_part,
+            'deadline_datetime': deadline_dt,
+            'photo_required': tline.photo_required,
+            'photo_instructions': tline.photo_instructions or False,
+            'manager_note': tline.manager_note or False,
+            'module_link_type': tline.module_link_type,
+            'is_ad_hoc': False,
+            'source_template_line_id': tline.id,
+            # Setup-guide snapshot (D4): each daily line keeps its own copy
+            # of every reference photo + the pins; photo sequences are
+            # preserved so pin_photo_seq needs no remapping. The
+            # filestore checksum-dedupes identical photo bytes.
+            'is_setup_guide': tline.is_setup_guide,
+            # Legacy setup-guide snapshot — only for lines still flagged
+            # is_setup_guide. After the 18.0.7.0.0 migration converts a
+            # guide (is_setup_guide→false), its retained template photos
+            # are NOT re-copied; the guided-tutorial snapshot below takes over.
+            'setup_photo_ids': ([
+                (0, 0, {
+                    'sequence': p.sequence,
+                    'image': p.image,
+                    'filename': p.filename or False,
+                })
+                for p in tline.setup_photo_ids
+            ] if tline.is_setup_guide else []),
+            # Guided-tutorial snapshot: only a PUBLISHED linked guide is
+            # copied onto the daily line (drafts stay invisible to staff).
+            # Deep copy of every step + its note-pins; filestore checksum-
+            # dedupes identical image/pdf bytes. Purely instructional.
+            # guide_source_id/name are audit only — playback reads the
+            # list-owned snapshot below, never the live guide.
+            'guide_snapshot_revision': (
+                tline.guide_id.revision if _guide_pub(tline) else 0
+            ),
+            'guide_source_id': tline.guide_id.id if _guide_pub(tline) else False,
+            'guide_source_name': tline.guide_id.name if _guide_pub(tline) else False,
+            'guide_step_ids': ([
+                (0, 0, {
+                    'sequence': s.sequence,
+                    'media_type': s.media_type,
+                    'explanation': s.explanation,
+                    'image': s.image,
+                    'image_filename': s.image_filename or False,
+                    'pdf_file': s.pdf_file,
+                    'pdf_filename': s.pdf_filename or False,
+                    'youtube_url': s.youtube_url or False,
+                    'drawings': s.drawings or False,
+                    'source_guide_step_id': s.id,
+                    'pin_ids': [
+                        (0, 0, {
+                            'sequence': pin.sequence,
+                            'pin_x': pin.pin_x,
+                            'pin_y': pin.pin_y,
+                            'note': pin.note,
+                        })
+                        for pin in s.pin_ids.sorted('sequence')
+                    ],
+                })
+                for s in tline.guide_id.step_ids.sorted('sequence')
+            ] if _guide_pub(tline) else []),
+            'subtask_ids': [
+                (0, 0, {
+                    'name': st.name,
+                    'sequence': st.sequence,
+                    'pin_photo_seq': st.pin_photo_seq,
+                    'pin_x': st.pin_x,
+                    'pin_y': st.pin_y,
+                })
+                for st in tline.subtask_ids
+            ],
+        }
+
+    @api.model
+    def _today_line_context(self, template_line_id):
+        """Shared lookup behind both today's-list calls: the line, its
+        department's list for today, and whether the line may be added.
+
+        Returns (line, task_list, reason). `reason` is None when it CAN be
+        added; otherwise it says why not, and both callers report the same
+        thing — the prompt never offers something the write would refuse.
+        """
+        Line = self.env['krawings.task.template.line'].sudo()
+        line = Line.browse(int(template_line_id))
+        if not line.exists():
+            return line, False, 'no_line'
+
+        department = line.template_id.department_id
+        if not department:
+            return line, False, 'no_department'
+
+        today = self._berlin_now().date()
+        task_list = self.env['krawings.task.list'].sudo().search([
+            ('date', '=', today),
+            ('department_id', '=', department.id),
+        ], limit=1)
+        if not task_list:
+            # Nothing spawned yet today, so there is nothing to top up: the
+            # normal spawn will include this task when it builds the list.
+            return line, False, 'no_list_today'
+
+        # Respect the task's OWN schedule. Adding a "Mondays only" task to a
+        # Wednesday list would put it on a day it is not supposed to run.
+        if not applies_on(rule_from_record(line), today):
+            return line, task_list, 'not_due_today'
+
+        already = self.env['krawings.task.list.line'].sudo().search_count([
+            ('list_id', '=', task_list.id),
+            ('source_template_line_id', '=', line.id),
+        ])
+        if already:
+            return line, task_list, 'already_on_list'
+
+        return line, task_list, None
+
+    @api.model
+    def portal_today_line_status(self, template_line_id):
+        """Can this template line still be added to today's list? Read-only.
+
+        The portal asks this right after a task is created, so it only prompts
+        when the answer is yes.
+        """
+        line, task_list, reason = self._today_line_context(template_line_id)
+        return {
+            'can_add': reason is None,
+            'reason': reason or '',
+            'date': str(task_list.date) if task_list else '',
+            'department_name': line.template_id.department_id.name if line.exists() else '',
+        }
+
+    @api.model
+    def portal_add_line_to_today(self, template_line_id):
+        """Add ONE template line to the ALREADY-SPAWNED list for today.
+
+        Deliberately re-checks every condition rather than trusting the status
+        call that preceded it: between the prompt and the tap, the same task
+        could have been added from another device, or the day could have
+        rolled over. Re-checking makes a double-tap a no-op instead of a
+        duplicate task on a list staff are working from.
+
+        The line is built by _line_snapshot_vals — the exact same snapshot the
+        nightly spawn uses — so a task added mid-day is indistinguishable from
+        one that was there at 02:00.
+        """
+        line, task_list, reason = self._today_line_context(template_line_id)
+        if reason is not None:
+            return {'added': False, 'reason': reason}
+
+        vals = self._line_snapshot_vals(line, task_list.date, BERLIN_TZ)
+        vals['list_id'] = task_list.id
+        new_line = self.env['krawings.task.list.line'].sudo().create(vals)
+        _logger.info(
+            '[krawings_task_manager] template line %s added to today\'s list %s (dept %s)',
+            line.id, task_list.id, task_list.department_id.id,
+        )
+        return {'added': True, 'reason': '', 'line_id': new_line.id}
 
     @api.model
     def portal_reorder_lines(self, template_id, ordered_ids):
