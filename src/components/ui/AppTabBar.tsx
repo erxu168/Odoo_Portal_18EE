@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTopBar } from './TopBarContext';
 import { NAV_HIDDEN_ROUTES, isRouteMatch } from './appChrome';
@@ -10,6 +10,10 @@ const TABS = [
     id: 'home',
     label: 'Home',
     href: '/',
+    // No moduleId = always shown. Every other tab names the module it opens, so
+    // a tab can never offer a module the user isn't granted (audit 2026-08-04:
+    // this bar used to show Prep/Orders/Stock to everyone regardless).
+    moduleId: undefined as string | undefined,
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#16A34A' : '#9CA3AF'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
@@ -21,6 +25,7 @@ const TABS = [
     id: 'manufacturing',
     label: 'Prep',
     href: '/manufacturing',
+    moduleId: 'production',
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#16A34A' : '#9CA3AF'} strokeWidth="2">
         <path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/>
@@ -31,6 +36,7 @@ const TABS = [
     id: 'purchase',
     label: 'Orders',
     href: '/purchase',
+    moduleId: 'purchase',
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#16A34A' : '#9CA3AF'} strokeWidth="2">
         <circle cx="9" cy="21" r="1"/>
@@ -43,6 +49,7 @@ const TABS = [
     id: 'inventory',
     label: 'Stock',
     href: '/inventory',
+    moduleId: 'inventory',
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? '#16A34A' : '#9CA3AF'} strokeWidth="2">
         <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
@@ -66,10 +73,23 @@ export default function AppTabBar() {
   const router = useRouter();
   const pathname = usePathname();
   const { hidden } = useTopBar();
+  // null = not known yet. Until it loads we show only the ungated tabs (Home)
+  // rather than guessing, so a module the user isn't granted never flashes up.
+  const [modules, setModules] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => { if (live) setModules(Array.isArray(d?.user?.modules) ? d.user.modules : []); })
+      .catch(() => { if (live) setModules([]); });
+    return () => { live = false; };
+  }, []);
 
   if (hidden || isRouteMatch(pathname, NAV_HIDDEN_ROUTES)) {
     return null;
   }
+  const visibleTabs = TABS.filter((t) => !t.moduleId || (modules ?? []).includes(t.moduleId));
   const isWide = WIDE_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
 
   function isActive(tab: typeof TABS[0]) {
@@ -85,7 +105,7 @@ export default function AppTabBar() {
     <div className={`kw-tabbar lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 ${isWide ? '' : 'max-w-lg mx-auto'}`}>
         <div className={isWide ? 'max-w-lg mx-auto' : ''}>
         <div className="flex h-16">
-          {TABS.map(tab => {
+          {visibleTabs.map(tab => {
             const active = isActive(tab);
             return (
               <button

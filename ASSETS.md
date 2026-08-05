@@ -179,7 +179,8 @@ list told only about the room keeps rendering orphans.
 | `RecordLink` | `ui/RecordLink.tsx` | Universal record drill-down | 13 |
 | `recordHref` / `RECORD_EDIT_CAP` | `lib/record-links.ts` | Canonical URL + edit capability per record type | — |
 | `BottomSheet` | `ui/BottomSheet.tsx` | Modal sheet: backdrop, title, scroll body, footer, Escape stack | 4 |
-| `AppTabBar` / `AppTopBar` / `AppDrawer` / `MainWrapper` / `appChrome` | `ui/` | Global chrome | 1 each |
+| `AppTabBar` / `AppTopBar` / `AppDrawer` / `MainWrapper` / `appChrome` | `ui/` | Global chrome. All three nav surfaces filter by the user's granted modules — the tab bar used to show Prep/Orders/Stock to everyone | 1 each |
+| `ModuleGate` | `ui/ModuleGate.tsx` | **The page gate for a whole module.** Put it in the module's `layout.tsx` and every page underneath is covered, so a screen added later cannot forget it: `<ModuleGate moduleId="rentals">{children}</ModuleGate>`. Pass an array when one folder serves two modules (`/recipes` = Chef Guide + Production Guide). Blocked users get an explanation and a way back, never a silent bounce. `tests/module-access.unit.spec.ts` FAILS if a governed module has no gate | 19 |
 | `TopBarContext` | `ui/TopBarContext.tsx` | Hide the global top bar for one screen | 10 |
 | `SortableTileGrid` | `ui/SortableTileGrid.tsx` | Drag-reorderable tiles, order persisted | 1 |
 | `DragRow` | `ui/DragRow.tsx` | dnd-kit sortable row with a drag handle | 2 |
@@ -243,7 +244,8 @@ importers.
 | `purchase-price.ts` | `lib/purchase-price.ts` | What a product costs to BUY (supplier → cost → none) |
 | `relevance-cache.ts` | `lib/relevance-cache.ts` | The catalog's per-company relevance cache + invalidation |
 | `inventory-access.ts` | `lib/inventory-access.ts` | `isUnrestrictedAdmin`, `canAccessCompany`, `companyScope` — company scoping, fail-closed |
-| `permissions.ts` | `lib/permissions.ts` | Capability registry + `roleCan` |
+| `permissions.ts` | `lib/permissions.ts` | Capability registry + `roleCan` — what you may DO inside a module |
+| `module-access.ts` | `lib/module-access.ts` | **Whether you may OPEN a module at all** — `userModuleIds`, `userCanUseModule`, `checkModuleAccess`, and `moduleForbidden('<id>')` for API routes. The pure rule lives in `lib/modules.ts` (`canUseModule`, `moduleIdsForUser`) so it unit-tests without the DB. **THE RULE: turning a module off means no access in any form** — until 2026-08-04 it only hid tiles, and typing the URL still worked (Rentals had 32 API routes with no auth at all). Fail-closed: an unknown module id denies. Use `moduleForbidden`, which RETURNS a 403 rather than throwing — a throwing guard inside an existing try/catch surfaces as a 500 |
 | `auth.ts` | `lib/auth.ts` | `requireAuth`, `hasRole` |
 | `company-context.tsx` | `lib/company-context.tsx` | `useCompany()` — the active restaurant |
 | `odoo-html.ts` | `lib/odoo-html.ts` | `plainFromOdooHtml` — Odoo notes are HTML |

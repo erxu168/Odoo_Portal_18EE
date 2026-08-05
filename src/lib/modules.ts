@@ -37,7 +37,7 @@ export interface PortalModule {
  */
 export const PORTAL_MODULES: PortalModule[] = [
   { id: 'shift-handover',   label: 'Shift Handover',   minRole: 'staff',   href: '/shift-handover', emoji: '🔄', subtitle: 'Notes & photos for the next shift' },
-  { id: 'production',       label: 'Manufacturing',    minRole: 'staff',   href: '/manufacturing',  emoji: '🏭', subtitle: 'Prep & production orders' },
+  { id: 'production',       label: 'Manufacturing',    minRole: 'manager', href: '/manufacturing',  emoji: '🏭', subtitle: 'Prep & production orders' },
   { id: 'recipes',         label: 'Chef Guide',       minRole: 'staff',   href: '/recipes',        emoji: '👨‍🍳', subtitle: 'Cooking guides', scope: 'cooking' },
   { id: 'production-guide', label: 'Production Guide', minRole: 'manager', href: '/recipes',        emoji: '🥫', subtitle: 'Sauces, prep & batches', scope: 'production' },
   { id: 'inventory',       label: 'Inventory',        minRole: 'staff',   href: '/inventory',      emoji: '📦', subtitle: 'Stock counting & tracking' },
@@ -89,4 +89,38 @@ export function parseModuleAccess(raw: string | null | undefined): string[] | nu
 export function effectiveModuleIds(role: string, moduleAccess: string | null | undefined): string[] {
   const explicit = parseModuleAccess(moduleAccess);
   return explicit != null ? explicit : defaultModuleIds(role);
+}
+
+/**
+ * The modules a user may use, including the candidate rule.
+ *
+ * A candidate (an applicant with no employee record yet) only ever gets HR.
+ * That used to be drawn by the dashboard alone; it belongs here so the server
+ * enforces the same thing the UI shows.
+ *
+ * Kept in this dependency-free file — not in module-access.ts — so it stays
+ * unit-testable without dragging in the session/database layer. Same split as
+ * permissions.ts (pure) vs auth.ts (request-bound).
+ */
+export function moduleIdsForUser(
+  role: string,
+  moduleAccess: string | null | undefined,
+  isCandidate: boolean,
+): string[] {
+  if (isCandidate) return ['hr'];
+  return effectiveModuleIds(role, moduleAccess);
+}
+
+/**
+ * May this user use this module? FAIL-CLOSED: an id that is not a real module
+ * is denied, so a typo in a guard can never open a door.
+ */
+export function canUseModule(
+  role: string,
+  moduleAccess: string | null | undefined,
+  isCandidate: boolean,
+  moduleId: string,
+): boolean {
+  if (!GOVERNED_MODULE_IDS.has(moduleId)) return false;
+  return moduleIdsForUser(role, moduleAccess, isCandidate).includes(moduleId);
 }

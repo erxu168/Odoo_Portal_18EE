@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo, PORTAL_LANG_COOKIE } from '@/lib/odoo';
 import { updateUserPreferences, getPermissionOverrides } from '@/lib/db';
-import { effectiveModuleIds } from '@/lib/modules';
+import { userModuleIds } from '@/lib/module-access';
 import { allowedActionKeysForRole } from '@/lib/permissions';
 
 /**
@@ -45,7 +45,7 @@ export async function GET() {
       is_shared_device: !!user.is_shared_device,
       avatar,
       preferences,
-      modules: effectiveModuleIds(user.role, user.module_access),
+      modules: userModuleIds(user),
       capabilities: allowedActionKeysForRole(user.role, getPermissionOverrides()),
     },
   });
