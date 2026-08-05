@@ -248,6 +248,31 @@ class KrawingsTaskTemplate(models.Model):
                 })
                 for p in tline.setup_photo_ids
             ] if tline.is_setup_guide else []),
+            **self._guide_snapshot_vals(tline),
+            'subtask_ids': [
+                (0, 0, {
+                    'name': st.name,
+                    'sequence': st.sequence,
+                    'pin_photo_seq': st.pin_photo_seq,
+                    'pin_x': st.pin_x,
+                    'pin_y': st.pin_y,
+                })
+                for st in tline.subtask_ids
+            ],
+        }
+
+
+    @api.model
+    def _guide_snapshot_vals(self, tline):
+        """Just the guided-tutorial part of a daily line's snapshot.
+
+        Split out of _line_snapshot_vals so the nightly spawn AND the manager's
+        "refresh this task's guide" produce a byte-identical copy. Refresh
+        replaces a live line's steps with this, so any divergence between the
+        two would mean a refreshed task quietly differing from the same task
+        spawned at 02:00.
+        """
+        return {
             # Guided-tutorial snapshot: only a PUBLISHED linked guide is
             # copied onto the daily line (drafts stay invisible to staff).
             # Deep copy of every step + its note-pins; filestore checksum-
@@ -282,18 +307,125 @@ class KrawingsTaskTemplate(models.Model):
                     ],
                 })
                 for s in tline.guide_id.step_ids.sorted('sequence')
-            ] if _guide_pub(tline) else []),
-            'subtask_ids': [
-                (0, 0, {
-                    'name': st.name,
-                    'sequence': st.sequence,
-                    'pin_photo_seq': st.pin_photo_seq,
-                    'pin_x': st.pin_x,
-                    'pin_y': st.pin_y,
-                })
-                for st in tline.subtask_ids
-            ],
+            ] if _guide_pub(tline) else [])
         }
+
+    @api.model
+    def _today_list_lines_for_template(self, tpl):
+        """Today's daily lines that came from THIS template, by template line id."""
+        today = self._berlin_now().date()
+        task_list = self.env['krawings.task.list'].sudo().search([
+            ('date', '=', today),
+            ('department_id', '=', tpl.department_id.id),
+        ], limit=1)
+        if not task_list:
+            return {}
+        out = {}
+        for line in task_list.line_ids:
+            if line.source_template_line_id:
+                out[line.source_template_line_id.id] = line
+        return out
+
+    @api.model
+    def portal_today_guide_status(self, template_id):
+        """Per task: is its copy on TODAY's list out of step with the library guide?
+
+        One call for the whole template, so the editor can badge each row without
+        a request per task. Read-only.
+
+        `stale` is true when today's line would get a DIFFERENT guide if it were
+        spawned now — the usual case being a guide published after 02:00, which
+        is exactly the confusion this answers ("I published it, why doesn't the
+        task show it?"). Comparing the stored revision also catches a guide that
+        was merely edited.
+        """
+        tpl = self.sudo().browse(int(template_id))
+        if not tpl.exists():
+            return {}
+        by_line = self._today_list_lines_for_template(tpl)
+        out = {}
+        for tline in tpl.line_ids:
+            live = by_line.get(tline.id)
+            if not live:
+                continue                       # not on today's list at all
+            wanted_rev = tline.guide_id.revision if _guide_pub(tline) else 0
+            # Compare WHICH guide too, not just its revision: swapping a task to
+            # a different guide that happens to sit at the same revision number
+            # would otherwise look perfectly up to date. This is the exact
+            # expression _guide_snapshot_vals writes, so a refresh clears it.
+            wanted_src = tline.guide_id.id if _guide_pub(tline) else False
+            has_now = bool(live.guide_step_ids)
+            should_have = bool(_guide_pub(tline))
+            stale = (
+                has_now != should_have
+                or live.guide_snapshot_revision != wanted_rev
+                or (live.guide_source_id.id or False) != wanted_src
+            )
+            out[str(tline.id)] = {
+                'on_today': True,
+                'stale': stale,
+                'has_guide_today': has_now,
+                'guide_published': should_have,
+            }
+        return out
+
+    @api.model
+    def portal_refresh_today_guide(self, template_line_id):
+        """Re-copy the library guide onto this task's line on TODAY's list.
+
+        Deliberately TODAY ONLY. A past day's list is the record of what staff
+        were actually shown that morning; rewriting it would falsify history.
+
+        Fail-closed and guarded, in this order:
+          1. the task must be on today's list,
+          2. the guide must be PUBLISHED with steps.
+        Only then are the old snapshot steps removed — never delete before you
+        can recreate. Both happen in one RPC, so one transaction: a failure
+        anywhere rolls the whole thing back and the line keeps the copy it had.
+
+        Staff progress is untouched: completion, proof photos and subtasks live
+        on the line, not on the guide snapshot.
+        """
+        Line = self.env['krawings.task.template.line'].sudo()
+        tline = Line.browse(int(template_line_id))
+        if not tline.exists():
+            return {'refreshed': False, 'reason': 'no_line'}
+
+        tpl = tline.template_id
+        live = self._today_list_lines_for_template(tpl).get(tline.id)
+        if not live:
+            return {'refreshed': False, 'reason': 'not_on_today'}
+        if not _guide_pub(tline):
+            # Refusing rather than clearing: silently stripping a guide staff may
+            # be halfway through is a worse surprise than doing nothing.
+            return {'refreshed': False, 'reason': 'guide_not_published'}
+        if live.completed_at:
+            # The snapshot on a FINISHED task is the only record of what that
+            # staff member was actually shown while doing it. Same reason past
+            # days are off limits: do not rewrite the evidence after the fact.
+            return {'refreshed': False, 'reason': 'already_done'}
+
+        vals = self._guide_snapshot_vals(tline)
+        try:
+            with self.env.cr.savepoint():
+                live.guide_step_ids.unlink()
+                live.write(vals)
+        except psycopg2.IntegrityError:
+            # Two managers tapped at once: the other transaction already replaced
+            # these steps, and our INSERT collides with uniq_list_seq. The work is
+            # done either way — report it instead of surfacing a raw constraint
+            # error, and the savepoint leaves the winner's snapshot intact.
+            _logger.info(
+                '[krawings_task_manager] concurrent guide refresh on list line %s — '
+                'another request won', live.id,
+            )
+            return {'refreshed': False, 'reason': 'busy'}
+        _logger.info(
+            '[krawings_task_manager] refreshed guide snapshot on list line %s '
+            'from template line %s (guide %s rev %s)',
+            live.id, tline.id, tline.guide_id.id, tline.guide_id.revision,
+        )
+        return {'refreshed': True, 'reason': ''}
 
     @api.model
     def _today_line_context(self, template_line_id):

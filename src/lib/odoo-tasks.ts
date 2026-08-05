@@ -941,6 +941,28 @@ export async function deleteAttachment(attachmentId: number): Promise<void> {
 
 // ── Spawning ──────────────────────────────────
 
+/** Per-task state of TODAY's guide copy, keyed by template line id (as a string). */
+export interface TodayGuideStatus {
+  on_today: boolean;
+  /** Today's copy differs from what a spawn would produce right now. */
+  stale: boolean;
+  has_guide_today: boolean;
+  guide_published: boolean;
+}
+
+/** Read-only: which of this template's tasks have a stale guide copy on today's list. */
+export async function todayGuideStatus(templateId: number): Promise<Record<string, TodayGuideStatus>> {
+  return getOdoo().call('krawings.task.template', 'portal_today_guide_status', [templateId]);
+}
+
+/** Re-copy the published guide onto this task's line on TODAY's list.
+ * Refuses (rather than clearing) when the guide is not published. */
+export async function refreshTodayGuide(
+  lineId: number,
+): Promise<{ refreshed: boolean; reason: string }> {
+  return getOdoo().call('krawings.task.template', 'portal_refresh_today_guide', [lineId]);
+}
+
 /** Reasons a template line cannot be added to today's already-spawned list.
  * Kept in sync with _today_line_context in task_template.py. */
 export type TodayLineReason =
