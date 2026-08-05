@@ -277,6 +277,10 @@ export default function TemplateEditPage({ params }: PageProps) {
         // Foreground replaces the whole template; a silent refresh merges only
         // lines onto the current header (never touches name/department).
         setTpl(prev => (silent && prev) ? { ...prev, lines: body.template.lines } : body.template);
+        // Re-read today's guide state with it. Fetching this only on mount meant
+        // the refresh badge never appeared in the very session that created the
+        // need for it — publish a guide, come back, and the button was missing.
+        void loadTodayGuidesRef.current?.();
       }
     } catch (e: unknown) {
       if (!silent && myFg === fgGen.current) setError(e instanceof Error ? e.message : 'Failed');
@@ -384,6 +388,65 @@ export default function TemplateEditPage({ params }: PageProps) {
       await load();
     } finally {
       setReordering(false);
+    }
+  }
+
+  /**
+   * Which tasks have a guide copy on TODAY's list that is out of date.
+   *
+   * A daily task carries a FROZEN copy of the guide taken when the list was
+   * built, so a guide published (or edited) later never reaches a list that
+   * already exists — the "I published it, why doesn't the task show it?"
+   * surprise. One call badges every row.
+   */
+  const [todayGuides, setTodayGuides] = useState<Record<string, { stale: boolean; guide_published: boolean }>>({});
+  const [refreshingLine, setRefreshingLine] = useState<number | null>(null);
+  /** Ref, not a dep: load() is declared above loadTodayGuides, and adding it as
+   *  a dependency would rebuild load() on every change and restart its fetch. */
+  const loadTodayGuidesRef = useRef<(() => Promise<void>) | null>(null);
+
+  const loadTodayGuides = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/tasks/templates/${tplId}/today-guides`);
+      const body = await res.json().catch(() => ({}));
+      setTodayGuides(res.ok && body.ok ? (body.status || {}) : {});
+    } catch {
+      setTodayGuides({});   // a badge is never worth breaking the page for
+    }
+  }, [tplId]);
+
+  useEffect(() => {
+    loadTodayGuidesRef.current = loadTodayGuides;
+    void loadTodayGuides();
+  }, [loadTodayGuides]);
+
+  async function refreshTodayGuide(lineId: number, taskName: string) {
+    if (refreshingLine) return;
+    if (!await confirm({
+      title: 'Update today\u2019s copy?',
+      // Honest about the one real side effect: replacing the copy invalidates the
+      // step ids the player is holding, so anyone reading it AT THAT MOMENT has
+      // to reopen it. Claiming "nothing is affected" would have been a lie.
+      message: `Staff doing “${taskName}” today will get the current version of the guide. Earlier days keep the version they were shown, and finished tasks are left alone. Anyone with the guide open right now will need to close and reopen it.`,
+      confirmLabel: 'Update today\u2019s copy',
+    })) return;
+
+    setRefreshingLine(lineId);
+    try {
+      const res = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/guide-refresh`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.ok) throw new Error(body.error || 'Could not update today\u2019s copy');
+      if (body.refreshed) showToast('Today\u2019s copy updated');
+      else if (body.reason === 'guide_not_published') showToast('Publish the guide first — staff never receive a draft', 'error');
+      else if (body.reason === 'not_on_today') showToast('That task isn\u2019t on today\u2019s list', 'error');
+      else if (body.reason === 'already_done') showToast('Someone already finished that task today — its copy is left as they saw it', 'info');
+      else if (body.reason === 'busy') showToast('Someone else just updated it — refreshed', 'info');
+      else showToast('Nothing to update', 'info');
+      await loadTodayGuides();
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Could not update today\u2019s copy', 'error');
+    } finally {
+      setRefreshingLine(null);
     }
   }
 
@@ -652,6 +715,31 @@ export default function TemplateEditPage({ params }: PageProps) {
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                                   ● Draft — staff can&apos;t see it yet
                                 </span>
+                              )}
+                            </div>
+                          )}
+                          {todayGuides[String(l.id)]?.stale && (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              {/* Only offer the refresh when it would actually work.
+                                  With the guide unpublished the server refuses (it
+                                  will not strip a guide staff may be mid-way
+                                  through), so offering a button there would be a
+                                  dead end — say what is happening instead. */}
+                              {(
+                                todayGuides[String(l.id)]?.guide_published ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => refreshTodayGuide(l.id, l.name)}
+                                    disabled={refreshingLine === l.id}
+                                    className="inline-flex items-center gap-1 px-2 min-h-[32px] rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 disabled:opacity-50"
+                                  >
+                                    {refreshingLine === l.id ? 'Updating…' : '↻ Today’s copy is older — update it'}
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                    Today’s list still shows the old guide · stops tomorrow
+                                  </span>
+                                )
                               )}
                             </div>
                           )}
