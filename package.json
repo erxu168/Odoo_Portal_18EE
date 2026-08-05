@@ -12,6 +12,7 @@
     "smoke:live": "SMOKE_ENV=live playwright test",
     "test:inventory": "SMOKE_ENV=staging playwright test --project=modules",
     "test:unit": "playwright test --project=unit",
+    "test:module-access": "playwright test tests/module-access.e2e.spec.ts --project=modules",
     "check:numeric": "node scripts/check-numeric-inputs.mjs"
   },
   "dependencies": {
