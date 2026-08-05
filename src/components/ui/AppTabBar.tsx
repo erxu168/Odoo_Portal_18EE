@@ -79,9 +79,12 @@ export default function AppTabBar() {
 
   useEffect(() => {
     let live = true;
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => { if (live) setModules(Array.isArray(d?.user?.modules) ? d.user.modules : []); })
+    // /api/auth/modules, NOT /api/auth/me — `me` does an Odoo RPC for the avatar
+    // and this bar renders on every page, so `me` would add an Odoo round-trip
+    // to every page load on the kitchen tablets.
+    fetch('/api/auth/modules')
+      .then((r) => (r.ok ? r.json() : { modules: [] }))
+      .then((d) => { if (live) setModules(Array.isArray(d?.modules) ? d.modules : []); })
       .catch(() => { if (live) setModules([]); });
     return () => { live = false; };
   }, []);
