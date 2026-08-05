@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTopBar } from './TopBarContext';
+import { useMyModules } from '@/lib/use-my-modules';
 import { NAV_HIDDEN_ROUTES, isRouteMatch } from './appChrome';
 
 const TABS = [
@@ -75,19 +76,7 @@ export default function AppTabBar() {
   const { hidden } = useTopBar();
   // null = not known yet. Until it loads we show only the ungated tabs (Home)
   // rather than guessing, so a module the user isn't granted never flashes up.
-  const [modules, setModules] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    // /api/auth/modules, NOT /api/auth/me — `me` does an Odoo RPC for the avatar
-    // and this bar renders on every page, so `me` would add an Odoo round-trip
-    // to every page load on the kitchen tablets.
-    fetch('/api/auth/modules')
-      .then((r) => (r.ok ? r.json() : { modules: [] }))
-      .then((d) => { if (live) setModules(Array.isArray(d?.modules) ? d.modules : []); })
-      .catch(() => { if (live) setModules([]); });
-    return () => { live = false; };
-  }, []);
+  const modules = useMyModules();
 
   if (hidden || isRouteMatch(pathname, NAV_HIDDEN_ROUTES)) {
     return null;

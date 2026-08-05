@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useCanSeeModule } from '@/lib/use-my-modules';
 import { TaskListLine, TaskSubtask, ModuleLink, SubtaskToggleResult } from '@/lib/odoo-tasks';
 import SubtaskList from './SubtaskList';
 import AttachmentList from './AttachmentList';
@@ -45,12 +46,28 @@ const MODULE_HREFS: Record<ModuleLink, string | null> = {
   pos: null,
   manufacturing: '/manufacturing',
 };
+/**
+ * The module id behind each link, so the shortcut is hidden when this user is
+ * not granted that module. Without it a manager could point a staff task at
+ * Manufacturing and the "Open Manufacturing" button would land on the
+ * "You don't have access" screen. Note the id is `production`, not
+ * `manufacturing` — see src/lib/modules.ts.
+ */
+const MODULE_ACCESS_IDS: Record<ModuleLink, string | null> = {
+  none: null,
+  purchase: 'purchase',
+  inventory: 'inventory',
+  pos: null,
+  manufacturing: 'production',
+};
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
+  // Shared, process-wide cached — many rows on screen still make ONE request.
+  const canSeeModule = useCanSeeModule();
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
   const [showGuide, setShowGuide]   = useState(false);
   // Count of photos uploaded against this task — derived from runtime-scoped image attachments
@@ -149,7 +166,10 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   }
 
   const linkLabel = task.module_link_type !== 'none' ? MODULE_LABELS[task.module_link_type] : '';
-  const linkHref = task.module_link_type !== 'none' ? MODULE_HREFS[task.module_link_type] : null;
+  const linkModuleId = task.module_link_type !== 'none' ? MODULE_ACCESS_IDS[task.module_link_type] : null;
+  const linkHref = task.module_link_type !== 'none' && (!linkModuleId || canSeeModule(linkModuleId))
+    ? MODULE_HREFS[task.module_link_type]
+    : null;
 
   return (
     <>
