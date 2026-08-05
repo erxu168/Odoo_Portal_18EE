@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { spawnTodayLists } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST() {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireCapability('tasks.template.manage');
     await spawnTodayLists();

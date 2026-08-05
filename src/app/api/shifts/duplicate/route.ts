@@ -18,6 +18,7 @@ import {
 } from '@/lib/shifts-db';
 import { berlinISOWeekKey, berlinParts, weekKeyDays } from '@/lib/shifts-time';
 import { isValidDateStr, requireManagerCompany, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   addDaysISO,
   planDuplicates,
@@ -53,6 +54,9 @@ function toSpec(
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

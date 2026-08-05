@@ -22,9 +22,13 @@ import {
   updateSessionStatus,
 } from '@/lib/inventory-db';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
+import { moduleForbidden } from '@/lib/module-access';
 
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {

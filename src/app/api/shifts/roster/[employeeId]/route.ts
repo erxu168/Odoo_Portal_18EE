@@ -15,10 +15,14 @@ import { fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odoo';
 import { currentWeekKey, offsetWeekKey } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError } from '../../_manager';
 import { isPromotion } from '@/lib/staffing-logic';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function PUT(req: NextRequest, { params }: { params: { employeeId: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

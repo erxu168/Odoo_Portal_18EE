@@ -10,12 +10,16 @@ import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { setPhotoFlag } from '@/lib/task-review';
 import { notifyEmployee } from '@/lib/shifts-notify';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_REASON = 200;
 
 export async function PUT(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const allowed = parseCompanyIds(user.allowed_company_ids);

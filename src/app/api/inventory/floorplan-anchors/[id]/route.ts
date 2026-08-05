@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inventory-floorplan/access';
 import { initFloorplanTables, getAnchor, getRevision, getFloor, updateAnchorPosition, updateAnchorPin, deleteAnchor } from '@/lib/inventory-floorplan/db';
 import { validStoredPolygon } from '@/lib/inventory-floorplan/geometry';
+import { moduleForbidden } from '@/lib/module-access';
 
 function loadAuthorized(idRaw: string, user: Parameters<typeof canAccessCompany>[0]) {
   const id = parseInt(idRaw, 10);
@@ -24,6 +25,9 @@ function loadAuthorized(idRaw: string, user: Parameters<typeof canAccessCompany>
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();
@@ -49,6 +53,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
  * means a bug in the cosmetic path can never relocate a real spot.
  */
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();
@@ -89,6 +96,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 }
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

@@ -7,6 +7,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import { listCountLocations, initInventoryTables } from '@/lib/inventory-db';
 import { locationPathLabel } from '@/lib/location-tree';
 import { berlinToday, isCanonicalDay } from '@/lib/berlin-date';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   getStorageItem, getStorageItemView, updateStorageItem, softDeleteStorageItem,
   listLookups, getLookup, listPhotos, parseAmount,
@@ -14,6 +15,9 @@ import {
 
 // GET — one storage item's full detail (for the tap-to-open sheet).
 export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.view);
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();
@@ -29,6 +33,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
 // PATCH — edit a storage item (name / amount / unit / place / use-first / prepared-on).
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();
@@ -98,6 +105,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 // DELETE — remove an item outright (a mistake, not "used up"). Any staff on shift.
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

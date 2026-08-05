@@ -16,6 +16,7 @@ import { getOdoo } from '@/lib/odoo';
 import { buildProductVals } from '@/lib/product-create';
 import { recordPortalCreatedProduct, initInventoryTables } from '@/lib/inventory-db';
 import { invalidateRelevance } from '@/lib/relevance-cache';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * A category for the rare caller that sends none.
@@ -36,6 +37,9 @@ async function defaultCategId(): Promise<number> {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.product.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

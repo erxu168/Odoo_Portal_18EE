@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getDashboard } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET() {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.manager.view');
     const companies = parseCompanyIds(user.allowed_company_ids);

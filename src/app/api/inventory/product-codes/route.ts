@@ -38,10 +38,14 @@ import { getOdoo } from '@/lib/odoo';
 import { isUnrestrictedAdmin } from '@/lib/inventory-access';
 import { isSameOrigin } from '@/lib/csrf';
 import { houseCode } from '@/lib/product-code';
+import { moduleForbidden } from '@/lib/module-access';
 
 type Skip = { product_id: number; name: string; reason: string };
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {

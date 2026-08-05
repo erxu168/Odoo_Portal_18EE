@@ -8,10 +8,14 @@ import { NextResponse } from 'next/server';
 import { requireManagerCompany, serverError } from '../_manager';
 import { createPattern, listPatterns } from '@/lib/shifts-db';
 import { parsePatternLines } from './_validate';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;
@@ -23,6 +27,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

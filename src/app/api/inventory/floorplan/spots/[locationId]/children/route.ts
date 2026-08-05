@@ -14,10 +14,14 @@ import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inven
 import { initInventoryTables, getCountLocation, listCountLocations, createCountLocation } from '@/lib/inventory-db';
 import { normalizeCode } from '@/lib/inventory-floorplan/geometry';
 import { getDb } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MAX_CHILDREN = 40;
 
 export async function POST(request: Request, { params }: { params: { locationId: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initInventoryTables();

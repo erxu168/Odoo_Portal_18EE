@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/hr/applicant/status
@@ -23,6 +24,9 @@ function mapStageName(name: string): string {
 }
 
 export async function GET() {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user) {

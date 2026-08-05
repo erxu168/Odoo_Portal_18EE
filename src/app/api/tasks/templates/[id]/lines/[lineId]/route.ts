@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { upsertTemplateLine, deleteTemplateLine, templateLineBelongsToTemplate, getTemplateLineGuideMeta, type DayPart, type ModuleLink } from '@/lib/odoo-tasks';
 import { assertTemplateCompany } from '@/lib/tasks-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const templateId = parseInt(params.id, 10);
@@ -63,6 +67,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const templateId = parseInt(params.id, 10);

@@ -16,6 +16,7 @@ import { notifyEmployee } from '@/lib/shifts-notify';
 import { fetchEmployees, fetchSlot } from '@/lib/shifts-odoo';
 import { fmtDay, fmtTimeRange } from '@/lib/shifts-time';
 import type { ShiftSlot, SlotSnapshot } from '@/types/shifts';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,9 @@ function slotSummary(slot: ShiftSlot | null, snap: SlotSnapshot) {
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

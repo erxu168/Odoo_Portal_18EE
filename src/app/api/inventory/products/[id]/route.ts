@@ -17,8 +17,12 @@ import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, describeCountWorkForProduct, deleteProductPortalData, isDraftProduct, describeProductUsage } from '@/lib/inventory-db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 import { taxDiffCommands } from '@/lib/product-tax';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
@@ -54,6 +58,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
@@ -343,6 +350,9 @@ function companyDenial(
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
@@ -433,6 +443,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
  * longer on the list. Refused here before Odoo is even asked.
  */
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {

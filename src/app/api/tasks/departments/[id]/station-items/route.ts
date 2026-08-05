@@ -3,6 +3,7 @@ import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getDepartmentCompany } from '@/lib/odoo-tasks';
 import { listStationItems, addStationItem } from '@/lib/setup-guide';
+import { moduleForbidden } from '@/lib/module-access';
 
 /** Fail closed: the department's company must be within the user's allowed set.
  * An empty allowed set means "all companies" (admin), matching the rest of the module. */
@@ -14,6 +15,9 @@ async function assertDeptAllowed(deptId: number, allowed: number[]): Promise<voi
 
 // GET — list active catalog items for a department (any authenticated user in-company).
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const deptId = parseInt(params.id, 10);
@@ -30,6 +34,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 // POST — add (or reactivate) a catalog item. Manager/admin only, company-scoped.
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const deptId = parseInt(params.id, 10);

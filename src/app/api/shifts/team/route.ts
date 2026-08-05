@@ -19,6 +19,7 @@ import {
 } from '@/lib/shifts-odoo';
 import { currentWeekKey } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ function round2(n: number): number {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;

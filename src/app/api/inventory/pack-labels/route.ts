@@ -14,11 +14,15 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, listPackLabels, addPackLabel, deletePackLabel, renamePackLabel } from '@/lib/inventory-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // GLOBAL list (all restaurants share it) → an admin must make the change.
 const ADMIN_ONLY = 'Only an admin can change count-by units — they are shared across all restaurants';
 
 export async function GET() {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -26,6 +30,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'admin')) return NextResponse.json({ error: ADMIN_ONLY }, { status: 403 });
@@ -39,6 +46,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'admin')) return NextResponse.json({ error: ADMIN_ONLY }, { status: 403 });
@@ -59,6 +69,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'admin')) return NextResponse.json({ error: ADMIN_ONLY }, { status: 403 });

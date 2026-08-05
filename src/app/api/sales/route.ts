@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
 import { computeSales, type Range } from '@/lib/waj-sales';
 import { cacheGet, cacheSet, cacheKey } from '@/lib/report-cache';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Short TTLs so the client's ~3-min auto-refresh shows movement on live periods,
 // while still shielding Odoo. Past periods rarely change but are cheap to recache.
@@ -21,6 +22,9 @@ function validAnchor(s: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('sales');
+  if (denied) return denied;
+
   try {
     requireRole('manager');
 

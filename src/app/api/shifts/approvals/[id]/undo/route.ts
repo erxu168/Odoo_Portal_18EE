@@ -14,12 +14,16 @@ import { notifyEmployee } from '@/lib/shifts-notify';
 import { fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
 import { berlinISOWeekKey } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError, slotSummaryPayload } from '../../../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 const UNDO_WINDOW_MS = 24 * 3_600_000;
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

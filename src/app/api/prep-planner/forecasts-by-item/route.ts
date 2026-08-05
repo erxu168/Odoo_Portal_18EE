@@ -21,8 +21,12 @@ import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getLatestPrepItemForecasts } from '@/lib/prep-planner-mapping-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

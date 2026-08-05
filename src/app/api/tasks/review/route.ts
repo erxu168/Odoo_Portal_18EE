@@ -8,12 +8,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { readReviewFeed } from '@/lib/task-review';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const allowed = parseCompanyIds(user.allowed_company_ids);

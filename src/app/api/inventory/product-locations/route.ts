@@ -19,8 +19,12 @@ import {
   getSession, todayStr,
 } from '@/lib/inventory-db';
 import { canAccessCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -60,6 +64,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();

@@ -19,6 +19,7 @@ import { lazyExpireIfDue } from '@/lib/shifts-guards';
 import { employeeWeekHours, fetchEmployees, fetchSlot } from '@/lib/shifts-odoo';
 import { berlinISOWeekKey, durationHours, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
 import type { CoverRequest, ShiftSlot } from '@/types/shifts';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,9 @@ function slotSummary(start: string, end: string, roleName: string) {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

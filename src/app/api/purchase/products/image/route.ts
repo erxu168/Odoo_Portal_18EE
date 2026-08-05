@@ -5,8 +5,12 @@
  */
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return new Response('Unauthorized', { status: 401 });
 

@@ -33,6 +33,7 @@ import {
 import { berlinISOWeekKey, berlinParts, fmtDay, fmtTimeRange, odooToDate, weekKeyDays } from '@/lib/shifts-time';
 import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
 import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,9 @@ function round2(n: number): number {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

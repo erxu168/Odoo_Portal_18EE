@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * Resolve the target employee for a bank read/write.
@@ -38,6 +39,9 @@ async function resolveTarget(odoo: ReturnType<typeof getOdoo>, employeeIdRaw: un
 }
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const odoo = getOdoo();
     const employeeId = new URL(req.url).searchParams.get('employee_id');
@@ -68,6 +72,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const { iban, accountHolder, employee_id } = await req.json();
     const hasIban = typeof iban === 'string' && iban.trim() !== '';

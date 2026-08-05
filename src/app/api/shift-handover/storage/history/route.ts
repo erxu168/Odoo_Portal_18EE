@@ -4,6 +4,7 @@ import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/
 import { CAP } from '@/lib/shift-handover/access';
 import { berlinToday } from '@/lib/berlin-date';
 import { listClearedStorage } from '@/lib/shift-handover/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const WINDOW_DAYS = 7;
 
@@ -15,6 +16,9 @@ function berlinDayOf(iso: string): string {
 // GET — items cleared from "In storage now" over the last 7 Berlin days, for the
 // history screen. Read-only; nothing is deleted, so it can always look back a week.
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.view);
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

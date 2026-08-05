@@ -20,10 +20,14 @@ import {
   initInventoryTables, getCountLocation, getLocationsForProduct, setProductsSpotsBulk,
 } from '@/lib/inventory-db';
 import { canAccessCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MAX_PER_CALL = 200;
 
 export async function POST(request: Request, { params }: { params: { locationId: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();

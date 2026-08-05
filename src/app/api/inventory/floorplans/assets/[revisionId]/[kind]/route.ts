@@ -15,10 +15,14 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { initFloorplanTables, getRevision, getFloor } from '@/lib/inventory-floorplan/db';
 import { getDb } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const RELPATH_RE = /^floorplans\/[a-z0-9_.-]+$/i;
 
 export async function GET(_request: Request, { params }: { params: { revisionId: string; kind: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.view);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

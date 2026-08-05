@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUpcomingHolidays, computeSupplierDeadline } from '@/lib/purchase-holidays';
 import { listSuppliers } from '@/lib/purchase-db';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 function parseDays(json: string): string[] {
   try {
@@ -22,6 +23,9 @@ function parseDays(json: string): string[] {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const sp = req.nextUrl.searchParams;

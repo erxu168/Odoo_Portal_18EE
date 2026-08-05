@@ -17,9 +17,13 @@ import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
 import { allowedProductIds } from '@/lib/inventory-scope';
 import { logAudit } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -70,6 +74,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
@@ -200,6 +207,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

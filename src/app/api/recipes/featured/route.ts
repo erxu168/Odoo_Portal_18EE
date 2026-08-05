@@ -9,6 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   initRecipeTables, listFeatured, addFeatured, removeFeatured,
 } from '@/lib/recipe-db';
@@ -18,6 +19,9 @@ function normMode(raw: unknown): 'cooking' | 'production' {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireAuth();
     initRecipeTables();
@@ -43,6 +47,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     const user = requireCapability('recipes.featured.manage');
     initRecipeTables();
@@ -68,6 +75,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireCapability('recipes.featured.manage');
     initRecipeTables();

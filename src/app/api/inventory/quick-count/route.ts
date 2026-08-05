@@ -13,6 +13,7 @@ import { companyScope, canAccessCompany } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Lazily stamp legacy quick counts (missing a company) from their Odoo location's
 // company. Best-effort: if Odoo is unreachable the quarantine in listQuickCounts
@@ -31,6 +32,9 @@ async function backfillQuickCountCompanies(): Promise<void> {
 
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -57,6 +61,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

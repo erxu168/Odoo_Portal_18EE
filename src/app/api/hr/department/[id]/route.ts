@@ -9,10 +9,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const EDITABLE = new Set(['name', 'company_id', 'active']);
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const id = parseInt(params.id, 10);

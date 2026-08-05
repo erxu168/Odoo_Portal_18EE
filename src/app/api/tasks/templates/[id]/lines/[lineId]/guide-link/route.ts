@@ -3,6 +3,7 @@ import { requireRole, AuthError, type PortalUser } from '@/lib/auth';
 import { templateLineBelongsToTemplate, getTemplateCompany, getGuideScope } from '@/lib/odoo-tasks';
 import { getTemplateLineGuideLink, attachGuideToTemplateLine } from '@/lib/task-guide';
 import { userCompanyAllowed } from '@/lib/company-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,9 @@ async function assertScope(user: PortalUser, templateId: number, lineId: number)
 
 // GET — which library guide (if any) this task links, + its headline state.
 export async function GET(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const p = ids(params);
@@ -43,6 +47,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
 // PUT — attach ({ guide_id: <id> }) or detach ({ guide_id: null }) a library guide.
 // Never edits guide content. The guide must be in the same company as the task.
 export async function PUT(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const p = ids(params);

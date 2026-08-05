@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireManagerCompany, serverError } from '../../_manager';
 import { deletePattern, getPattern, replacePatternLines } from '@/lib/shifts-db';
 import { parsePatternLines } from '../_validate';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,9 @@ function parseId(raw: string): number | null {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
   if (!auth.ok) return auth.res;
   try {
@@ -31,6 +35,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);
@@ -54,6 +61,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
   if (!auth.ok) return auth.res;
   try {

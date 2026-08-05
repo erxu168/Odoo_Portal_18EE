@@ -4,6 +4,7 @@ import { parseCompanyIds } from '@/lib/db';
 import { getGuideScope } from '@/lib/odoo-tasks';
 import { getStepMedia } from '@/lib/task-guide';
 import { userCompanyAllowed } from '@/lib/company-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { guideId: string; stepId: string } },
 ) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const guideId = parseInt(params.guideId, 10);

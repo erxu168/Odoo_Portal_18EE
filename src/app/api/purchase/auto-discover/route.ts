@@ -31,6 +31,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { getDb, parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   listSuppliers, createSupplier, getSupplier,
   getGuide, createGuide, addGuideItem,
@@ -55,6 +56,9 @@ interface CompanyResult {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.suppliers.seed', getPermissionOverrides())) return NextResponse.json({ error: 'Admin only' }, { status: 403 });

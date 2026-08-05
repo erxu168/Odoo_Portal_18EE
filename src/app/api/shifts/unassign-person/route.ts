@@ -14,10 +14,14 @@ import { berlinISOWeekKey } from '@/lib/shifts-time';
 import type { ShiftSlot } from '@/types/shifts';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
 import { unassignSlots } from '../_unassign';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

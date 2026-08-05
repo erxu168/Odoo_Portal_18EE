@@ -14,10 +14,14 @@ import { createSickReport, getShiftSettings } from '@/lib/shifts-db';
 import { notifyManagers } from '@/lib/shifts-notify';
 import { fetchSlot } from '@/lib/shifts-odoo';
 import { fmtDay, fmtTimeRange, odooToDate } from '@/lib/shifts-time';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

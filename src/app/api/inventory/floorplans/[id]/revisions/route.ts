@@ -18,6 +18,7 @@ import {
   createFloorDocument, findDocumentBySha, createRevision, insertCandidates,
 } from '@/lib/inventory-floorplan/db';
 import { validStoredPolygon } from '@/lib/inventory-floorplan/geometry';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 const MAX_RASTER_BYTES = 15 * 1024 * 1024;
@@ -66,6 +67,9 @@ function rasterDims(buf: Buffer, mime: 'image/webp' | 'image/png'): { w: number;
 const KIND_SET = new Set(['spot', 'room', 'other']);
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

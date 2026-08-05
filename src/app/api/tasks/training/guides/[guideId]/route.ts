@@ -3,6 +3,7 @@ import { requireAuth, AuthError, type PortalUser } from '@/lib/auth';
 import { getGuideScope } from '@/lib/odoo-tasks';
 import { readLibraryGuide } from '@/lib/task-guide';
 import { userCompanyAllowed } from '@/lib/company-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,9 @@ async function assertStaffScope(user: PortalUser, guideId: number): Promise<void
 // GET — a published guide's steps for the staff Training player (no media bytes;
 // those come from the per-step media route).
 export async function GET(_req: NextRequest, { params }: { params: { guideId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const id = parseInt(params.guideId, 10);

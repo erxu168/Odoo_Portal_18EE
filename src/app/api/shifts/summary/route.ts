@@ -18,10 +18,14 @@ import { lazyExpireIfDue } from '@/lib/shifts-guards';
 import { fetchEmployees, fetchFutureAssignedSlots, fetchSlot, meetsMinSkill } from '@/lib/shifts-odoo';
 import { nowOdooUtc } from '@/lib/shifts-time';
 import type { CoverRequest, ShiftEmployee, ShiftSettings, ShiftSlot } from '@/types/shifts';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

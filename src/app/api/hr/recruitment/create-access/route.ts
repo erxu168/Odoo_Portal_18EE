@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { createApplicantPortalAccess } from '@/lib/hr/recruitment';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * POST /api/hr/recruitment/create-access
@@ -9,6 +10,9 @@ import { createApplicantPortalAccess } from '@/lib/hr/recruitment';
  * Body: { applicant_id: number }
  */
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user || !hasRole(user, 'manager')) {

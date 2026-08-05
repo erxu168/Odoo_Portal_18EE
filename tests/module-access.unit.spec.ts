@@ -77,7 +77,9 @@ test('every module with pages is gated by a ModuleGate layout', () => {
     music: 'music',
     credentials: 'admin/credentials',
     tablets: 'admin/tablets',
-    termination: 'hr/termination',
+    // The registry's href is /hr/termination, but that page only redirects here —
+    // this is where the real screens (and therefore the gate) live.
+    termination: 'termination',
   };
 
   // Every governed module must appear above — a new module forces a decision here.
@@ -93,6 +95,52 @@ test('every module with pages is gated by a ModuleGate layout', () => {
     // Either JSX quote style: moduleId="tasks" or moduleId={'tasks'}.
     const gatesOnId = src.includes(`'${id}'`) || src.includes(`"${id}"`);
     expect(gatesOnId, `${folder}/layout.tsx does not gate on module '${id}'`).toBe(true);
+  }
+});
+
+/**
+ * Routes that must stay reachable WITHOUT their module. Each is a real flow that
+ * breaks silently if someone "tidies up" by adding the guard everywhere.
+ */
+test('the deliberately-open routes stay open', () => {
+  const MUST_NOT_BE_GATED: Array<[string, string]> = [
+    ['src/app/api/shifts/confirm/email/route.ts',
+     'the shift-confirm EMAIL LINK — followed with no session at all (it is a public path in middleware)'],
+    ['src/app/api/prep-planner/cook-plan/route.ts',
+     'the cook plan pops up on EVERY user’s home screen; Prep Planner itself stays manager-only'],
+    ['src/app/api/prep-planner/cook-plan/ack/route.ts',
+     'how a cook acknowledges that plan — staff self-service'],
+  ];
+  for (const [file, why] of MUST_NOT_BE_GATED) {
+    const full = path.join(ROOT, file);
+    expect(existsSync(full), `${file} is missing`).toBe(true);
+    expect(readFileSync(full, 'utf8'), `${file} must NOT be module-gated: ${why}`)
+      .not.toContain('moduleForbidden');
+  }
+});
+
+/**
+ * Endpoints one module owns but another legitimately reads. Gating them to the
+ * owner alone silently breaks the other module's screen — that is exactly how
+ * the staff Label Printer nearly shipped broken.
+ */
+test('shared endpoints still admit the modules that read them', () => {
+  const SHARED: Array<[string, string[]]> = [
+    ['src/app/api/boms/route.ts',                            ['recipes', 'labels']],
+    ['src/app/api/boms/[id]/route.ts',                       ['recipes', 'labels']],
+    ['src/app/api/manufacturing-orders/pick-list/route.ts',  ['inventory']],
+    ['src/app/api/purchase/suppliers/route.ts',              ['credentials']],
+    ['src/app/api/shifts/templates/route.ts',                ['inventory']],
+    ['src/app/api/inventory/products/route.ts',              ['products']],
+    ['src/app/api/inventory/categories/route.ts',            ['products']],
+    ['src/app/api/inventory/count-locations/route.ts',       ['shift-handover']],
+  ];
+  for (const [file, mustAllow] of SHARED) {
+    const src = readFileSync(path.join(ROOT, file), 'utf8');
+    for (const id of mustAllow) {
+      expect(src, `${file} must still allow '${id}' — a screen in that module reads it`)
+        .toContain(`'${id}'`);
+    }
   }
 });
 

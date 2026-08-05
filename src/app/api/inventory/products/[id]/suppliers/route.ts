@@ -13,6 +13,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo, type OdooClient } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 function authed() {
   const user = requireAuth();
@@ -37,6 +38,9 @@ async function templateOf(odoo: OdooClient, productId: number): Promise<number |
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const a = authed(); if (a.error) return a.error;
   const productId = pid(params); if (!productId) return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
   try {
@@ -53,6 +57,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const a = authed(); if (a.error) return a.error;
   const productId = pid(params); if (!productId) return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
   const body = await request.json();
@@ -76,6 +83,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const a = authed(); if (a.error) return a.error;
   const productId = pid(params); if (!productId) return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
   const body = await request.json();
@@ -107,6 +117,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const a = authed(); if (a.error) return a.error;
   const productId = pid(params); if (!productId) return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
   const supId = parseInt(new URL(request.url).searchParams.get('supplierinfo_id') || '0', 10);

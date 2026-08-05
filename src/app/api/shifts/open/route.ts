@@ -22,6 +22,7 @@ import { berlinISOWeekKey, berlinParts, currentWeekKey, durationHours, nowOdooUt
 import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
 import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
 import type { ShiftSlot } from '@/types/shifts';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,9 @@ function mapSlot(row: OdooRow): ShiftSlot {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

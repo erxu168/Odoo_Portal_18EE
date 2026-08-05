@@ -11,6 +11,7 @@ import { requireManagerCompany, serverError } from '../_manager';
 import { getCompanySetting, setCompanySetting } from '@/lib/db';
 import { fetchOrders } from '@/lib/report-queries';
 import { berlinParts, nowOdooUtc } from '@/lib/shifts-time';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,9 @@ function dowOfDate(dateStr: string): number {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;
@@ -116,6 +120,9 @@ export async function GET(request: Request) {
 
 /** PUT — save the staffing dials (orders per person / minimum staff) per company. */
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

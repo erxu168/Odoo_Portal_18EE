@@ -13,6 +13,7 @@ import { buildManifest, placedProductIds, type InjectedProduct } from '@/lib/inv
 import { findAnchorForLocationOrAncestor, initFloorplanTables } from '@/lib/inventory-floorplan/db';
 import { getCountLocation } from '@/lib/inventory-db';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 async function fetchProducts(ids: number[]): Promise<InjectedProduct[] | null> {
   if (ids.length === 0) return [];
@@ -34,6 +35,9 @@ async function fetchProducts(ids: number[]): Promise<InjectedProduct[] | null> {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.view);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 import { canAccessCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/purchase/guides/:id
@@ -13,6 +14,9 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {

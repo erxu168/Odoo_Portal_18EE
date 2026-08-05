@@ -11,8 +11,12 @@ import {
   initInventoryTables, getSession, getSessionEntries, getSessionItems, getProductCountHistory,
 } from '@/lib/inventory-db';
 import { canAccessSession, canAccessCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();

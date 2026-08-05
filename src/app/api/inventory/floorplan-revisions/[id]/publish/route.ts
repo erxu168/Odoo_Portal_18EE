@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inventory-floorplan/access';
 import { initFloorplanTables, getRevision, getFloor } from '@/lib/inventory-floorplan/db';
 import { publishRevision } from '@/lib/inventory-floorplan/publish';
+import { moduleForbidden } from '@/lib/module-access';
 
 const HTTP_BY_CODE: Record<string, number> = {
   not_found: 404,
@@ -31,6 +32,9 @@ const MESSAGE_BY_CODE: Record<string, string> = {
 };
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

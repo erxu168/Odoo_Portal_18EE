@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/hr/filters
@@ -8,6 +9,9 @@ import { getOdoo } from '@/lib/odoo';
  * Only returns departments that have at least one active employee.
  */
 export async function GET() {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user || !hasRole(user, 'manager')) {

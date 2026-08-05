@@ -7,8 +7,12 @@
 import { NextResponse } from 'next/server';
 import { requireManagerCompany, serverError } from '../_manager';
 import { computePresence } from '@/lib/shifts-presence';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;

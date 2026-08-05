@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getDb } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 interface CatalogRow {
   item_id: number;
@@ -19,6 +20,9 @@ interface CatalogRow {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

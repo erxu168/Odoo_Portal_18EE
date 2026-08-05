@@ -4,6 +4,7 @@ import { getGuideScope } from '@/lib/odoo-tasks';
 import { readLibraryGuide, saveLibraryGuide, deleteLibraryGuide } from '@/lib/task-guide';
 import { sanitizeSteps } from '@/lib/task-guide-validate';
 import { userCompanyAllowed } from '@/lib/company-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,9 @@ async function assertScope(user: PortalUser, id: number): Promise<void> {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { guideId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const id = guideId(params);
@@ -41,6 +45,9 @@ export async function GET(_req: NextRequest, { params }: { params: { guideId: st
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { guideId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const id = guideId(params);
@@ -74,6 +81,9 @@ export async function PUT(req: NextRequest, { params }: { params: { guideId: str
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { guideId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const id = guideId(params);

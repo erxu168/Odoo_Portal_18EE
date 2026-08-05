@@ -13,8 +13,12 @@ import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem
 import { initInventoryTables, getProductPar, setProductPar } from '@/lib/inventory-db';
 import { canAccessPurchaseLocation, isUnrestrictedAdmin } from '@/lib/purchase-access';
 import { getDb } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -62,6 +66,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -108,6 +115,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -198,6 +208,9 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

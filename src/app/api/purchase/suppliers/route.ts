@@ -16,8 +16,12 @@ import { listSuppliers, createSupplier, updateSupplier, getSupplier } from '@/li
 import { getDb } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { isUnrestrictedAdmin } from '@/lib/purchase-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden(['purchase', 'credentials']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -50,6 +54,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['purchase', 'credentials']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.supplier.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -114,6 +121,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden(['purchase', 'credentials']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.supplier.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -130,6 +140,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden(['purchase', 'credentials']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   // Suppliers are SHARED (location_id=0) and delete hard-removes their guides

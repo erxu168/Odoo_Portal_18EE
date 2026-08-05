@@ -3,8 +3,12 @@ import { requireAuth, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { toggleSubtask } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; sid: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     // On a shared tablet, credit the "Working as" person (PIN actor), not the

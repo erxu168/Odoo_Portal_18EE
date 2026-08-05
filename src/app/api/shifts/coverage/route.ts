@@ -9,10 +9,14 @@ import { fetchEmployees, fetchWeekSlots, MIN_WAGE_EUR } from '@/lib/shifts-odoo'
 import { confirmedSlotIds } from '@/lib/shifts-db';
 import { berlinParts, odooToDate, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;

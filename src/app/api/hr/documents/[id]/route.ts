@@ -3,6 +3,7 @@ import { getCurrentUser, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 import { canAccessEmployee } from '@/lib/hr-access';
 import { DOCUMENT_TYPES } from '@/types/hr';
+import { moduleForbidden } from '@/lib/module-access';
 
 
 /** Maps doc type key → employee field that tracks admin confirmation */
@@ -21,6 +22,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user || !user.employee_id) {
@@ -77,6 +81,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user || !user.employee_id) {

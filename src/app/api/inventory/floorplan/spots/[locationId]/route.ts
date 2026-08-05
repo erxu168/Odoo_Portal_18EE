@@ -11,8 +11,12 @@ import { getCountLocation, listCountLocations, listProductImageIds, getPlacement
 import { locationPath } from '@/lib/location-tree';
 import { getDb } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(_request: Request, { params }: { params: { locationId: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.view);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();
@@ -87,6 +91,9 @@ export async function GET(_request: Request, { params }: { params: { locationId:
  * reason, because those records point at it by id and would be orphaned.
  */
 export async function DELETE(_request: Request, { params }: { params: { locationId: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

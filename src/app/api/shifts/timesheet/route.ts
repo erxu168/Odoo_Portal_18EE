@@ -6,8 +6,12 @@
 import { NextResponse } from 'next/server';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
 import { fetchWeekTimesheet } from '@/lib/shifts-timesheet';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getTemplateSetupPhoto, getSetupPhotoBySeq } from '@/lib/setup-guide';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export const dynamic = 'force-dynamic';
 // in the addon. `?seq=N` picks one photo of a multi-photo guide (default: first).
 // Used by the manager editor/preview. Any authenticated user in the template's company.
 export async function GET(req: NextRequest, { params }: { params: { lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const lineId = parseInt(params.lineId, 10);

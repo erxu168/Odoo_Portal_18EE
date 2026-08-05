@@ -8,8 +8,12 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOrCreateCart, upsertCartItem, getAllCartsForLocation, clearCart, getCartWithItems, removeCartItem, getCartLocation } from '@/lib/purchase-db';
 import { canAccessPurchaseLocation } from '@/lib/purchase-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -39,6 +43,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -58,6 +65,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

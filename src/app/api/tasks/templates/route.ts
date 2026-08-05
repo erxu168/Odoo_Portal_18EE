@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listTemplates, createTemplate } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const includeArchived = req.nextUrl.searchParams.get('include_archived') === '1';
@@ -18,6 +22,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireCapability('tasks.template.manage');
     const body = await req.json();

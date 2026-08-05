@@ -10,6 +10,7 @@ import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds, setUserEmail, getUserByEmployeeId } from '@/lib/db';
 import { EMPLOYEE_READ_FIELDS } from '@/types/hr';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Essentials — coerced (company/department -> number, active -> boolean).
 // work_phone is deliberately NOT here — it is written separately (see PATCH) so an
@@ -53,6 +54,9 @@ async function scopeEmployee(odoo: ReturnType<typeof getOdoo>, employeeId: numbe
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);
@@ -75,6 +79,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);

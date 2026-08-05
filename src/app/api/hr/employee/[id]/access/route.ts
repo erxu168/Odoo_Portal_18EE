@@ -24,6 +24,7 @@ import {
   type PortalUser,
 } from '@/lib/db';
 import { createStaffInvite, inviteEmailNotice } from '@/lib/hr/invites';
+import { moduleForbidden } from '@/lib/module-access';
 
 interface OdooEmp {
   id: number;
@@ -84,6 +85,9 @@ async function resolveScoped(idParam: string, user: PortalUser) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const r = await resolveScoped(params.id, user);
@@ -107,6 +111,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const r = await resolveScoped(params.id, user);
@@ -152,6 +159,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const isAdmin = user.role === 'admin';

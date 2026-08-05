@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   getPrepItem,
   updatePrepItem,
@@ -25,6 +26,9 @@ export async function GET(
   _request: Request,
   ctx: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -47,6 +51,9 @@ export async function PATCH(
   request: Request,
   ctx: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.item.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -122,6 +129,9 @@ export async function DELETE(
   _request: Request,
   ctx: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.item.delete', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -10,10 +10,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchSlot } from '@/lib/shifts-odoo';
 import { requireManagerCompany, serverError } from '../_manager';
 import { unpublishSlots } from '../_unpublish';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

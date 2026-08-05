@@ -10,10 +10,14 @@ import { AuthError, hasRole, requireAuth } from '@/lib/auth';
 import { logAudit, parseCompanyIds } from '@/lib/db';
 import { fetchSlot } from '@/lib/shifts-odoo';
 import { confirmSlot } from '@/lib/shifts-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     if (!user.employee_id) {

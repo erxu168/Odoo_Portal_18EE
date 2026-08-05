@@ -20,10 +20,14 @@ import {
   deleteCountLocation, listCountLocations, getCountLocation,
 } from '@/lib/inventory-db';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 const KEY = 'inventory.location.manage';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden(['inventory', 'shift-handover']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -80,6 +84,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['inventory', 'shift-handover']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, KEY, getPermissionOverrides()))
@@ -116,6 +123,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden(['inventory', 'shift-handover']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, KEY, getPermissionOverrides()))
@@ -141,6 +151,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden(['inventory', 'shift-handover']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, KEY, getPermissionOverrides()))

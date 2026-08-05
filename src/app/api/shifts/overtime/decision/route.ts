@@ -17,10 +17,14 @@ import { NextResponse } from 'next/server';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../../_manager';
 import { setOvertimeDecision, type OvertimeStatus } from '@/lib/shifts-db';
 import { fetchOvertimeWeek } from '@/lib/shifts-overtime';
+import { moduleForbidden } from '@/lib/module-access';
 
 const STATUSES: OvertimeStatus[] = ['pending', 'approved', 'rejected'];
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

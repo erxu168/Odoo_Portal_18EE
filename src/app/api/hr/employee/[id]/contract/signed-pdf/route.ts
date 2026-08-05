@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB — keeps a huge scan from clogging Odoo
 const ALLOWED_EXT = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'heic', 'heif'];
@@ -52,6 +53,9 @@ async function guard(
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);
@@ -87,6 +91,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);
@@ -127,6 +134,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);

@@ -5,6 +5,7 @@ import { CAP } from '@/lib/shift-handover/access';
 import { roleCan, type Role } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { berlinToday } from '@/lib/berlin-date';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   ensureDefaultLogTypes, ensureDefaultLookups, listLogTypes, listLookups, listLogEntries,
   listPhotosForEntities, listStorageHere, recentEntryDates,
@@ -13,6 +14,9 @@ import {
 // GET — everything the shift-log screen needs for a given day, in one call:
 // the manager-configured types + lists, what's currently in storage, and the feed.
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.view);
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

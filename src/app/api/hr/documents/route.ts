@@ -3,8 +3,12 @@ import { getCurrentUser } from '@/lib/auth';
 import { canAccessEmployee } from '@/lib/hr-access';
 import { getOdoo } from '@/lib/odoo';
 import { DOCUMENT_TYPES, HR_FOLDER_ID } from '@/types/hr';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -69,6 +73,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

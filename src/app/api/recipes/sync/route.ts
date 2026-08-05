@@ -18,8 +18,12 @@ import {
   getSyncQueueCount,
 } from '@/lib/recipe-db';
 import type { LocalRecipe, LocalIngredient } from '@/types/recipe';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET() {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -38,6 +42,9 @@ export async function GET() {
 }
 
 export async function POST() {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

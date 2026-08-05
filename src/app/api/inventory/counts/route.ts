@@ -19,6 +19,7 @@ import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
 import { packTotal, usableLevels } from '@/lib/packaging';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
+import { moduleForbidden } from '@/lib/module-access';
 
 // A count line can only be written/removed while the session is still open.
 //
@@ -47,6 +48,9 @@ function reopenIfMissed(session: { id: number; status: string }): void {
 
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -135,6 +139,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -311,6 +318,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

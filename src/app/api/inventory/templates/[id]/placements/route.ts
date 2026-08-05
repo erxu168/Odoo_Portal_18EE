@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   initInventoryTables, getTemplate, getPlacementsForProducts, setProductsSpotsBulk,
   listCountLocations, regenerateTodaySession, getSession, todayStr,
@@ -42,6 +43,9 @@ function authTemplate(user: { role: string; allowed_company_ids: string | null }
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
@@ -68,6 +72,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {

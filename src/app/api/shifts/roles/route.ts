@@ -8,10 +8,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchRoles } from '@/lib/shifts-odoo';
 import { getOdoo } from '@/lib/odoo';
 import { requireManagerCompany, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;
@@ -22,6 +26,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

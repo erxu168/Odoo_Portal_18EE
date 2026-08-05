@@ -15,6 +15,7 @@ import { getOdoo } from '@/lib/odoo';
 import { notifyEmployee } from '@/lib/shifts-notify';
 import { berlinISOWeekKey, fmtDay, fmtTimeRange, nowOdooUtc } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,9 @@ function str(v: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

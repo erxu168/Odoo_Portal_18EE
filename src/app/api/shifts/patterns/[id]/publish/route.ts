@@ -21,10 +21,14 @@ import { notifyEmployee } from '@/lib/shifts-notify';
 import { planSlotsForWeek } from '@/lib/shifts-patterns';
 import { weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../../../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

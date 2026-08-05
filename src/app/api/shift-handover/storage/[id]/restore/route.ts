@@ -3,9 +3,13 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { getStorageItem, restoreStorageItem } from '@/lib/shift-handover/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // POST — undo a just-cleared item: put it back in "In storage now".
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

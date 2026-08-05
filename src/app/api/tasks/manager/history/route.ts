@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { getListByDeptAndDate } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireCapability('tasks.manager.view');
     const dept = parseInt(req.nextUrl.searchParams.get('dept') || '', 10);

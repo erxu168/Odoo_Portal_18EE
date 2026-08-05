@@ -22,6 +22,7 @@ import { setLocationKindColor, setLocationKindShape, setLocationKindLayer, setLo
 import { isMarkerShape as isShape } from '@/lib/inventory-floorplan/marker-presets';
 import { authorizeFloorplan, FLOORPLAN_CAP } from '@/lib/inventory-floorplan/access';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 
 /**
@@ -40,6 +41,9 @@ function markerConversionRefusal(companyId: number, kind: string): string | null
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -54,6 +58,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   // Same guard as the rest of the floorplan/locations family: module gate +
   // resolved shared-tablet actor, so writes are attributed to the person.
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
@@ -99,6 +106,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   const user = authz.user;
@@ -169,6 +179,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   const user = authz.user;

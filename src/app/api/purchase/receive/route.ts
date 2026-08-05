@@ -12,6 +12,7 @@ import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceipt
 import { getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { imagesToPdf } from '@/lib/purchase-note-pdf';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Minimum cap on delivery-note payloads (data URL string length). ~15MB b64 ≈ 11MB decoded.
 const MAX_IMAGE_DATA_URL_BYTES = 15 * 1024 * 1024;
@@ -27,6 +28,9 @@ function esc(s: unknown): string {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -113,6 +117,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

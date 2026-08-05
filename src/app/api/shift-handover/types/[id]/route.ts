@@ -3,9 +3,13 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { getDb, getLogType, updateLogType, listLogTypes, countActiveStorageTypes } from '@/lib/shift-handover/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // PATCH — rename a type, change its emoji, its alert flag, or its order.
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();
@@ -27,6 +31,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 // DELETE — hide a type from the add sheet (soft delete; posted notes keep their label).
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

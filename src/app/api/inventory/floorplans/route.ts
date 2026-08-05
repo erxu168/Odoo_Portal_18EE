@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany, writeCompany } from '@/lib/inventory-floorplan/access';
 import { initFloorplanTables, createFloor, listFloors, getRevision } from '@/lib/inventory-floorplan/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 function scopedCompanyFromRequest(request: Request, user: Parameters<typeof canAccessCompany>[0]): number | null {
   const { searchParams } = new URL(request.url);
@@ -19,6 +20,9 @@ function scopedCompanyFromRequest(request: Request, user: Parameters<typeof canA
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.view);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();
@@ -44,6 +48,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

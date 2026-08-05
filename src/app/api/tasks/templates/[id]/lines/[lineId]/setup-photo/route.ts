@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability, AuthError, type PortalUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { templateLineBelongsToTemplate, getTemplateCompany } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   addTemplateLinePhoto,
   removeTemplateLinePhoto,
@@ -58,6 +59,9 @@ function detectImageMime(base64: string): string | null {
 // GET — serve one of the template line's reference photos as raw image bytes
 // (manager editor). `?seq=N` selects a photo of a multi-photo guide; default first.
 export async function GET(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const parsed = ids(params);
@@ -86,6 +90,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string; 
 
 // POST — upload/replace the reference photo. Manager/admin, company-scoped. `clear_pins` drops stale pins.
 export async function POST(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const parsed = ids(params);
@@ -117,6 +124,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
 // DELETE — `?seq=N` removes ONE photo (+ any orphaned pins on it, server-side);
 // without seq: legacy clear-ALL photos (optionally clearing pins). Manager/admin, company-scoped.
 export async function DELETE(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const parsed = ids(params);

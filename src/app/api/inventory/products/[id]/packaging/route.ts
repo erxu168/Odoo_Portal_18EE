@@ -22,6 +22,7 @@ import { validateLevels, describeChain } from '@/lib/packaging';
 import { canAccessCompany } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import type { PortalUser } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * Packaging is stored GLOBALLY per Odoo product id — but global storage is not
@@ -69,6 +70,9 @@ function pid(params: { id: string }) {
 }
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const a = authed(false);
   if (a.error) return a.error;
   initInventoryTables();
@@ -91,6 +95,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const a = authed(true);
   if (a.error) return a.error;
   initInventoryTables();

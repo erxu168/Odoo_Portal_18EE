@@ -7,11 +7,15 @@ import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { canAccessTermination, canAccessEmployee } from '@/lib/hr-access';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const { id } = await params;
@@ -43,6 +47,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const { id } = await params;

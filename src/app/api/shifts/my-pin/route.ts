@@ -9,6 +9,7 @@ import { AuthError, requireAuth } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { employeesWithPin, setKioskPin } from '@/lib/shifts-db';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ function resolve(companyRaw: unknown, user: { role: string; allowed_company_ids:
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const { searchParams } = new URL(request.url);
@@ -41,6 +45,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;

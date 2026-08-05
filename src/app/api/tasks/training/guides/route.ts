@@ -2,12 +2,16 @@ import { NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listLibraryGuides } from '@/lib/task-guide';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 // GET — PUBLISHED guides in the staff member's companies, for the Training area.
 // Drafts never appear here (managers see them in the Library).
 export async function GET() {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const allowed = parseCompanyIds(user.allowed_company_ids);

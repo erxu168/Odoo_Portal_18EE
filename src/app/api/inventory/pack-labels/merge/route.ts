@@ -7,8 +7,12 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { initInventoryTables, mergePackLabels } from '@/lib/inventory-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'admin')) {

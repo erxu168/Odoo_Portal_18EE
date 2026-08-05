@@ -7,10 +7,14 @@ import { NextResponse } from 'next/server';
 import { requireManagerCompany, serverError } from '../_manager';
 import { listPublishRuns, setPublishRunState } from '@/lib/shifts-db';
 import { effectivePublishState } from '@/lib/shifts-patterns';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;

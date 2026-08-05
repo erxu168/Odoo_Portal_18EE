@@ -12,11 +12,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const LIST_FIELDS = ['id', 'employee_id', 'holiday_status_id', 'request_date_from', 'request_date_to',
   'number_of_days', 'state', 'company_id', 'department_id'];
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const url = new URL(req.url);
@@ -69,6 +73,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const body = await req.json();

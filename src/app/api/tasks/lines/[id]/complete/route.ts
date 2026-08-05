@@ -4,8 +4,12 @@ import { parseCompanyIds } from '@/lib/db';
 import { berlinToday } from '@/lib/berlin-date';
 import { completeLine, uncompleteLine, getListLineScope } from '@/lib/odoo-tasks';
 import { resolveAttribution } from '@/lib/shift-attribution';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     // On a shared device this credits the "Working as" person, not the account.
@@ -29,6 +33,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 // signed-in user may undo a completion on TODAY's list (so an accidental check
 // can be tapped off), scoped to their company. Past-day lists stay read-only.
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const id = parseInt(params.id, 10);

@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   listAllLinksForCompany,
   upsertLink,
@@ -21,6 +22,9 @@ import {
 } from '@/lib/prep-planner-mapping-db';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -43,6 +47,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.link.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -88,6 +95,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('prep-planner');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'prep-planner.link.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -13,10 +13,14 @@ import { fetchDepartments, fetchEmployees, fetchRoles, fetchWeekSlots, weekHours
 import { minimumWageForDate, shiftLabourCost } from '@/lib/shift-labour-cost';
 import { berlinParts, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, round2, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;

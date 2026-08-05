@@ -14,8 +14,12 @@ import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET() {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -43,6 +47,9 @@ export async function GET() {
  * existing parent category. Returns the created record (id/name/complete_name).
  */
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
@@ -73,6 +80,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
@@ -128,6 +138,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {

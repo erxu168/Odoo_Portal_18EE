@@ -8,10 +8,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchDepartments, fetchEmployees, fetchRoles, monthHoursMap } from '@/lib/shifts-odoo';
 import { employeesWithPin } from '@/lib/shifts-db';
 import { requireManagerCompany, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;

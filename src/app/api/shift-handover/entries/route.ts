@@ -5,6 +5,7 @@ import { CAP } from '@/lib/shift-handover/access';
 import { listCountLocations, initInventoryTables } from '@/lib/inventory-db';
 import { locationPathLabel } from '@/lib/location-tree';
 import { berlinToday, isCanonicalDay } from '@/lib/berlin-date';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   getDb, ensureDefaultLogTypes, ensureDefaultLookups, listLookups, getLookup, getLogType,
   createLogEntry, createStorageItem, setEntryStorageItem, addPhoto, filterValidPhotos,
@@ -14,6 +15,9 @@ import {
 // POST — add one entry to the log. A "storage" (Prepped) type also pins a
 // persistent "In storage now" item. A note OR at least one photo is required.
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

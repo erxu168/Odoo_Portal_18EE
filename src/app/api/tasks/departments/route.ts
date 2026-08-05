@@ -3,8 +3,12 @@ import { cookies } from 'next/headers';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listDepartments } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const allowed = parseCompanyIds(user.allowed_company_ids);

@@ -11,6 +11,7 @@ import {
 } from '@/lib/inventory-floorplan/db';
 import { validStoredPolygon } from '@/lib/inventory-floorplan/geometry';
 import { getDb } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const DISPOSITIONS = new Set(['pending', 'create', 'linked', 'ignored']);
 const KINDS = new Set(['spot', 'room', 'other']);
@@ -25,6 +26,9 @@ function loadAuthorized(idRaw: string, user: Parameters<typeof canAccessCompany>
 }
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage);
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();
@@ -49,6 +53,9 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

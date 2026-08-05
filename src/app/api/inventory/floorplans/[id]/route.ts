@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inventory-floorplan/access';
 import { initFloorplanTables, getFloor, updateFloor } from '@/lib/inventory-floorplan/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 function loadAuthorizedFloor(idRaw: string, authz: { ok: true; user: Parameters<typeof canAccessCompany>[0] }) {
   const id = parseInt(idRaw, 10);
@@ -18,6 +19,9 @@ function loadAuthorizedFloor(idRaw: string, authz: { ok: true; user: Parameters<
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();
@@ -48,6 +52,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 }
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initFloorplanTables();

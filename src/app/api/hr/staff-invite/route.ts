@@ -14,8 +14,12 @@ import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { createStaffInvite, inviteEmailNotice } from '@/lib/hr/invites';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const body = await req.json().catch(() => ({}));

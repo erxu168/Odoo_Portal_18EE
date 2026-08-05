@@ -20,12 +20,16 @@ import { effectivePublishState } from '@/lib/shifts-patterns';
 import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
 import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
 import { berlinParts, odooToDate, weekKeyDays } from '@/lib/shifts-time';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 const HIDDEN = { show: false as const };
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

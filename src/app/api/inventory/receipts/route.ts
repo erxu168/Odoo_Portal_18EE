@@ -14,6 +14,7 @@ import { roleCan } from '@/lib/permissions';
 import { initInventoryTables, createReceipt, listReceipts, deleteReceipt, listCountLocations } from '@/lib/inventory-db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 import { crateTotal } from '@/lib/crate-units';
+import { moduleForbidden } from '@/lib/module-access';
 
 function activeCompany(searchParams: URLSearchParams): number {
   return parseInt(searchParams.get('company_id') || '0', 10)
@@ -21,6 +22,9 @@ function activeCompany(searchParams: URLSearchParams): number {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -47,6 +51,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -100,6 +107,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();

@@ -18,6 +18,7 @@ import { roleCan } from '@/lib/permissions';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, setWastePhotoRequired, wastePhotoRequiredByDepartment } from '@/lib/inventory-db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 function activeCompany(searchParams: URLSearchParams): number {
   return parseInt(searchParams.get('company_id') || '0', 10)
@@ -25,6 +26,9 @@ function activeCompany(searchParams: URLSearchParams): number {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.waste.settings', getPermissionOverrides())) {
@@ -41,6 +45,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.waste.settings', getPermissionOverrides())) {

@@ -15,6 +15,7 @@ import { initInventoryTables, createCountLocation, getCountLocation, listCountLo
 import { normalizeCode } from '@/lib/inventory-floorplan/geometry';
 import { LOCATION_TYPES } from '@/lib/location-types';
 import { getDb } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const ROOMISH = new Set(['room', 'area', 'floor']);
 
@@ -22,6 +23,9 @@ const PIN_HALF_W = 0.012; // nominal tap polygon around an app-placed pin
 const PIN_HALF_H = 0.008;
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
   initInventoryTables();

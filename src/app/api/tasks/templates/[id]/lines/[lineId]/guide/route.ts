@@ -4,6 +4,7 @@ import { parseCompanyIds } from '@/lib/db';
 import { templateLineBelongsToTemplate, getTemplateCompany } from '@/lib/odoo-tasks';
 import { readTemplateGuide, saveTemplateGuide, deleteTemplateGuide } from '@/lib/task-guide';
 import { sanitizeSteps } from '@/lib/task-guide-validate';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,9 @@ async function assertScope(user: PortalUser, templateId: number, lineId: number)
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const p = ids(params);
@@ -42,6 +46,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const p = ids(params);
@@ -70,6 +77,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const p = ids(params);

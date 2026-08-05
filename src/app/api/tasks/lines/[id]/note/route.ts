@@ -4,8 +4,12 @@ import { resolveAttribution } from '@/lib/shift-attribution';
 import { setLineNote, getLineSummary } from '@/lib/odoo-tasks';
 import { getDb } from '@/lib/db';
 import { sendPushToUsers } from '@/lib/push';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     // Credit the PIN'd person on a shared tablet (matches complete/subtasks).

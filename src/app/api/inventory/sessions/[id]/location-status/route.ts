@@ -9,6 +9,7 @@ import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, getSession, setSessionLocationStatus } from '@/lib/inventory-db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
+import { moduleForbidden } from '@/lib/module-access';
 
 const STATUSES = ['pending', 'counted', 'skipped'];
 
@@ -16,6 +17,9 @@ export async function POST(
   request: Request,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();

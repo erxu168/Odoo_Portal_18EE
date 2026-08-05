@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const LIST_FIELDS = [
   'id', 'name', 'department_id', 'job_title', 'first_contract_date', 'company_id',
@@ -13,6 +14,9 @@ const LIST_FIELDS = [
 ];
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const url = new URL(req.url);
@@ -46,6 +50,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const body = await req.json();

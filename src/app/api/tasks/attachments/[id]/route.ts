@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import { deleteAttachment, getAttachmentData } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 // GET — raw bytes of a task attachment, so it can be shown directly in an <img>
 // (thumbnail) or served to the browser. Same auth as the /data JSON endpoint.
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const id = parseInt(params.id, 10);
@@ -26,6 +30,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireCapability('tasks.template.manage');
     const id = parseInt(params.id, 10);

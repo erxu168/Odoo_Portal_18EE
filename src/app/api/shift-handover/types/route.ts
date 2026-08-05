@@ -3,9 +3,13 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { ensureDefaultLogTypes, listLogTypes, createLogType, nextTypeSortOrder } from '@/lib/shift-handover/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // GET — the log types for the manager setup screen.
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.view);
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();
@@ -20,6 +24,9 @@ export async function GET(request: Request) {
 
 // POST — a manager adds a new type (name + emoji, optionally an alert type).
 export async function POST(request: Request) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

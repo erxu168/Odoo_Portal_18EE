@@ -9,6 +9,7 @@ import {
   deactivatePhotosFor, addPhoto, listPhotos, softDeleteStorageItem, filterValidPhotos, clearEntryAck,
 } from '@/lib/shift-handover/db';
 import type { HandoverActor } from '@/lib/shift-handover/access';
+import { moduleForbidden } from '@/lib/module-access';
 
 const sameStrings = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
@@ -20,6 +21,9 @@ function mayEdit(actor: HandoverActor, authorUserId: number | null): boolean {
 
 // PATCH — edit a note and/or replace its photos.
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();
@@ -82,6 +86,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 // DELETE — remove a note (soft delete). If it pinned a storage item, take that down too.
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

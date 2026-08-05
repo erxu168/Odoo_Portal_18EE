@@ -6,10 +6,14 @@
 import { NextResponse } from 'next/server';
 import { normalizeHHMM, requireManagerCompany, serverError } from '../_manager';
 import { createShiftTemplate, listShiftTemplates } from '@/lib/shifts-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden(['shifts', 'inventory']);
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;
@@ -21,6 +25,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['shifts', 'inventory']);
+  if (denied) return denied;
+
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

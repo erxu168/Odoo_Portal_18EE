@@ -20,6 +20,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listCoverRequests, slotMinSkills } from '@/lib/shifts-db';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   employeeMonthHours,
   employeeWeekHours,
@@ -66,6 +67,9 @@ function nextDate(date: string): string {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

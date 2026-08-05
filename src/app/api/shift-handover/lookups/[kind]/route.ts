@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   getDb, ensureDefaultLookups, listLookups, getLookup, createLookup, updateLookup,
   nextLookupSortOrder, countActiveLookups, findLookupByName, type LookupKind,
@@ -17,6 +18,9 @@ function kindOf(params: { kind: string }): LookupKind | null {
 
 // GET — the list, for the add sheet and the manager Setup screen.
 export async function GET(request: Request, { params }: { params: { kind: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const kind = kindOf(params);
   if (!kind) return jsonError(404, 'Unknown list.');
   const authz = authorize(CAP.view);
@@ -31,6 +35,9 @@ export async function GET(request: Request, { params }: { params: { kind: string
 
 // POST — add a value (or reactivate a retired one with the same name).
 export async function POST(request: Request, { params }: { params: { kind: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const kind = kindOf(params);
   if (!kind) return jsonError(404, 'Unknown list.');
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
@@ -50,6 +57,9 @@ export async function POST(request: Request, { params }: { params: { kind: strin
 
 // PATCH — rename or reorder one value.
 export async function PATCH(request: Request, { params }: { params: { kind: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const kind = kindOf(params);
   if (!kind) return jsonError(404, 'Unknown list.');
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
@@ -82,6 +92,9 @@ export async function PATCH(request: Request, { params }: { params: { kind: stri
 
 // DELETE ?id= — retire a value (soft). Keeps at least one so the dropdown is never empty.
 export async function DELETE(request: Request, { params }: { params: { kind: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const kind = kindOf(params);
   if (!kind) return jsonError(404, 'Unknown list.');
   const authz = authorize(CAP.manage, { requireResolvedActor: true });

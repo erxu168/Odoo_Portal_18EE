@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Cache tax rates for 1 hour (they rarely change)
 const taxCache: Record<number, number> = {};
@@ -16,6 +17,9 @@ let taxCacheTime = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

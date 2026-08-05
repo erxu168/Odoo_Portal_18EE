@@ -9,6 +9,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { listSuppliers, createSupplier, getGuide, createGuide, addGuideItem } from '@/lib/purchase-db';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 const FOOD_SUPPLIERS = [
   { odoo_id: 67,  name: 'Feddersen Gastro GmbH',      email: 'info@feddersen24.de',    phone: '+490303973880',       days: '["mon","thu"]', lead: 1 },
@@ -21,6 +22,9 @@ const FOOD_SUPPLIERS = [
 ];
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.suppliers.seed', getPermissionOverrides())) return NextResponse.json({ error: 'Admin only' }, { status: 403 });

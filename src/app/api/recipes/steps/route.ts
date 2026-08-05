@@ -9,11 +9,15 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { recipeCan, recipeForbidden } from '@/lib/recipe-access';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGES_PER_STEP = 5;
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -143,6 +147,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

@@ -31,6 +31,7 @@ import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplate
 import { CATALOG_FIELDS, SLIM_CATALOG_FIELDS } from '@/lib/product-scope';
 import { getCachedRelevance, setCachedRelevance, getStaleRelevance, evictOtherExpired } from '@/lib/relevance-cache';
 import { buildProductVals } from '@/lib/product-create';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -172,6 +173,9 @@ async function getDefaultUomId(): Promise<number> {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -367,6 +371,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.product.create', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

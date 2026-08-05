@@ -8,8 +8,12 @@ import { requireRole, AuthError } from '@/lib/auth';
 import { canAccessEmployee } from '@/lib/hr-access';
 import { companyScope } from '@/lib/inventory-access';
 import { TERMINATION_LIST_FIELDS } from '@/types/termination';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const url = new URL(req.url);
@@ -51,6 +55,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const body = await req.json();

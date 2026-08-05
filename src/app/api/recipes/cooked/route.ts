@@ -8,8 +8,12 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { initRecipeTables, logCook } from '@/lib/recipe-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireAuth();
     initRecipeTables();

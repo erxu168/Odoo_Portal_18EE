@@ -3,11 +3,15 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { getDb, getLogEntry, acknowledgeEntry } from '@/lib/shift-handover/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // POST — the incoming shift confirms it has read a heads-up (alert) note.
 // The client sends the content version (updated_at) it actually saw; if the note
 // was edited since, the ack is rejected (409) so it can't vouch for unseen content.
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

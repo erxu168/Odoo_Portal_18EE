@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getStepMedia } from '@/lib/task-guide';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string; stepId: string } },
 ) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const lineId = parseInt(params.id, 10);

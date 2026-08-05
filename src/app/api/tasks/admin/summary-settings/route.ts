@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,9 @@ function missingFieldError(err: unknown): boolean {
 }
 
 export async function GET() {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireRole('admin');
     const ids = await eligibleCompanyIds();
@@ -66,6 +70,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     requireRole('admin');
     const body = await request.json();

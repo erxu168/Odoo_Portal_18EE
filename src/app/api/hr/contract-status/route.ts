@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/hr/contract-status
@@ -10,6 +11,9 @@ import { getOdoo } from '@/lib/odoo';
  * Returns: { stage, contract }
  */
 export async function GET() {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user) {

@@ -8,8 +8,12 @@
 import { NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireCapability('recipes.ingredients.manage');
     const body = await request.json();
@@ -33,6 +37,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireCapability('recipes.ingredients.manage');
     const body = await request.json();
@@ -56,6 +63,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden(['recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireCapability('recipes.ingredients.manage');
     const body = await request.json();

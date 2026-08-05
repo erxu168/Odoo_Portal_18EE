@@ -10,6 +10,7 @@ import { requireManagerCompany, resolveWeekKey, round2, serverError } from '../_
 import { fetchEmployees, monthHoursMap, weekHoursMap } from '@/lib/shifts-odoo';
 import { weekendWorkedByEmployee } from '@/lib/shifts-db';
 import { berlinParts, nowOdooUtc, offsetWeekKey } from '@/lib/shifts-time';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,9 @@ const MONTHS = [
 ];
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const { searchParams } = new URL(request.url);
   const auth = requireManagerCompany(searchParams.get('company_id'));
   if (!auth.ok) return auth.res;

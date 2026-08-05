@@ -12,12 +12,16 @@ import { createSlot, fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odo
 import { setSlotDepartments, setSlotMinSkills } from '@/lib/shifts-db';
 import { berlinDateTimeToUtcOdoo, berlinISOWeekKey } from '@/lib/shifts-time';
 import { isValidDateStr, normalizeHHMM, requireManagerCompany, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_COUNT = 20;
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const auth = requireManagerCompany(body.company_id);

@@ -13,12 +13,16 @@ import { employeeWeekHours, fetchEmployees, fetchRoles, fetchSlot } from '@/lib/
 import { berlinISOWeekKey, durationHours, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
 import type { CoverRequest } from '@/types/shifts';
 import { requireManagerCompany, round2, serverError } from '../_manager';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 const UNDO_WINDOW_MS = 24 * 3_600_000;
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;

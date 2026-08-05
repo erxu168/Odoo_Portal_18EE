@@ -14,12 +14,16 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, getProductImage, setProductImage, deleteProductImage } from '@/lib/inventory-db';
 import { fetchImageFromUrl } from '@/lib/fetch-image-url';
+import { moduleForbidden } from '@/lib/module-access';
 
 function pid(params: { product_id: string }): number {
   return parseInt(params.product_id, 10);
 }
 
 export async function GET(_request: Request, { params }: { params: { product_id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -51,6 +55,9 @@ export async function GET(_request: Request, { params }: { params: { product_id:
 }
 
 export async function PUT(request: Request, { params }: { params: { product_id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
@@ -104,6 +111,9 @@ export async function PUT(request: Request, { params }: { params: { product_id: 
 }
 
 export async function DELETE(_request: Request, { params }: { params: { product_id: string } }) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {

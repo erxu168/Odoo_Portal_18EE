@@ -13,6 +13,7 @@ import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, createTemplate, listTemplates, templatesClashingProducts, updateTemplate, generateSessionForTemplate, ensureTodaySessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate, templateHasRealSessions } from '@/lib/inventory-db';
 import { listShiftTemplates } from '@/lib/shifts-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * Product ids as NUMBERS. A string id compares unequal to the stored numeric one,
@@ -53,6 +54,9 @@ async function locationCompanyError(locationId: number, companyId: number): Prom
 
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -92,6 +96,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
@@ -247,6 +254,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
@@ -463,6 +473,9 @@ export async function PUT(request: Request) {
  * restaurant. Irreversible — the UI confirms first.
  */
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {

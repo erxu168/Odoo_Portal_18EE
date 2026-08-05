@@ -14,11 +14,15 @@ import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { companyScope } from '@/lib/inventory-access';
 import { initInventoryTables, deleteCountsForProduct, markDraftStatus, describeCountWorkForProduct, isDraftProduct } from '@/lib/inventory-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   // NOTE: the draft check below (isDraftProduct) is what confines this to

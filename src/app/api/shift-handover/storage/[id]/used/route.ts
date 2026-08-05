@@ -3,12 +3,16 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { getStorageItem, clearStorageItem, getIdempotentResult, parseAmount, CLEAR_REASONS, type ClearReason } from '@/lib/shift-handover/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // POST — clear an "In storage now" item, recording WHY it left:
 // moved_out | used_up | discarded. Optional `amount` clears only PART of it (the
 // rest stays); omit it, or use >= the whole amount, to clear all. An optional
 // `idempotency_key` makes a retried/duplicate submit safe. Any staff on shift.
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shift-handover');
+  if (denied) return denied;
+
   const authz = authorize(CAP.post, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
   initHandoverTables();

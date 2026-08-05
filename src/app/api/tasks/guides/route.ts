@@ -4,6 +4,7 @@ import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listLibraryGuides, createLibraryGuide } from '@/lib/task-guide';
 import { userCompanyAllowed } from '@/lib/company-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ const MAX_NAME = 120;
 
 // GET — every guide in the manager's companies, for the Library screen.
 export async function GET() {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const allowed = parseCompanyIds(user.allowed_company_ids);
@@ -27,6 +31,9 @@ export async function GET() {
 
 // POST — create an empty draft guide in one of the manager's companies.
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const allowed = parseCompanyIds(user.allowed_company_ids);

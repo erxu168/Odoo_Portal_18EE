@@ -22,11 +22,15 @@ import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, isDraftProduct, markDraftStatus } from '@/lib/inventory-db';
 import { buildDraftApprovalVals } from '@/lib/product-create';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(
   request: Request,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden(['inventory', 'products']);
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.draft.review', getPermissionOverrides())) {

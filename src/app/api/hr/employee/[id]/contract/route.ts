@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const CONTRACT_STATES = ['draft', 'open', 'close', 'cancel'];
 
@@ -68,6 +69,9 @@ async function loadEmployeeScoped(odoo: ReturnType<typeof getOdoo>, employeeId: 
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);
@@ -127,6 +131,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);
@@ -236,6 +243,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  * it is carried forward from the old contract (they cannot edit pay themselves).
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const employeeId = parseInt(params.id, 10);

@@ -13,8 +13,12 @@ import { getOdoo } from '@/lib/odoo';
 import { isEmailConfigured, sendOrderEmail } from '@/lib/email';
 import { buildOrderText, buildOrderHtml } from '@/lib/purchase-order-message';
 import { LOCATIONS } from '@/types/purchase';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -42,6 +46,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('purchase');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'purchase.order.send', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

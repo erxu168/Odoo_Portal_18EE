@@ -13,6 +13,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 import { initInventoryTables, getProductPar, setProductPar } from '@/lib/inventory-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,9 @@ function companyOr403(user: Parameters<typeof isUnrestrictedAdmin>[0], raw: stri
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -49,6 +53,9 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   // Same capability as the rest of product setup — par is a setting, not a count.

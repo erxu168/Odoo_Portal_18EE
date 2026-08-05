@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getListLineSetupPhoto, getSetupPhotoBySeq } from '@/lib/setup-guide';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export const dynamic = 'force-dynamic';
 // `?seq=N` picks one photo of a multi-photo guide; without it, the first photo
 // (legacy single-photo URLs keep working). Company-scoped in the addon.
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const lineId = parseInt(params.id, 10);

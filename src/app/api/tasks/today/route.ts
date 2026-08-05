@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { getEmployeeContext, getTodayListForDepartment } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET() {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     // A shared department tablet is a PLACE, not a person: it has no employee

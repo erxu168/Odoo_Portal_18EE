@@ -4,8 +4,12 @@ import { berlinToday } from '@/lib/berlin-date';
 import { parseCompanyIds } from '@/lib/db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { uploadLinePhoto, resyncSetupGuide, getListLineScope } from '@/lib/odoo-tasks';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     const id = parseInt(params.id, 10);

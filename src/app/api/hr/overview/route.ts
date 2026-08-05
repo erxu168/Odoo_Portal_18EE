@@ -10,6 +10,7 @@ import { requireRole, AuthError } from '@/lib/auth';
 import { countOverdueOpenTasks } from '@/lib/staffing-checklist-db';
 import { getOdoo } from '@/lib/odoo';
 import { parseCompanyIds } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,9 @@ function daysUntil(iso: string, today: Date): number {
 }
 
 export async function GET() {
+  const denied = moduleForbidden('hr');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const odoo = getOdoo();

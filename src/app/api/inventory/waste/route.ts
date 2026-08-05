@@ -35,6 +35,7 @@ import { resolveAttribution } from '@/lib/shift-attribution';
 import { getEmployeeContext } from '@/lib/odoo-tasks';
 import { berlinToday } from '@/lib/berlin-date';
 import { berlinMidnightMs } from '@/lib/waj-sales-time';
+import { moduleForbidden } from '@/lib/module-access';
 
 function activeCompany(searchParams: URLSearchParams): number {
   return parseInt(searchParams.get('company_id') || '0', 10)
@@ -79,6 +80,9 @@ function nameMap(events: WasteEvent[]): Record<number, string> {
 }
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -109,6 +113,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.waste.record', getPermissionOverrides())) {
@@ -205,6 +212,9 @@ function mayTouch(user: PortalUser, userId: number, event: WasteEvent): boolean 
 }
 
 export async function PATCH(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
@@ -245,6 +255,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = moduleForbidden('inventory');
+  if (denied) return denied;
+
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();

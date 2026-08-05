@@ -8,10 +8,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getReviewPhoto } from '@/lib/task-review';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req: NextRequest, { params }: { params: { attachmentId: string } }) {
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireRole('manager');
     const id = parseInt(params.attachmentId, 10);

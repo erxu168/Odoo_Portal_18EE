@@ -21,10 +21,14 @@ import { revalidateForAccept } from '@/lib/shifts-guards';
 import { notifyEmployee, notifyManagers } from '@/lib/shifts-notify';
 import { fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
 import { berlinISOWeekKey, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('shifts');
+  if (denied) return denied;
+
   const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
