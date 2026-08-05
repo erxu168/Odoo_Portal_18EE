@@ -687,7 +687,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
    * single authority for whether a save proceeds.
    */
   const publishBlockers: string[] = [];
-  if (published) {
+  {
     steps.forEach((s, i) => {
       const n = i + 1;
       if (!s.explanation.trim()) publishBlockers.push(`Step ${n} needs an explanation`);
@@ -796,7 +796,31 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                     ? (dirty ? 'Turned on — staff can open it once you save.' : 'On — staff can open this guide. Flip left to make it a draft.')
                     : 'Off — a draft, hidden from staff. Flip the switch right to publish.'}
                 </p>
-                {publishBlockers.length > 0 && (
+                {/* A draft that has become complete says so. Nothing used to tell
+                    you — you had to remember to come back and flip the switch,
+                    which is exactly how a finished guide sits in Draft for days
+                    and staff see nothing. */}
+                {!published && steps.length > 0 && publishBlockers.length === 0 && (
+                  <div className="mt-2 rounded-lg border border-green-200 bg-green-50 p-2.5 flex items-start gap-2">
+                    <span aria-hidden="true" className="text-[var(--fs-sm)] leading-none mt-0.5">✅</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[var(--fs-xs)] font-bold text-green-900">
+                        This guide is ready — every step is complete.
+                      </p>
+                      <p className="text-[var(--fs-xs)] text-green-800 mt-0.5">
+                        It stays hidden from staff until you publish it.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => { setPublished(true); markDirty(); }}
+                        className="mt-1.5 min-h-[32px] px-3 inline-flex items-center rounded-lg bg-green-600 text-white text-[var(--fs-xs)] font-bold hover:bg-green-700"
+                      >
+                        Publish it
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {published && publishBlockers.length > 0 && (
                   <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5" role="alert">
                     <p className="text-[var(--fs-xs)] font-bold text-amber-900">
                       Can&apos;t publish yet — a published guide has to be complete for staff:
