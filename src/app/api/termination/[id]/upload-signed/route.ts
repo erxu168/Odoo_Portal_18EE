@@ -8,6 +8,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
+import { moduleForbidden } from '@/lib/module-access';
 
 const WKHTMLTOPDF = '/usr/local/bin/wkhtmltopdf';
 
@@ -28,6 +29,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     await requireTerminationAccess(Number(id));
@@ -199,6 +203,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     await requireTerminationAccess(Number(id));

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { AuthError } from '@/lib/auth';
 import { requireTerminationAccess } from '@/lib/termination-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * POST /api/termination/:id/delete
@@ -12,6 +13,9 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     await requireTerminationAccess(Number(id));

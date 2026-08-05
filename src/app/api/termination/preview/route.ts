@@ -3,6 +3,7 @@ import { getOdoo } from '@/lib/odoo';
 import { AuthError } from '@/lib/auth';
 import { requireTerminationAccess } from '@/lib/termination-access';
 import { buildLetterHtml, generatePdf } from '@/lib/termination-pdf';
+import { moduleForbidden } from '@/lib/module-access';
 
 function formatDate(d: string | false): string {
   if (!d) return '---';
@@ -39,6 +40,9 @@ function formatDate(d: string | false): string {
  * }
  */
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     await requireTerminationAccess();
     const odoo = getOdoo();

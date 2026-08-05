@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { AuthError } from '@/lib/auth';
 import { requireTerminationAccess } from '@/lib/termination-access';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/termination/employees?company_id=5
  * List active employees, optionally filtered by company.
  */
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     await requireTerminationAccess();
     const odoo = getOdoo();

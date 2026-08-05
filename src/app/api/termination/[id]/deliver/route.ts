@@ -4,6 +4,7 @@ import { AuthError } from '@/lib/auth';
 import { requireTerminationAccess } from '@/lib/termination-access';
 import { TERMINATION_DETAIL_FIELDS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import type { DeliveryMethod } from '@/types/termination';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MODEL = 'kw.termination';
 
@@ -17,6 +18,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     await requireTerminationAccess(Number(id));

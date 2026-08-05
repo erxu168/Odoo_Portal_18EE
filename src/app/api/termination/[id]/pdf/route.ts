@@ -4,6 +4,7 @@ import { AuthError } from '@/lib/auth';
 import { requireTerminationAccess } from '@/lib/termination-access';
 import { buildLetterHtml, generatePdf } from '@/lib/termination-pdf';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
+import { moduleForbidden } from '@/lib/module-access';
 
 const MODEL = 'kw.termination';
 
@@ -21,6 +22,9 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     await requireTerminationAccess(Number(id));
@@ -116,6 +120,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const { id } = await params;
     await requireTerminationAccess(Number(id));

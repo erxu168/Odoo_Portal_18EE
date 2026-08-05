@@ -3,6 +3,7 @@ import { getOdoo } from '@/lib/odoo';
 import { AuthError } from '@/lib/auth';
 import { requireTerminationAccess, terminationCompanyScope } from '@/lib/termination-access';
 import { canAccessCompany } from '@/lib/inventory-access';
+import { moduleForbidden } from '@/lib/module-access';
 import {
   TERMINATION_LIST_FIELDS,
   TERMINATION_DETAIL_FIELDS,
@@ -16,6 +17,9 @@ const MODEL = 'kw.termination';
  * List terminations. Optional query params: state, employee_id, company_id
  */
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const user = await requireTerminationAccess();
     const odoo = getOdoo();
@@ -73,6 +77,9 @@ export async function GET(req: NextRequest) {
  * Body: TerminationCreateValues
  */
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('termination');
+  if (denied) return denied;
+
   try {
     const user = await requireTerminationAccess();
     const odoo = getOdoo();
