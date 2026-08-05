@@ -115,7 +115,13 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         {/* User header */}
         <div className="bg-[#2563EB] px-5 pt-12 pb-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => { onClose(); router.push('/hr'); }} className="flex-shrink-0 active:scale-95 transition-transform">
+            {/* The avatar opens the profile, so it is only a button when this
+                account actually has HR — otherwise it is just a picture. */}
+            <button
+              onClick={canSee('hr') ? () => { onClose(); router.push('/hr'); } : undefined}
+              disabled={!canSee('hr')}
+              className="flex-shrink-0 active:scale-95 transition-transform disabled:active:scale-100"
+            >
               {user?.avatar ? (
                 <img src={`data:image/png;base64,${user.avatar}`} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-white/20" />
               ) : (
@@ -144,7 +150,8 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
             <NavItem label="Home" href="/" current={pathname} onClick={navigate}
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
             {/* Module links come from the shared registry (NAV_MODULES) so this can
-                never drift from the dashboard. HR is rendered below, always. */}
+                never drift from the dashboard. HR is rendered below so it keeps
+                its place at the bottom of the list. */}
             {!isCandidate && NAV_MODULES
               .filter((m) => m.id !== 'hr' && canSee(m.id))
               .map((m) => (
@@ -152,8 +159,13 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
                   onClick={m.scope === 'production' ? () => navigate('/recipes', 'production') : navigate}
                   icon={NAV_ICONS[m.id] ?? DEFAULT_NAV_ICON} />
               ))}
-            <NavItem label="HR" href="/hr" current={pathname} onClick={navigate}
-              icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} />
+            {/* HR used to be shown to EVERYONE regardless of the granted list.
+                Now that /hr is gated server-side, an ungated link would be a dead
+                end — the shared kitchen tablet has no `hr` in its allowlist. */}
+            {canSee('hr') && (
+              <NavItem label="HR" href="/hr" current={pathname} onClick={navigate}
+                icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} />
+            )}
           </div>
 
           {/* Admin section */}

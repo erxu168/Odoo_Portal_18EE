@@ -135,6 +135,8 @@ export default function DashboardHome() {
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
   const myLevel = ROLE_LEVEL[userRole] || 1;
+  // Same fallback rule as the tiles: role default until the granted list loads.
+  const canOpenHr = allowedModules == null ? myLevel >= 1 : allowedModules.includes('hr');
   const visibleTiles = isCandidate
     ? TILES.filter(t => t.id === 'hr')
     : TILES.filter(t => {
@@ -167,7 +169,13 @@ export default function DashboardHome() {
       <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="relative flex items-center gap-3">
-          <button onClick={() => router.push('/hr')} className="flex-shrink-0 active:scale-95 transition-transform">
+          {/* Opens the profile — only tappable when this account has HR, so it
+              can never lead to the "no access" screen. */}
+          <button
+            onClick={canOpenHr ? () => router.push('/hr') : undefined}
+            disabled={!canOpenHr}
+            className="flex-shrink-0 active:scale-95 transition-transform disabled:active:scale-100"
+          >
             {avatar && !avatarBroken ? (
               <img src={`data:image/png;base64,${avatar}`} alt="" onError={() => setAvatarBroken(true)} className="w-12 h-12 rounded-full object-cover border-2 border-white/20" />
             ) : firstName ? (
