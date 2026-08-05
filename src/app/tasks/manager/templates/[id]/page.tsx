@@ -287,6 +287,12 @@ export default function TemplateEditPage({ params }: PageProps) {
     showToast('Task removed');
   }
 
+  /** Tasks whose linked guide is still a draft — staff receive no guide at all
+   *  for these, and the preview cannot show one either. */
+  // Same gate the row badge uses (guide_step_count > 0), because TaskTemplateLine
+  // carries no guide_id — an unlinked task reads as 0 steps either way.
+  const draftGuideCount = tpl?.lines.filter(l => l.guide_step_count > 0 && !l.guide_published).length ?? 0;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 px-4 py-4">
@@ -343,6 +349,21 @@ export default function TemplateEditPage({ params }: PageProps) {
           <div className="bg-gray-100 border-b border-gray-200 px-4 py-2 text-center text-[var(--fs-xs)] font-semibold text-gray-600">
             👁 Staff preview · interactions disabled
           </div>
+          {/* The preview hides a draft guide because STAFF never receive one —
+              the daily spawn only snapshots a published guide with steps. Without
+              this note the preview looks simply broken ("I linked it, where is
+              it?"), which is exactly how it was first reported. */}
+          {draftGuideCount > 0 && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-[var(--fs-xs)] text-amber-800">
+              <b>
+                {draftGuideCount === 1
+                  ? '1 task links a guide that is still a draft.'
+                  : `${draftGuideCount} tasks link a guide that is still a draft.`}
+              </b>{' '}
+              Staff never get a draft, so it is hidden here too. Open the task, tap
+              <b> Edit guide</b>, turn on <b>Publish</b> and save.
+            </div>
+          )}
           <div className="bg-[#2563EB] px-5 pt-5 pb-4">
             <p className="text-white/70 text-[var(--fs-xs)] font-medium">
               {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -464,8 +485,13 @@ export default function TemplateEditPage({ params }: PageProps) {
                                   ● Live
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                                  ● Draft
+                                // Amber, and it says what it MEANS. A draft guide is
+                                // not a neutral state: the spawn skips it and the
+                                // staff player never receives it, so the task ships
+                                // with no how-to at all. "Draft" alone read as
+                                // harmless and cost a manager a confused bug report.
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                  ● Draft — staff can&apos;t see it yet
                                 </span>
                               )}
                             </div>

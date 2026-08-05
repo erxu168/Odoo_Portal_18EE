@@ -97,10 +97,18 @@ export default function GuidePicker({ templateId, lineId, taskName, onChanged }:
               <p className="text-[var(--fs-sm)] font-semibold text-gray-800 truncate">{link!.name || 'Guide'}</p>
               <p className="text-[var(--fs-xs)] text-gray-500">
                 {link!.step_count} step{link!.step_count === 1 ? '' : 's'} ·{' '}
-                <span className={link!.published ? 'text-green-700 font-semibold' : 'text-gray-500'}>
+                <span className={link!.published ? 'text-green-700 font-semibold' : 'text-amber-800 font-semibold'}>
                   {link!.published ? 'Live' : 'Draft'}
                 </span>
               </p>
+              {/* Linking is only half the job. Until the guide is published the
+                  spawn skips it and staff get nothing — so say so right here,
+                  where the manager just linked it and believes they are done. */}
+              {!link!.published && (
+                <p className="mt-1 text-[var(--fs-xs)] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                  Staff can&apos;t see a draft. Tap <b>Edit guide</b>, turn on <b>Publish</b>, then save.
+                </p>
+              )}
             </div>
           </div>
           <div className="mt-2 flex gap-2">
