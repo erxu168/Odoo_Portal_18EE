@@ -676,6 +676,32 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
     load();
   }
 
+  /**
+   * Everything standing between this guide and Publish, listed live.
+   *
+   * validate() stops at the FIRST problem and only speaks when you press Save —
+   * so flipping to Published looked fine, then Save refused with one line of
+   * small red text and no clue that a second step had the same gap. This runs
+   * as you type and names every step, so the switch tells you the truth before
+   * you touch Save. It deliberately mirrors validate(true); validate stays the
+   * single authority for whether a save proceeds.
+   */
+  const publishBlockers: string[] = [];
+  if (published) {
+    steps.forEach((s, i) => {
+      const n = i + 1;
+      if (!s.explanation.trim()) publishBlockers.push(`Step ${n} needs an explanation`);
+      if (s.media_type === 'photo') {
+        if (!hasPhoto(s)) publishBlockers.push(`Step ${n} needs a photo`);
+        if (s.pins.some(p => !p.note.trim())) publishBlockers.push(`Step ${n} has a note-pin with no text`);
+      } else if (s.media_type === 'youtube') {
+        if (!isValidYoutubeUrl(s.youtube_url || '')) publishBlockers.push(`Step ${n} needs a valid YouTube link`);
+      } else if (s.media_type === 'pdf') {
+        if (!hasPdf(s)) publishBlockers.push(`Step ${n} needs a PDF`);
+      }
+    });
+  }
+
   const frozen = saving;
 
   return (
@@ -770,6 +796,23 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                     ? (dirty ? 'Turned on — staff can open it once you save.' : 'On — staff can open this guide. Flip left to make it a draft.')
                     : 'Off — a draft, hidden from staff. Flip the switch right to publish.'}
                 </p>
+                {publishBlockers.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5" role="alert">
+                    <p className="text-[var(--fs-xs)] font-bold text-amber-900">
+                      Can&apos;t publish yet — a published guide has to be complete for staff:
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                      {publishBlockers.map(b => (
+                        <li key={b} className="text-[var(--fs-xs)] text-amber-800 flex items-start gap-1.5">
+                          <span aria-hidden="true">•</span><span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1.5 text-[var(--fs-xs)] text-amber-700">
+                      Fix these, or flip back to <b>Draft</b> to save your work as-is.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {stale && (
@@ -850,7 +893,11 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
         {/* Footer */}
         {!loading && !loadError && (
           <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-2 rounded-b-2xl sm:rounded-b-2xl">
-            {error && <p className="text-[var(--fs-xs)] font-semibold text-red-600" role="alert">{error}</p>}
+            {error && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[var(--fs-sm)] font-semibold text-red-700" role="alert">
+                {error}
+              </p>
+            )}
             {notice && !error && <p className="text-[var(--fs-xs)] font-semibold text-green-700">{notice}</p>}
             <div className="flex gap-2">
               <button
