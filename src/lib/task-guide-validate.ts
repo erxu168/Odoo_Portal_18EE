@@ -10,6 +10,8 @@
  */
 
 import { AuthError } from '@/lib/auth';
+import { sanitizeRichText, richTextToPlain } from './rich-text';
+import { MAX_RICH_TEXT_BYTES } from './task-limits';
 import { isValidYoutubeUrl } from '@/lib/youtube-url';
 import { parseDrawings, serializeDrawings, type GuideStepSave } from '@/lib/task-guide';
 
@@ -42,9 +44,17 @@ export function sanitizeSteps(raw: unknown, published: boolean): GuideStepSave[]
   return raw.map((s: any, i: number) => {
     const mt = s?.media_type;
     if (!GUIDE_MEDIA_TYPES.has(mt)) throw new AuthError(`Step ${i + 1}: unknown type`, 400);
-    const explanation = String(s?.explanation ?? '').trim();
-    if (published && !explanation) throw new AuthError(`Step ${i + 1}: an explanation is required`, 400);
-    const out: GuideStepSave = { media_type: mt, explanation };
+    // Sanitise here too: this route is a public entry point, so a hand-crafted
+    // POST must not be able to store markup the editor would never produce.
+    // Emptiness is judged on the WORDS — <p></p> is an empty editor.
+    const rawExplanation = String(s?.explanation ?? '').trim();
+    if (rawExplanation.length > MAX_RICH_TEXT_BYTES) {
+      throw new AuthError(`Step ${i + 1}: that explanation is too large`, 400);
+    }
+    const explanation = sanitizeRichText(rawExplanation);
+    const explanationText = richTextToPlain(explanation);
+    if (published && !explanationText) throw new AuthError(`Step ${i + 1}: an explanation is required`, 400);
+    const out: GuideStepSave = { media_type: mt, explanation: explanationText ? explanation : '' };
     if (Number.isInteger(s?.id)) out.id = s.id;
     if (mt === 'photo') {
       if (s?.image_base64) {

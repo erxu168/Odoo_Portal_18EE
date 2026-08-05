@@ -14,4 +14,9 @@
 
 /** Manager's standing note on a task. Bounded because it is deep-copied onto
  * every daily task line at spawn, so an unbounded value compounds day after day. */
-export const MAX_MANAGER_NOTE = 1000;
+export const MAX_MANAGER_NOTE = 3000;
+
+/** Hard ceiling on the stored MARKUP, mirroring MAX_RICH_TEXT_BYTES in
+ * task_template_line.py. The character limit counts WORDS, which an enormous
+ * link or a pile of empty tags slips past. */
+export const MAX_RICH_TEXT_BYTES = 24000;

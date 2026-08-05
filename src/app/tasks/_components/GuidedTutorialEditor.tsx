@@ -39,6 +39,8 @@ import {
 import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
+import RichTextEditor from '@/components/ui/RichTextEditor';
+import { toEditorHtml, richTextToPlain } from '@/lib/rich-text';
 import { useConfirm } from '@/components/ui/useConfirm';
 
 /*
@@ -380,7 +382,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
 
   /** True when a step holds work worth confirming before it is thrown away. */
   function stepHasContent(s: EditorStep): boolean {
-    return !!(hasPhoto(s) || hasPdf(s) || s.explanation.trim() ||
+    return !!(hasPhoto(s) || hasPdf(s) || richTextToPlain(s.explanation) ||
       (s.pins && s.pins.length > 0) || (s.drawings && s.drawings.length > 0) ||
       (s.youtube_url || '').trim());
   }
@@ -524,7 +526,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       }
       // Full per-step content is required ONLY when publishing.
       if (!forPublish) continue;
-      if (!s.explanation.trim()) return `Step ${n}: add an explanation.`;
+      if (!richTextToPlain(s.explanation)) return `Step ${n}: add an explanation.`;
       if (s.media_type === 'photo') {
         if (!hasPhoto(s)) return `Step ${n}: add a photo.`;
         if (s.pins.some(p => !p.note.trim())) return `Step ${n}: every note-pin needs a note.`;
@@ -539,7 +541,11 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
 
   function buildSteps(): GuideStepSave[] {
     return steps.map(s => {
-      const out: GuideStepSave = { media_type: s.media_type, explanation: s.explanation.trim() };
+      // Send '' for an editor the manager emptied: TipTap serialises that as
+      // <p></p>, which would store as "content" and defeat every is-it-empty
+      // check on both sides.
+      const explanation = richTextToPlain(s.explanation) ? s.explanation.trim() : '';
+      const out: GuideStepSave = { media_type: s.media_type, explanation };
       if (s.id) out.id = s.id;
       if (s.media_type === 'photo') {
         out.pins = s.pins.map(p => {
@@ -690,7 +696,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
   {
     steps.forEach((s, i) => {
       const n = i + 1;
-      if (!s.explanation.trim()) publishBlockers.push(`Step ${n} needs an explanation`);
+      if (!richTextToPlain(s.explanation)) publishBlockers.push(`Step ${n} needs an explanation`);
       if (s.media_type === 'photo') {
         if (!hasPhoto(s)) publishBlockers.push(`Step ${n} needs a photo`);
         if (s.pins.some(p => !p.note.trim())) publishBlockers.push(`Step ${n} has a note-pin with no text`);
@@ -1112,17 +1118,19 @@ function StepCard({
           <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">
             {step.media_type === 'tip' ? 'Tip / warning' : 'Explanation'}
           </label>
-          <textarea
-            value={step.explanation}
-            onChange={e => onPatch({ explanation: e.target.value })}
-            rows={step.media_type === 'tip' ? 3 : 2}
-            placeholder={step.media_type === 'tip' ? 'e.g. Never put water on a grease fire.' : 'Explain what to do in this step.'}
-            className={`w-full px-3 py-2 border rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 ${
-              step.media_type === 'tip'
-                ? 'border-amber-300 bg-amber-50 text-amber-900 placeholder-amber-400 focus:ring-amber-400'
-                : 'border-gray-200 focus:ring-green-500'
-            }`}
-          />
+          {/* toEditorHtml, not the raw value: explanations written before the
+              editor existed are plain text with real newlines, and handing that
+              straight over would let HTML collapse every line break — the first
+              save would silently flatten a guide someone spent an afternoon on. */}
+          <div className={step.media_type === 'tip' ? 'rounded-lg border border-amber-300 bg-amber-50 p-1' : ''}>
+            <RichTextEditor
+              value={toEditorHtml(step.explanation)}
+              onChange={html => onPatch({ explanation: html })}
+              placeholder={step.media_type === 'tip' ? 'e.g. Never put water on a grease fire.' : 'Explain what to do in this step.'}
+              minHeight={step.media_type === 'tip' ? 96 : 80}
+              disabled={disabled}
+            />
+          </div>
           {step.media_type === 'tip' && (
             <p className="text-[var(--fs-xs)] text-amber-600 mt-1 flex items-center gap-1">
               <span aria-hidden="true">⚠️</span> Shown to staff as a highlighted warning.

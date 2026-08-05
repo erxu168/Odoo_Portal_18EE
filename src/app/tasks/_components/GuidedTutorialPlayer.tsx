@@ -5,6 +5,7 @@ import PinnableImage from '@/components/ui/PinnableImage';
 import { useTopBar } from '@/components/ui/TopBarContext';
 import { youtubeEmbedUrl, youtubeWatchUrl } from '@/lib/youtube-url';
 import { parseDrawings } from '@/lib/guide-drawings';
+import RichText from '@/components/ui/RichText';
 import type { StaffGuide, StaffGuideStep, TemplateGuide, LibraryGuide } from '@/lib/task-guide';
 
 /**
@@ -444,7 +445,7 @@ export default function GuidedTutorialPlayer({ source, onClose }: Props) {
                   explanation inside their own panel, so don't repeat it here. */}
               {step.media_type !== 'tip' && step.explanation.trim() && (
                 <p className="text-[var(--fs-sm)] leading-relaxed text-gray-800 whitespace-pre-wrap">
-                  {step.explanation}
+                  <RichText value={step.explanation} />
                 </p>
               )}
             </div>
@@ -528,7 +529,7 @@ function StepMedia({
           </span>
         </div>
         <p className="text-[var(--fs-sm)] leading-relaxed text-amber-900 whitespace-pre-wrap">
-          {step.explanation.trim() || 'Keep this in mind for this step.'}
+          {step.explanation ? <RichText value={step.explanation} /> : 'Keep this in mind for this step.'}
         </p>
       </div>
     );

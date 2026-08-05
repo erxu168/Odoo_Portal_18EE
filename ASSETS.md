@@ -209,7 +209,9 @@ list told only about the room keeps rendering orphans.
 | `NumpadCore` | `ui/NumpadCore.tsx` | The keypad body — no sheet, no backdrop, controlled buffer. What the shells share. `layout` keeps counting's grid and Purchase's grid both available; the KEYS behave identically either way | 1 |
 | `ContainerLevelPicker` / `ContainerLevelGlyph` | `ui/ContainerLevelPicker.tsx` | Mark the open container's level by eye — drawings of the REAL containers (white 10 L bucket, 20 L tub, blue 30 L drum, bottle), quarter steps, 44px zones; glyph = tiny read-only variant for review lines. Feeds the existing loose quantity via `looseFromFraction`/`quarterFromLoose` in `crate-units` | 2 |
 | `PhoneInput` | `ui/PhoneInput.tsx` | Country code + validation | 1 |
-| `RichTextEditor` | `ui/RichTextEditor.tsx` | Formatted-note editor | 2 |
+| `RichTextEditor` | `ui/RichTextEditor.tsx` | Formatted-text editor (TipTap): bold/italic/underline, bullet + numbered lists, H2/H3, links. **Feed it `toEditorHtml(value)`**, never the raw field — legacy plain text loses its line breaks otherwise | 5 |
+| `RichText` | `ui/RichText.tsx` | **THE only way to display** manager-authored text. Sanitises and renders formatted values; renders legacy plain text as-is with `whitespace-pre-wrap`. Never hand-roll `dangerouslySetInnerHTML` for these fields — a call site that does is a call site that forgets the sanitiser | 4 |
+| `lib/rich-text.ts` | `lib/rich-text.ts` | `sanitizeRichText` (strict allowlist, rebuilds every tag, one attribute: a validated `href`), `isRichText`, `toEditorHtml`, `plainTextToRichText`, `richTextToPlain`. **Emptiness and length must use `richTextToPlain`** — an empty editor serialises as `<p></p>`, which is truthy. Mirrored server-side by `sanitize_rich_text` in `task_template_line.py` | 6 |
 | `Chip` | `ui/Chip.tsx` | Status badge — colour AND icon carry meaning | 1 |
 | `KpiChip` / `KpiRow` | `ui/KpiChip.tsx` | Stat chip; red only for real problems. Give it `onClick` and it becomes a real button — a stat you can see should be a stat you can act on | 11 |
 

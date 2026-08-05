@@ -142,3 +142,26 @@ select.form-input {
 .animate-slideUp {
   animation: slideUp 300ms ease-out;
 }
+
+/* ── Formatted manager text, as STAFF see it (ui/RichText) ──────────────────
+   Tailwind's reset strips list markers and heading sizes, so without this a
+   manager's bullet list would render as unindented run-on lines — the format
+   would be stored correctly and shown wrongly, which is the worst of both.
+   Sizes use the responsive --fs-* tokens so a guide scales on a tablet like
+   everything else. Kept in globals rather than the component because this
+   markup is server-rendered. */
+.rte-render > :first-child { margin-top: 0; }
+.rte-render > :last-child  { margin-bottom: 0; }
+.rte-render p              { margin: 0 0 8px; }
+.rte-render ul             { padding-left: 20px; list-style: disc;    margin: 4px 0 8px; }
+.rte-render ol             { padding-left: 20px; list-style: decimal; margin: 4px 0 8px; }
+.rte-render li             { margin: 2px 0; }
+.rte-render h2             { font-size: var(--fs-lg); font-weight: 700; margin: 10px 0 4px; }
+.rte-render h3             { font-size: var(--fs-md); font-weight: 700; margin: 8px 0 4px; }
+.rte-render strong, .rte-render b { font-weight: 700; }
+.rte-render em, .rte-render i     { font-style: italic; }
+.rte-render u                     { text-decoration: underline; }
+.rte-render s                     { text-decoration: line-through; }
+.rte-render a              { color: #15803D; text-decoration: underline; overflow-wrap: anywhere; }
+.rte-render blockquote     { border-left: 3px solid #E5E7EB; padding-left: 10px; margin: 6px 0; color: #6B7280; }
+.rte-render code           { background: #F3F4F6; padding: 1px 4px; border-radius: 4px; }

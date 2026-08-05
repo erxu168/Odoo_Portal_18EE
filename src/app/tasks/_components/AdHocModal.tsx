@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { DayPart, ModuleLink } from '@/lib/odoo-tasks';
-import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
+import RichTextEditor from '@/components/ui/RichTextEditor';
+import { toEditorHtml, richTextToPlain } from '@/lib/rich-text';
 
 const DAY_PART_OPTIONS: { value: DayPart; label: string }[] = [
   { value: 'opening', label: 'Opening' },
@@ -59,7 +60,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
         deadline_datetime: deadlineIso,
         photo_required: photoRequired,
         photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
-        manager_note: managerNote.trim() || null,
+        manager_note: richTextToPlain(managerNote) ? managerNote.trim() : null,
         module_link_type: moduleLink,
       });
     } catch (e: unknown) {
@@ -120,13 +121,12 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
               <span>Note for staff</span>
               <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
             </label>
-            <textarea
-              value={managerNote}
-              onChange={e => setManagerNote(e.target.value)}
+            <RichTextEditor
+              value={toEditorHtml(managerNote)}
+              onChange={setManagerNote}
               placeholder="e.g. Check the walk-in AND the dry store."
-              rows={2}
-              maxLength={MAX_MANAGER_NOTE}
-              className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
+              minHeight={72}
+              disabled={submitting}
             />
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Shown to staff when they open this task.</p>
           </div>

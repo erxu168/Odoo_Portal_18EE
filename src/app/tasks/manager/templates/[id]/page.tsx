@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
 import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
+import RichTextEditor from '@/components/ui/RichTextEditor';
+import RichText from '@/components/ui/RichText';
+import { toEditorHtml, richTextToPlain } from '@/lib/rich-text';
 import { useConfirm } from '@/components/ui/useConfirm';
 import {
   DndContext,
@@ -743,6 +746,12 @@ export default function TemplateEditPage({ params }: PageProps) {
                               )}
                             </div>
                           )}
+                          {l.manager_note && (
+                            <div className="text-[var(--fs-xs)] text-gray-500 mt-1.5 flex items-start gap-1">
+                              <span aria-hidden="true">📌</span>
+                              <RichText value={l.manager_note} className="min-w-0 flex-1" />
+                            </div>
+                          )}
                           {l.subtasks.length > 0 && (
                             <ul className="mt-1.5 space-y-0.5">
                               {l.subtasks.map(s => (
@@ -755,9 +764,6 @@ export default function TemplateEditPage({ params }: PageProps) {
                           )}
                           {l.photo_instructions && (
                             <p className="text-[var(--fs-xs)] text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
-                          )}
-                          {l.manager_note && (
-                            <p className="text-[var(--fs-xs)] text-gray-500 mt-1.5 whitespace-pre-wrap">📌 {l.manager_note}</p>
                           )}
                           {l.attachments.length > 0 && (
                             <div className="mt-1.5">
@@ -963,7 +969,7 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
         deadline_time: hhmmToFloat(deadline),
         photo_required: photoRequired,
         photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
-        manager_note: managerNote.trim() || null,
+        manager_note: richTextToPlain(managerNote) ? managerNote.trim() : null,
         module_link_type: moduleLink,
         is_setup_guide: isSetupGuide,
         subtasks: subtasksPayload(seqMap),
@@ -1207,18 +1213,20 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
               <span>Note for staff</span>
               <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
             </label>
-            <textarea
-              value={managerNote}
-              onChange={e => setManagerNote(e.target.value)}
+            <RichTextEditor
+              value={toEditorHtml(managerNote)}
+              onChange={setManagerNote}
               placeholder="e.g. Check the walk-in AND the dry store. Order if under 2 trays."
-              rows={2}
-              maxLength={MAX_MANAGER_NOTE}
-              className="w-full px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
+              minHeight={72}
+              // contenteditable ignores the wrapping fieldset[disabled], so it
+              // has to be frozen explicitly — otherwise a keystroke during a
+              // save is wiped by the re-hydrate and "Saved." claims otherwise.
+              disabled={submitting}
             />
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1">
               Shown to staff every day this task runs, when they open it.
-              {managerNote.length > MAX_MANAGER_NOTE - 100 && (
-                <span className="text-gray-500"> · {MAX_MANAGER_NOTE - managerNote.length} characters left</span>
+              {richTextToPlain(managerNote).length > MAX_MANAGER_NOTE - 100 && (
+                <span className="text-gray-500"> · {MAX_MANAGER_NOTE - richTextToPlain(managerNote).length} characters left</span>
               )}
             </p>
           </div>

@@ -1,4 +1,5 @@
 import mimetypes
+import re
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
@@ -6,11 +7,15 @@ from odoo.exceptions import UserError, ValidationError
 # Guide size caps — keep aggregate JSON-RPC saves and the nightly snapshot bounded.
 GUIDE_MAX_STEPS = 40
 GUIDE_MAX_PINS = 20
-GUIDE_MAX_EXPLANATION = 2000
+GUIDE_MAX_EXPLANATION = 6000
 GUIDE_MAX_NOTE = 500
 # The manager's standing note on a task. Bounded because it is deep-copied onto
 # every daily line at spawn, so an unbounded blob would compound day after day.
-MAX_MANAGER_NOTE = 1000
+MAX_MANAGER_NOTE = 3000
+# Hard ceiling on the stored MARKUP. The user-facing limits count words, which
+# an enormous href or a million empty tags slip straight past — and every one of
+# these fields is deep-copied onto a new daily task every single day.
+MAX_RICH_TEXT_BYTES = 24000
 GUIDE_MAX_IMAGE_B64 = 12 * 1024 * 1024   # ~9 MB decoded
 GUIDE_MAX_PDF_B64 = 20 * 1024 * 1024     # ~15 MB decoded
 
@@ -51,6 +56,99 @@ RECURRENCE_MONTHLY_MODE_SELECTION = [
     ('day_of_month', 'On a day of the month'),
     ('weekday_of_month', 'On the Nth weekday of the month'),
 ]
+
+
+# ── Formatted text (guide explanations, the note for staff) ──────────────────
+# Managers author these; STAFF render them. Odoo's html_sanitize is the real
+# security boundary here — it is lxml-backed and strips scripts, event handlers,
+# styles and dangerous protocols. The portal repeats a stricter ALLOWLIST at
+# render time (src/lib/rich-text.ts) as a second, independent guard.
+RICH_TEXT_TAGS = (
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
+    'ul', 'ol', 'li', 'h2', 'h3', 'blockquote', 'code', 'a',
+)
+# `[^>]*`, not `(?:\s[^>]*)?`: HTML ends a tag name at "/" as well as at
+# whitespace, so demanding a space missed `<img/src=x onerror=…>` entirely — and
+# re.sub leaves an unmatched tag verbatim, i.e. the allowlist failed OPEN.
+_TAG_RE = re.compile(r'<(/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>')
+# Mirrors isRichText() in src/lib/rich-text.ts — the two MUST agree, or a value
+# one side treats as plain text the other will parse as markup.
+_RICH_RE = re.compile(
+    r'<(p|br|ul|ol|li|h2|h3|strong|b|em|i|u|s|a|blockquote|code)\b[^>]*>', re.I)
+
+
+def is_rich_text(value):
+    """Formatted text, or legacy plain text written before the editor existed?"""
+    return bool(value) and bool(_RICH_RE.search(str(value)))
+
+
+def sanitize_rich_text(value):
+    """Store-safe HTML for a manager-authored field.
+
+    Two passes. html_sanitize does the security work; the allowlist pass then
+    drops anything the PORTAL will not render anyway — notably <img>, which
+    html_sanitize keeps (harmlessly, once its onerror is stripped). Without that
+    pass a pasted image would be stored, count against the length cap, and then
+    silently vanish for staff — the author would never learn their paste did
+    nothing.
+    """
+    if not value:
+        return ''
+    # Leave LEGACY PLAIN TEXT exactly as it is. html_sanitize wraps a bare
+    # string in <p>…</p>, and HTML collapses the newlines inside it — so simply
+    # sanitising on every write would silently flatten every multi-line note
+    # written before the editor existed. The portal renders a non-HTML value as
+    # plain text (ui/RichText), so it never reaches an HTML parser anyway.
+    if not is_rich_text(value):
+        return str(value)
+    from odoo.tools.mail import html_sanitize
+    cleaned = html_sanitize(
+        value,
+        sanitize_tags=True,
+        sanitize_attributes=True,
+        sanitize_style=True,
+        strip_style=True,
+        strip_classes=True,
+    )
+    cleaned = str(cleaned or '')
+
+    # Anchors cannot nest, so one counter drops the </a> of an opener we
+    # rejected — otherwise a blocked javascript: link left a stray closing tag.
+    dropped = [0]
+
+    def _keep(m):
+        tag = m.group(2).lower()
+        if tag not in RICH_TEXT_TAGS:
+            return ''
+        if tag != 'a':
+            return '<%s%s>' % (m.group(1), tag)
+        # html_sanitize has already neutralised the href; keep only that one
+        # attribute so the stored markup matches what the portal will render.
+        if m.group(1):
+            if dropped[0] > 0:
+                dropped[0] -= 1
+                return ''
+            return '</a>'
+        href = re.search(r'\bhref\s*=\s*"([^"]*)"', m.group(3) or '')
+        url = (href.group(1) if href else '').strip()
+        if not re.match(r'\A(https?://|mailto:)', url, re.I):
+            dropped[0] += 1
+            return ''
+        return '<a href="%s">' % url.replace('"', '&quot;')
+
+    return _TAG_RE.sub(_keep, cleaned).strip()
+
+
+def rich_text_to_plain(value):
+    """The words only — used to test "is this actually empty?" and to measure
+    real length. `<p></p>` is an empty editor, not an explanation."""
+    if not value:
+        return ''
+    text = re.sub(r'<[^>]+>', ' ', str(value))
+    for entity, char in (('&nbsp;', ' '), ('&amp;', '&'), ('&lt;', '<'),
+                         ('&gt;', '>'), ('&quot;', '"'), ('&#39;', "'")):
+        text = text.replace(entity, char)
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 class KrawingsTaskTemplateLine(models.Model):
@@ -144,10 +242,29 @@ class KrawingsTaskTemplateLine(models.Model):
             if line.guide_id and line.template_id.company_id != line.guide_id.company_id:
                 raise ValidationError('A task can only link a guide from the same company.')
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('manager_note'):
+                vals['manager_note'] = sanitize_rich_text(vals['manager_note'])
+        return super().create(vals_list)
+
+    def write(self, vals):
+        # Sanitise on the way IN, on every path — the portal is one caller, but
+        # a direct Odoo write or an import is not going to clean this for us,
+        # and staff render whatever ends up stored.
+        if vals.get('manager_note'):
+            vals['manager_note'] = sanitize_rich_text(vals['manager_note'])
+        return super().write(vals)
+
     @api.constrains('manager_note')
     def _check_manager_note(self):
         for line in self:
-            if line.manager_note and len(line.manager_note) > MAX_MANAGER_NOTE:
+            if line.manager_note and len(line.manager_note) > MAX_RICH_TEXT_BYTES:
+                raise ValidationError(
+                    'That note is too large. Remove some formatting or a very long link.'
+                )
+            if line.manager_note and len(rich_text_to_plain(line.manager_note)) > MAX_MANAGER_NOTE:
                 raise ValidationError(
                     'A note for staff can be at most %d characters.' % MAX_MANAGER_NOTE
                 )

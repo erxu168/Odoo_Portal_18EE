@@ -29,14 +29,24 @@ export function htmlToText(input: string | null | undefined): string {
  * no room for scripts, event handlers, styles or links. Odoo already sanitises
  * the stored HTML; this is a second, render-time guard.
  */
-const ALLOWED_TAGS = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'h2', 'h3']);
+/**
+ * Recipe instruction HTML. Kept as a named re-export so every existing caller
+ * is untouched, but the implementation is now the shared one in lib/rich-text —
+ * two copies of a security allowlist is exactly how one of them rots.
+ *
+ * One behaviour change: a link the recipe editor created now RENDERS. The old
+ * copy stripped every attribute, so `<a href>` lost its href and quietly became
+ * plain text — the editor offered a Link button that did nothing. The shared
+ * version keeps http/https/mailto links and rebuilds them with
+ * rel="noopener noreferrer".
+ */
+import { sanitizeRichText } from './rich-text';
+
 export function sanitizeRecipeHtml(input: string | null | undefined): string {
-  if (!input) return '';
-  let html = String(input);
-  html = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, '');
-  // Rebuild each tag with no attributes; drop tags not in the allowlist.
-  html = html.replace(/<(\/?)([a-zA-Z0-9]+)(?:\s[^>]*)?>/g, (_m, slash, tag) => {
-    return ALLOWED_TAGS.has(tag.toLowerCase()) ? `<${slash}${tag.toLowerCase()}>` : '';
-  });
-  return html.trim();
+  // allowLinks: false keeps recipes EXACTLY as they behaved before this shared
+  // helper existed. Their render containers have no link styling, so an enabled
+  // link became invisible-but-tappable text that could navigate a cook out of
+  // the app mid-recipe. One implementation, one deliberate difference.
+  return sanitizeRichText(input, { allowLinks: false });
 }
+

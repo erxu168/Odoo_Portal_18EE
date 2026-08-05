@@ -4,7 +4,10 @@ from odoo.exceptions import UserError, ValidationError
 from .task_template_line import (
     DAY_PART_SELECTION,
     MAX_MANAGER_NOTE,
+    MAX_RICH_TEXT_BYTES,
     MODULE_LINK_SELECTION,
+    rich_text_to_plain,
+    sanitize_rich_text,
     _guess_image_mime,
 )
 
@@ -69,12 +72,31 @@ class KrawingsTaskListLine(models.Model):
 
     subtask_ids = fields.One2many('krawings.task.list.subtask', 'line_id')
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('manager_note'):
+                vals['manager_note'] = sanitize_rich_text(vals['manager_note'])
+        return super().create(vals_list)
+
+    def write(self, vals):
+        # Sanitise on the way IN, on every path — the portal is one caller, but
+        # a direct Odoo write or an import is not going to clean this for us,
+        # and staff render whatever ends up stored.
+        if vals.get('manager_note'):
+            vals['manager_note'] = sanitize_rich_text(vals['manager_note'])
+        return super().write(vals)
+
     @api.constrains('manager_note')
     def _check_manager_note(self):
         # Also enforced here, not just on the template: a one-off task is written
         # straight onto the daily list and never passes through a template line.
         for line in self:
-            if line.manager_note and len(line.manager_note) > MAX_MANAGER_NOTE:
+            if line.manager_note and len(line.manager_note) > MAX_RICH_TEXT_BYTES:
+                raise ValidationError(
+                    'That note is too large. Remove some formatting or a very long link.'
+                )
+            if line.manager_note and len(rich_text_to_plain(line.manager_note)) > MAX_MANAGER_NOTE:
                 raise ValidationError(
                     'A note for staff can be at most %d characters.' % MAX_MANAGER_NOTE
                 )

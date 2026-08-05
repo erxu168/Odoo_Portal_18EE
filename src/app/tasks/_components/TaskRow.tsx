@@ -6,6 +6,7 @@ import { TaskListLine, TaskSubtask, ModuleLink, SubtaskToggleResult } from '@/li
 import SubtaskList from './SubtaskList';
 import AttachmentList from './AttachmentList';
 import GuidedTutorialPlayer from './GuidedTutorialPlayer';
+import RichText from '@/components/ui/RichText';
 
 interface Props {
   task: TaskListLine;
@@ -232,10 +233,9 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
             Shown on past days too — it is part of what the task said that day.
             whitespace-pre-wrap keeps any line breaks the manager typed. */}
         {task.manager_note && (
-          <div className="mt-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 text-[var(--fs-xs)] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]">
-            <span aria-hidden="true">📌 </span>
-            <span className="font-bold">Note: </span>
-            {task.manager_note}
+          <div className="mt-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-700 text-[var(--fs-xs)] leading-snug [overflow-wrap:anywhere]">
+            <span className="font-bold"><span aria-hidden="true">📌 </span>Note: </span>
+            <RichText value={task.manager_note} />
           </div>
         )}
 

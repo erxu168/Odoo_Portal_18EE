@@ -5,6 +5,9 @@ from .task_template_line import (
     GUIDE_MAX_STEPS,
     GUIDE_MAX_PINS,
     GUIDE_MAX_EXPLANATION,
+    MAX_RICH_TEXT_BYTES,
+    rich_text_to_plain,
+    sanitize_rich_text,
     GUIDE_MAX_NOTE,
     GUIDE_MAX_IMAGE_B64,
     GUIDE_MAX_PDF_B64,
@@ -95,7 +98,7 @@ class KrawingsTaskGuide(models.Model):
             if not steps:
                 raise ValidationError('A published guide needs at least one step.')
             for i, s in enumerate(steps, 1):
-                if not (s.explanation and s.explanation.strip()):
+                if not rich_text_to_plain(s.explanation):
                     raise ValidationError('Step %s needs an explanation before the guide can be published.' % i)
                 if s.media_type == 'photo' and not s.image:
                     raise ValidationError('Step %s needs a photo before the guide can be published.' % i)
@@ -230,7 +233,9 @@ class KrawingsTaskGuide(models.Model):
             for idx, st in enumerate(steps, 1):
                 mt = st.get('media_type')
                 prev = prior.get(int(st.get('id') or 0), {})
-                if not (st.get('explanation') or '').strip():
+                # rich_text_to_plain, not strip(): an empty editor serialises as
+                # <p></p>, which is truthy and would sail past a bare strip().
+                if not rich_text_to_plain(st.get('explanation') or ''):
                     raise UserError('Step %s needs an explanation before you can publish.' % idx)
                 if mt == 'photo' and not (st.get('image_base64') or prev.get('image')):
                     raise UserError('Step %s needs a photo before you can publish.' % idx)
@@ -246,8 +251,16 @@ class KrawingsTaskGuide(models.Model):
         seq = 10
         for st in steps:
             mt = st.get('media_type')
-            explanation = (st.get('explanation') or '').strip()
-            if len(explanation) > GUIDE_MAX_EXPLANATION:
+            # Formatted text: sanitise BEFORE storing — staff render this, so the
+            # stored value must already be safe rather than relying on the
+            # portal to clean it at display time.
+            raw_explanation = st.get('explanation') or ''
+            if len(raw_explanation) > MAX_RICH_TEXT_BYTES:
+                raise UserError('An explanation is too large. Remove some formatting or a very long link.')
+            explanation = sanitize_rich_text(raw_explanation)
+            # Measure the WORDS, not the markup: otherwise bullets and bold
+            # would quietly shrink how much a manager can actually write.
+            if len(rich_text_to_plain(explanation)) > GUIDE_MAX_EXPLANATION:
                 raise UserError('An explanation is too long (max %s characters).' % GUIDE_MAX_EXPLANATION)
             prev = prior.get(int(st.get('id') or 0), {})
             vals = {

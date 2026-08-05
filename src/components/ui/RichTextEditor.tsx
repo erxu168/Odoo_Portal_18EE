@@ -212,9 +212,13 @@ function ToolbarButton({ label, active, onClick, children }: ToolbarButtonProps)
                       color 150ms ease, border-color 150ms ease;
         }
         .rte-btn[data-active='true'] {
-          background: #FFF4E6;
-          color: #F5800A;
-          border-color: #F5800A;
+          /* Green, not the legacy #F5800A orange: green is the portal's one
+             interactive colour, and an active toolbar button is a selection.
+             The orange would have walked straight back into the Task Manager
+             screens the colour pass just cleared it out of. */
+          background: #DCFCE7;
+          color: #15803D;
+          border-color: #16A34A;
         }
         .rte-btn:active { transform: scale(0.97); }
       `}</style>
