@@ -18,7 +18,7 @@ import type { ReviewFeed, ReviewItem } from '@/lib/task-review';
  *   GET /api/tasks/review/photo/{attachmentId}    -> image bytes
  */
 
-const DAY_PART_LABEL: Record<string, string> = { opening: 'Opening', mid_day: 'Mid-day', closing: 'Closing' };
+const DAY_PART_LABEL: Record<string, string> = { opening: 'Opening', mid_day: 'Service', closing: 'Closing' };
 type ToastState = { message: string; type: 'success' | 'error' | 'info' } | null;
 
 function initials(name: string): string {

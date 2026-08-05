@@ -7,7 +7,7 @@ import { toEditorHtml, richTextToPlain } from '@/lib/rich-text';
 
 const DAY_PART_OPTIONS: { value: DayPart; label: string }[] = [
   { value: 'opening', label: 'Opening' },
-  { value: 'mid_day', label: 'Mid-day' },
+  { value: 'mid_day', label: 'Service' },
   { value: 'closing', label: 'Closing' },
 ];
 

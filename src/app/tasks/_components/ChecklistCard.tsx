@@ -19,7 +19,7 @@ interface Props {
 
 const DAY_PART_LABEL: Record<DayPart, string> = {
   opening: 'Opening',
-  mid_day: 'Mid-day',
+  mid_day: 'Service',
   closing: 'Closing',
 };
 

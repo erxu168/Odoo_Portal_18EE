@@ -26,7 +26,7 @@ def _guess_image_mime(filename):
 
 DAY_PART_SELECTION = [
     ('opening', 'Opening'),
-    ('mid_day', 'Mid-day'),
+    ('mid_day', 'Service'),
     ('closing', 'Closing'),
 ]
 
