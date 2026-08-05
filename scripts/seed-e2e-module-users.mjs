@@ -25,6 +25,22 @@ if (!dbPath) {
 
 const PASSWORD = process.env.E2E_PASSWORD || 'e2e-test-1234';
 const db = new Database(dbPath);
+
+// The app OWNS the schema (src/lib/db.ts initTables/migrateSchema). This script
+// deliberately does not re-create it — a second copy of the schema would drift.
+// So the server has to have opened this database at least once first.
+const hasSchema = db
+  .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='portal_users'")
+  .get();
+if (!hasSchema) {
+  console.error(
+    `No schema in ${dbPath}.\n` +
+    'Start the app against this database once so it can create the tables, then re-run:\n' +
+    '  PORTAL_DB_PATH=<db> npx next dev -p 3100 &   # then curl http://localhost:3100/login',
+  );
+  process.exit(1);
+}
+
 const hash = bcrypt.hashSync(PASSWORD, 10);
 const now = new Date().toISOString();
 

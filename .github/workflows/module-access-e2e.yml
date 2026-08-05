@@ -1,0 +1,75 @@
+name: Module Access E2E
+
+# A REAL browser check that a module which is switched off is actually gone.
+#
+# Why it is its own workflow: portal-smoke.yml's browser half has been skipping
+# on every run since it was written, because tests/auth.setup.ts calls
+# setup.skip() when SMOKE_EMAIL / SMOKE_PASSWORD are absent — and no such repo
+# secrets exist. A green tick there means unit tests only.
+#
+# This job needs NO SECRETS. It boots the app against a throwaway SQLite with an
+# Odoo that deliberately does not exist (every Odoo call in the paths under test
+# is already wrapped in try/catch), seeds its own two accounts, and drives
+# Chromium against it. Verified locally: 6/6 on a brand-new database, no Odoo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  module-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      # Dev server, not a production build: `next build` prerenders, which would
+      # reach for Odoo at build time. Dev compiles on demand, so nothing touches
+      # Odoo until a request does — and the paths under test never need it.
+      - name: Start the portal against a throwaway database
+        run: |
+          PORTAL_DB_PATH=/tmp/ci-portal.db \
+          ODOO_URL=http://127.0.0.1:9 ODOO_DB=none ODOO_USER=none ODOO_PASSWORD=none \
+          KRAWINGS_VAULT_KEY=ci-not-a-secret \
+          PORTAL_PUBLIC_URL=http://localhost:3101 \
+          npx next dev -p 3101 > /tmp/ci-dev.log 2>&1 &
+          for i in $(seq 1 90); do
+            curl -sSf -o /dev/null http://localhost:3101/login && break
+            sleep 2
+          done
+          curl -sSf -o /dev/null http://localhost:3101/login
+
+      # The app OWNS the schema, so it has to open the database once before the
+      # seed script can insert. A failed login is the cheapest way to make it.
+      - name: Create the schema, then seed the two test accounts
+        run: |
+          curl -sS -o /dev/null -X POST http://localhost:3101/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"bootstrap@none","password":"x"}'
+          PORTAL_DB_PATH=/tmp/ci-portal.db node scripts/seed-e2e-module-users.mjs
+
+      - name: Run the module-access browser tests
+        run: npm run test:module-access
+        env:
+          E2E_BASE_URL: http://localhost:3101
+
+      - name: Upload report and server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-access-e2e-report
+          path: |
+            playwright-report/
+            test-results/
+            /tmp/ci-dev.log
+          retention-days: 7
