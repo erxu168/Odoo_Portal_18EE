@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
+import { useRoleModuleOverrides } from '@/lib/use-role-module-overrides';
 
 /**
  * "Portal access" panel embedded in the HR employee screen (EmployeeDetail).
@@ -47,6 +48,9 @@ function fmtDate(iso: string): string {
 }
 
 export default function EmployeePortalAccess({ employeeId }: { employeeId: number }) {
+  // The admin-editable role grid, so this shows what the person ACTUALLY gets
+  // by default, not the built-in default. See /admin/permissions.
+  const roleModuleOverrides = useRoleModuleOverrides();
   const [data, setData] = useState<AccessData | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,7 +133,7 @@ export default function EmployeePortalAccess({ employeeId }: { employeeId: numbe
 
   const account = data?.account || null;
   const isAdmin = data?.viewer.is_admin === true;
-  const moduleIds = account ? (parseModuleAccess(account.module_access) ?? defaultModuleIds(account.role)) : [];
+  const moduleIds = account ? (parseModuleAccess(account.module_access) ?? defaultModuleIds(account.role, roleModuleOverrides)) : [];
 
   async function toggleCompany(companyId: number) {
     if (!account) return;

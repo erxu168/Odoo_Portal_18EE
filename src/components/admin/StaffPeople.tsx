@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
+import { useRoleModuleOverrides } from '@/lib/use-role-module-overrides';
 import RecordLink from '@/components/ui/RecordLink';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
@@ -81,6 +82,9 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function StaffPeople() {
+  // The admin-editable role grid, so this shows what the person ACTUALLY gets
+  // by default, not the built-in default. See /admin/permissions.
+  const roleModuleOverrides = useRoleModuleOverrides();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [pending, setPending] = useState<Account[]>([]);
@@ -162,7 +166,7 @@ export default function StaffPeople() {
   }
 
   function userModuleIds(a: Account): string[] {
-    return parseModuleAccess(a.module_access) ?? defaultModuleIds(a.role);
+    return parseModuleAccess(a.module_access) ?? defaultModuleIds(a.role, roleModuleOverrides);
   }
 
   // ---- account access mutations (reuse /api/admin/users/[id]) ----

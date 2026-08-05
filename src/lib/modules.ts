@@ -68,10 +68,40 @@ const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 /** Ids of modules governed by per-user access control. */
 export const GOVERNED_MODULE_IDS = new Set(PORTAL_MODULES.map(m => m.id));
 
+/**
+ * Admin overrides for which roles get which module, from the `role_module_access`
+ * table — the "which apps each role gets" grid on /admin/permissions.
+ * A module id that is absent means "use the registry's minRole", so an empty map
+ * is exactly the built-in behaviour.
+ */
+export type RoleModuleOverrides = Record<string, string[]>;
+
+const VALID_ROLES = new Set(['staff', 'manager', 'admin']);
+
+/**
+ * The roles allowed a module: the admin's override if there is a usable one, else
+ * the registry's minRole ladder.
+ *
+ * ADMIN IS ALWAYS INCLUDED. The grid renders the admin column locked on, and this
+ * is the matching server-side rule — without it, one stray write could hide an
+ * admin-only module from the only role that can administer it. Same anti-lockout
+ * stance as `permissions.manage` in permissions.ts.
+ */
+export function rolesForModule(moduleId: string, overrides: RoleModuleOverrides = {}): string[] {
+  const mod = PORTAL_MODULES.find((m) => m.id === moduleId);
+  if (!mod) return [];
+  const override = overrides[moduleId];
+  if (Array.isArray(override)) {
+    const clean = override.filter((r) => VALID_ROLES.has(r));
+    return Array.from(new Set([...clean, 'admin']));
+  }
+  const min = ROLE_LEVEL[mod.minRole] || 1;
+  return ['staff', 'manager', 'admin'].filter((r) => (ROLE_LEVEL[r] || 1) >= min);
+}
+
 /** Modules a role sees by default (used when a user has no explicit access set). */
-export function defaultModuleIds(role: string): string[] {
-  const lvl = ROLE_LEVEL[role] || 1;
-  return PORTAL_MODULES.filter(m => lvl >= (ROLE_LEVEL[m.minRole] || 1)).map(m => m.id);
+export function defaultModuleIds(role: string, overrides: RoleModuleOverrides = {}): string[] {
+  return PORTAL_MODULES.filter((m) => rolesForModule(m.id, overrides).includes(role)).map((m) => m.id);
 }
 
 /** Parse the stored module_access value (JSON array) into ids, or null if unset. */
@@ -85,10 +115,22 @@ export function parseModuleAccess(raw: string | null | undefined): string[] | nu
   }
 }
 
-/** Effective allowed module ids: the explicit allowlist if set, else the role default. */
-export function effectiveModuleIds(role: string, moduleAccess: string | null | undefined): string[] {
+/**
+ * Effective allowed module ids: the person's own allowlist if they have one, else
+ * the role default (which the admin can now edit).
+ *
+ * THE THREE LAYERS, highest first:
+ *   1. this person's `module_access` list  (Manage Staff — always wins)
+ *   2. the role grid                       (/admin/permissions — `overrides`)
+ *   3. the registry's minRole              (built-in default)
+ */
+export function effectiveModuleIds(
+  role: string,
+  moduleAccess: string | null | undefined,
+  overrides: RoleModuleOverrides = {},
+): string[] {
   const explicit = parseModuleAccess(moduleAccess);
-  return explicit != null ? explicit : defaultModuleIds(role);
+  return explicit != null ? explicit : defaultModuleIds(role, overrides);
 }
 
 /**
@@ -106,9 +148,10 @@ export function moduleIdsForUser(
   role: string,
   moduleAccess: string | null | undefined,
   isCandidate: boolean,
+  overrides: RoleModuleOverrides = {},
 ): string[] {
   if (isCandidate) return ['hr'];
-  return effectiveModuleIds(role, moduleAccess);
+  return effectiveModuleIds(role, moduleAccess, overrides);
 }
 
 /**
@@ -120,7 +163,8 @@ export function canUseModule(
   moduleAccess: string | null | undefined,
   isCandidate: boolean,
   moduleId: string,
+  overrides: RoleModuleOverrides = {},
 ): boolean {
   if (!GOVERNED_MODULE_IDS.has(moduleId)) return false;
-  return moduleIdsForUser(role, moduleAccess, isCandidate).includes(moduleId);
+  return moduleIdsForUser(role, moduleAccess, isCandidate, overrides).includes(moduleId);
 }

@@ -24,7 +24,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from './auth';
 import { canUseModule, moduleIdsForUser } from './modules';
-import type { PortalUser } from './db';
+import { getRoleModuleOverrides, type PortalUser } from './db';
 
 /** A candidate (applicant with no employee record yet) only ever gets HR. */
 export function isCandidate(user: PortalUser): boolean {
@@ -33,12 +33,12 @@ export function isCandidate(user: PortalUser): boolean {
 
 /** The module ids this user may use — the single source of truth for every surface. */
 export function userModuleIds(user: PortalUser): string[] {
-  return moduleIdsForUser(user.role, user.module_access, isCandidate(user));
+  return moduleIdsForUser(user.role, user.module_access, isCandidate(user), getRoleModuleOverrides());
 }
 
 /** Can this user use this module? Unknown ids fail closed (deny). */
 export function userCanUseModule(user: PortalUser, moduleId: string): boolean {
-  return canUseModule(user.role, user.module_access, isCandidate(user), moduleId);
+  return canUseModule(user.role, user.module_access, isCandidate(user), moduleId, getRoleModuleOverrides());
 }
 
 export type ModuleAccessResult =

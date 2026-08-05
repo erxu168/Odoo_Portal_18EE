@@ -159,6 +159,17 @@ function initTables(db: Database.Database) {
       updated_at TEXT
     );
 
+    -- Admin overrides for WHICH MODULES a role gets by default (the "which apps
+    -- each role gets" grid on /admin/permissions). Deliberately the same shape as
+    -- feature_permissions: module_id missing = use the registry's minRole, so an
+    -- empty table means exactly today's behaviour. A person's own module_access
+    -- list still beats this. See src/lib/modules.ts.
+    CREATE TABLE IF NOT EXISTS role_module_access (
+      module_id TEXT PRIMARY KEY,
+      allowed_roles TEXT NOT NULL,   -- JSON array subset of ["staff","manager","admin"]
+      updated_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS bom_tolerance (
       bom_id INTEGER PRIMARY KEY,
       tolerance_pct REAL NOT NULL DEFAULT 5,
@@ -953,6 +964,51 @@ export function clearPermissionOverrides(actionKeys: string[]): void {
   if (actionKeys.length === 0) return;
   const placeholders = actionKeys.map(() => '?').join(',');
   getDb().prepare(`DELETE FROM feature_permissions WHERE action_key IN (${placeholders})`).run(...actionKeys);
+}
+
+// -- Role → module overrides (which apps each role gets) -----------------------
+// Same shape as the per-action overrides above. Missing module = registry minRole.
+
+/** All admin overrides as { module_id: string[] }. Missing module = registry default. */
+export function getRoleModuleOverrides(): Record<string, string[]> {
+  const rows = getDb()
+    .prepare('SELECT module_id, allowed_roles FROM role_module_access')
+    .all() as { module_id: string; allowed_roles: string }[];
+  const out: Record<string, string[]> = {};
+  for (const r of rows) {
+    try {
+      const arr = JSON.parse(r.allowed_roles);
+      if (Array.isArray(arr)) out[r.module_id] = arr.filter((x): x is string => typeof x === 'string');
+    } catch { /* skip corrupt row */ }
+  }
+  return out;
+}
+
+export function setRoleModuleOverride(moduleId: string, roles: string[]): void {
+  getDb()
+    .prepare(
+      'INSERT INTO role_module_access (module_id, allowed_roles, updated_at) VALUES (?,?,?) ' +
+      'ON CONFLICT(module_id) DO UPDATE SET allowed_roles=excluded.allowed_roles, updated_at=excluded.updated_at',
+    )
+    .run(moduleId, JSON.stringify(roles), new Date().toISOString());
+}
+
+/** Reset modules to their registry defaults. Empty list = reset EVERY module. */
+export function clearRoleModuleOverrides(moduleIds: string[]): void {
+  if (moduleIds.length === 0) {
+    getDb().prepare('DELETE FROM role_module_access').run();
+    return;
+  }
+  const placeholders = moduleIds.map(() => '?').join(',');
+  getDb().prepare(`DELETE FROM role_module_access WHERE module_id IN (${placeholders})`).run(...moduleIds);
+}
+
+/** How many ACTIVE users have their own module list, which overrides any role setting. */
+export function countUsersWithCustomModules(): number {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) AS n FROM portal_users WHERE active = 1 AND module_access IS NOT NULL AND module_access != ''")
+    .get() as { n: number };
+  return row?.n ?? 0;
 }
 
 /** Resolve a per-company setting: this company → default company (0) → null. */

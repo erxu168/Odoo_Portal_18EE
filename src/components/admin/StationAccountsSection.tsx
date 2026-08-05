@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
+import { useRoleModuleOverrides } from '@/lib/use-role-module-overrides';
 
 /**
  * Tablet sign-in accounts, on the Tablets & Devices screen.
@@ -28,6 +29,9 @@ interface DeviceAccount {
 }
 
 export default function StationAccountsSection() {
+  // The admin-editable role grid, so this shows what the person ACTUALLY gets
+  // by default, not the built-in default. See /admin/permissions.
+  const roleModuleOverrides = useRoleModuleOverrides();
   const [accounts, setAccounts] = useState<DeviceAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<number | null>(null);
@@ -51,7 +55,7 @@ export default function StationAccountsSection() {
   }
 
   function moduleIds(a: DeviceAccount): string[] {
-    return parseModuleAccess(a.module_access) ?? defaultModuleIds(a.role);
+    return parseModuleAccess(a.module_access) ?? defaultModuleIds(a.role, roleModuleOverrides);
   }
   function patchLocal(id: number, patch: Partial<DeviceAccount>) {
     setAccounts((prev) => (prev ? prev.map((a) => (a.id === id ? { ...a, ...patch } : a)) : prev));

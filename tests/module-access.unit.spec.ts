@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import {
   PORTAL_MODULES, GOVERNED_MODULE_IDS, canUseModule, moduleIdsForUser, defaultModuleIds,
+  rolesForModule,
 } from '../src/lib/modules';
 
 const ROOT = path.join(__dirname, '..');
@@ -46,6 +47,60 @@ test('a manager sees every staff module plus their own', () => {
   const staff = defaultModuleIds('staff');
   const manager = defaultModuleIds('manager');
   for (const id of staff) expect(manager).toContain(id);
+});
+
+// ── the role grid on /admin/permissions ─────────────────────────────────────
+
+test('an empty grid is EXACTLY today’s behaviour', () => {
+  // The safety property of the whole feature: no rows saved = nothing changes.
+  for (const m of PORTAL_MODULES) {
+    expect(rolesForModule(m.id, {})).toEqual(rolesForModule(m.id));
+  }
+  expect(defaultModuleIds('staff', {})).toEqual(defaultModuleIds('staff'));
+  expect(defaultModuleIds('manager', {})).toEqual(defaultModuleIds('manager'));
+});
+
+test('unticking a role in the grid takes the module away', () => {
+  const grid = { waste: ['manager'] };            // Staff unticked for Waste Tracker
+  expect(canUseModule('staff', null, false, 'waste', grid)).toBe(false);
+  expect(canUseModule('manager', null, false, 'waste', grid)).toBe(true);
+  expect(defaultModuleIds('staff', grid)).not.toContain('waste');
+  // ...and leaves every other module alone.
+  expect(canUseModule('staff', null, false, 'inventory', grid)).toBe(true);
+});
+
+test('ticking a role ON gives a module the registry would have withheld', () => {
+  // Prep Planner is manager+ in the registry; the grid can hand it to staff.
+  expect(canUseModule('staff', null, false, 'prep-planner')).toBe(false);
+  expect(canUseModule('staff', null, false, 'prep-planner', { 'prep-planner': ['staff'] })).toBe(true);
+});
+
+test('ADMIN can never be switched off — the anti-lockout rule', () => {
+  // Even a grid row that names nobody, or only staff, keeps admin.
+  expect(rolesForModule('rentals', { rentals: [] })).toContain('admin');
+  expect(rolesForModule('rentals', { rentals: ['staff'] })).toContain('admin');
+  expect(canUseModule('admin', null, false, 'rentals', { rentals: [] })).toBe(true);
+});
+
+test('a junk grid row cannot grant anything', () => {
+  // Roles that are not roles are dropped; admin still survives.
+  expect(rolesForModule('waste', { waste: ['owner', 'chef'] })).toEqual(['admin']);
+  expect(canUseModule('staff', null, false, 'waste', { waste: ['owner'] })).toBe(false);
+  // A grid row for a module that does not exist grants nothing.
+  expect(rolesForModule('nope', { nope: ['staff'] })).toEqual([]);
+});
+
+test('the three layers stack in the right order', () => {
+  const grid = { waste: ['manager'] };            // role rule: staff do NOT get Waste
+  // 1. a person's own list BEATS the grid, both ways round
+  expect(canUseModule('staff', JSON.stringify(['waste']), false, 'waste', grid)).toBe(true);
+  expect(canUseModule('manager', JSON.stringify(['inventory']), false, 'waste', grid)).toBe(false);
+  // 2. no personal list -> the grid decides
+  expect(canUseModule('staff', null, false, 'waste', grid)).toBe(false);
+  // 3. no grid row -> the registry decides
+  expect(canUseModule('staff', null, false, 'waste', {})).toBe(true);
+  // ...and a candidate is still HR-only regardless of any of it.
+  expect(moduleIdsForUser('staff', JSON.stringify(['waste']), true, grid)).toEqual(['hr']);
 });
 
 // ── the gates ───────────────────────────────────────────────────────────────

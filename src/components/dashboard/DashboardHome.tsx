@@ -143,8 +143,10 @@ export default function DashboardHome() {
         // Ungoverned tiles (placeholders + Lists & Options) aren't in the
         // per-user access grant, so gate them by role directly.
         if (!GOVERNED_MODULE_IDS.has(t.id)) return myLevel >= (ROLE_LEVEL[t.minRole] || 1);
-        // Until access loads, fall back to role default; then use the admin-set list.
-        if (allowedModules == null) return myLevel >= (ROLE_LEVEL[t.minRole] || 1);
+        // Until access loads, show nothing. The role default is now admin-editable
+        // (/admin/permissions), so guessing from minRole can surface a tile that
+        // has since been switched off for this role.
+        if (allowedModules == null) return false;
         return allowedModules.includes(t.id);
       });
 

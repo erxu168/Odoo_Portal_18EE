@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
+import { useRoleModuleOverrides } from '@/lib/use-role-module-overrides';
 
 interface User {
   id: number;
@@ -28,6 +29,9 @@ interface Company {
 }
 
 export default function AdminUsersPage() {
+  // The admin-editable role grid, so this shows what the person ACTUALLY gets
+  // by default, not the built-in default. See /admin/permissions.
+  const roleModuleOverrides = useRoleModuleOverrides();
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
@@ -107,7 +111,7 @@ export default function AdminUsersPage() {
 
   // Effective module ids for a user: their explicit allowlist if set, else the role default.
   function userModuleIds(user: User): string[] {
-    return parseModuleAccess(user.module_access) ?? defaultModuleIds(user.role);
+    return parseModuleAccess(user.module_access) ?? defaultModuleIds(user.role, roleModuleOverrides);
   }
 
   async function toggleModule(user: User, moduleId: string) {
