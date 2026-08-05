@@ -4,12 +4,16 @@ import { isSameOrigin } from '@/lib/csrf';
 import { authorizePlayerDevice } from '@/lib/music/access';
 import { jsonError, startNextIfIdle } from '@/lib/music/route-helpers';
 import { advancePlayback, getPlayback, listQueue, markUnplayable } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 const IFRAME_ERRORS = new Set(['e2', 'e5', 'e100', 'e101', 'e150', 'e153']);
 
 // POST /api/music/player/advance — the IFrame said ENDED or errored. Carries
 // the playback version it observed; stale/duplicate events are no-ops.
 export async function POST(request: Request) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorizePlayerDevice();
   if (!authz.ok) return jsonError(authz.status, authz.error);

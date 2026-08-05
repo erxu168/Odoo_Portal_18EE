@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { getCurrentUser, hasRole, requireAuth, requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const odoo = getOdoo();
@@ -191,6 +195,9 @@ export async function GET(request: Request) {
  * }
  */
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.bom.create');
     const odoo = getOdoo();

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import type { ComponentAvailability } from '@/types/manufacturing';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * Recursively resolve BOM lines, including sub-BOMs
@@ -72,6 +73,12 @@ export async function GET(
   request: Request,
   { params }: { params: { id: string } },
 ) {
+  // Reading a recipe's BOM is also what the Chef Guide / Production Guide do
+  // (src/app/recipes/page.tsx), so those modules grant read access too.
+  // Editing (PATCH, below) stays Manufacturing-only.
+  const denied = moduleForbidden(['production', 'recipes', 'production-guide']);
+  if (denied) return denied;
+
   try {
     requireAuth();
     const odoo = getOdoo();
@@ -248,6 +255,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.bom.edit');
     const bomId = parseInt(params.id);

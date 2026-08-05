@@ -4,6 +4,7 @@ import { authorizePlayerDevice } from '@/lib/music/access';
 import { jsonError } from '@/lib/music/route-helpers';
 import { searchSongs } from '@/lib/music/catalog';
 import { getGateCache, getManualDecision } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Gentle throttle: one physical tablet exists, so anything past a human typing
 // cadence is a bug or abuse of the unofficial upstream.
@@ -13,6 +14,9 @@ let windowCount = 0;
 // GET /api/music/search?q= — catalog search from the jukebox tablet, with the
 // cached verdict attached so results can show their door-policy badge.
 export async function GET(request: Request) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   const authz = authorizePlayerDevice();
   if (!authz.ok) return jsonError(authz.status, authz.error);
   const q = (new URL(request.url).searchParams.get('q') ?? '').trim().slice(0, 60);

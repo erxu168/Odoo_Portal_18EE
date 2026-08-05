@@ -5,10 +5,14 @@ import { authorize, CAP } from '@/lib/music/access';
 import { jsonError } from '@/lib/music/route-helpers';
 import { getDb, logAudit } from '@/lib/db';
 import { ALL_GENRES, getManualDecision, setManualDecision, type MusicGenre } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // PATCH /api/music/decisions/[videoId] — reverse a permanent decision
 // (the UI asks for confirmation; the row keeps who/when for the audit trail).
 export async function PATCH(request: Request, { params }: { params: { videoId: string } }) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);

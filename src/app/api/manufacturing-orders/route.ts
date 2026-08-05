@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import type { CreateMoRequest } from '@/types/manufacturing';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/manufacturing-orders
@@ -9,6 +10,9 @@ import type { CreateMoRequest } from '@/types/manufacturing';
  * Supports ?company_id=X to filter by company.
  */
 export async function GET(request: Request) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const odoo = getOdoo();
@@ -90,6 +94,9 @@ export async function GET(request: Request) {
  * Create a new manufacturing order
  */
 export async function POST(request: Request) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.mo.create');
     const odoo = getOdoo();

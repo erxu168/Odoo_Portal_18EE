@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 // Walk the wizard chain Odoo returns from button_mark_done. A wizard's
 // confirm method can itself return ANOTHER wizard — e.g. action_close_mo
@@ -209,6 +210,9 @@ export async function GET(
   request: Request,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const odoo = getOdoo();
@@ -365,6 +369,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.mo.manage');
     const odoo = getOdoo();

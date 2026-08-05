@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/boms/operations?id=X
  * Download worksheet PDF for an operation.
  */
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const opId = parseInt(req.nextUrl.searchParams.get('id') || '0');
@@ -37,6 +41,9 @@ export async function GET(req: NextRequest) {
  * Body: { file_base64: string }
  */
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.bom.edit');
     const opId = parseInt(req.nextUrl.searchParams.get('id') || '0');

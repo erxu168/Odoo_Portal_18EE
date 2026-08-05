@@ -4,9 +4,13 @@ import { isSameOrigin } from '@/lib/csrf';
 import { authorizePlayerDevice } from '@/lib/music/access';
 import { jsonError, startNextIfIdle } from '@/lib/music/route-helpers';
 import { advancePlayback, getPlayback, listQueue } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // POST /api/music/player/skip — a human skipped; attributed to the PIN actor.
 export async function POST(request: Request) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorizePlayerDevice({ requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);

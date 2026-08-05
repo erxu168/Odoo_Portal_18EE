@@ -5,10 +5,14 @@ import { authorizePlayerDevice } from '@/lib/music/access';
 import { COPY, gateAdapters, jsonError } from '@/lib/music/route-helpers';
 import { gateVideo } from '@/lib/music/gate';
 import { enqueue, getMetadata, listQueue, upsertRequest } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // POST /api/music/queue — a staff pick. Client sends ONLY {videoId, idempotencyKey};
 // title/channel come from our own metadata, never from the browser.
 export async function POST(request: Request) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorizePlayerDevice({ requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);

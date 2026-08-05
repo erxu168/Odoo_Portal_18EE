@@ -3,6 +3,7 @@ import { getOdoo } from '@/lib/odoo';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/manufacturing-orders/pick-list
@@ -10,6 +11,11 @@ import { getPermissionOverrides } from '@/lib/db';
  * grouped by product category. Supports ?company_id=X filter.
  */
 export async function GET(request: Request) {
+  // Inventory's "MO ingredients" screen (src/components/inventory/MoIngredients.tsx)
+  // reads this pick list, so Inventory grants access as well as Manufacturing.
+  const denied = moduleForbidden(['production', 'inventory']);
+  if (denied) return denied;
+
   try {
     const user = requireAuth();
     // Same capability as the MO Ingredients tile/screen (default: all roles) —

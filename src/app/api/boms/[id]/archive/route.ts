@@ -3,6 +3,7 @@ import { getOdoo } from '@/lib/odoo';
 import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     const user = getCurrentUser();
     if (!user) {

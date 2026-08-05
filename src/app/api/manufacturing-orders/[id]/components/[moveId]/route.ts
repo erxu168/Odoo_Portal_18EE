@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 const EDITABLE_STATES = ['draft', 'confirmed', 'progress'];
 
@@ -35,6 +36,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string; moveId: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.mo.components');
   } catch (err) {
@@ -75,6 +79,9 @@ export async function DELETE(
   _req: Request,
   { params }: { params: { id: string; moveId: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.mo.components');
   } catch (err) {

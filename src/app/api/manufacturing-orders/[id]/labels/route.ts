@@ -24,6 +24,7 @@ import { generateZPL, resolveLabelSize } from '@/lib/zpl';
 import { sendToZebra } from '@/lib/zpl-net';
 import { getOdoo } from '@/lib/odoo';
 import type { LabelData } from '@/types/labeling';
+import { moduleForbidden } from '@/lib/module-access';
 
 async function fetchProductReference(productId: number | null | undefined): Promise<string | undefined> {
   if (!productId) return undefined;
@@ -47,6 +48,9 @@ function formatDateDE(isoOrDate: string | null): string {
 
 // --- GET: preview ZPL ---
 export async function GET(req: NextRequest, { params }: RouteParams) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   const { id } = await params;
   const moId = parseInt(id, 10);
   if (isNaN(moId)) return NextResponse.json({ error: 'Invalid MO ID' }, { status: 400 });
@@ -106,6 +110,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
 // --- POST: print labels ---
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   const { id } = await params;
   const moId = parseInt(id, 10);
   if (isNaN(moId)) return NextResponse.json({ error: 'Invalid MO ID' }, { status: 400 });

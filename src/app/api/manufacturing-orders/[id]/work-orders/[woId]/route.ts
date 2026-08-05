@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string; woId: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const odoo = getOdoo();
@@ -92,6 +96,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: { id: string; woId: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.mo.manage');
     const odoo = getOdoo();

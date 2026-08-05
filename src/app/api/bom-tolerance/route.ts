@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,9 @@ const DEFAULT_TOLERANCE_VALUE = 5; // 5% if nothing set
  *   3. Hardcoded 5% fallback
  */
 export async function GET(request: Request) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const db = getDb();
@@ -63,6 +67,9 @@ export async function GET(request: Request) {
  *   — removes per-BOM override (reverts to global default)
  */
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireCapability('manufacturing.tolerance.manage');
     const db = getDb();

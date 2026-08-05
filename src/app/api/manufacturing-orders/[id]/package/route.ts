@@ -21,11 +21,15 @@ import {
   createSplit, confirmSplit, getSplitByMo, getContainers, updateContainerLot,
 } from '@/lib/labeling-db';
 import type { CreateSplitRequest } from '@/types/labeling';
+import { moduleForbidden } from '@/lib/module-access';
 
 interface RouteParams { params: Promise<{ id: string }> }
 
 // --- GET: fetch existing split ---
 export async function GET(_req: NextRequest, { params }: RouteParams) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   const { id } = await params;
   const moId = parseInt(id, 10);
   if (isNaN(moId)) return NextResponse.json({ error: 'Invalid MO ID' }, { status: 400 });
@@ -47,6 +51,9 @@ const ALLOWED_STATES = ['confirmed', 'progress', 'to_close'];
 
 // --- POST: create split + partial produce ---
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   const { id } = await params;
   const moId = parseInt(id, 10);
   if (isNaN(moId)) return NextResponse.json({ error: 'Invalid MO ID' }, { status: 400 });

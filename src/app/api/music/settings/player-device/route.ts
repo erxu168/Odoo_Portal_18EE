@@ -6,10 +6,14 @@ import { jsonError } from '@/lib/music/route-helpers';
 import { companyScope } from '@/lib/inventory-access';
 import { getDb, logAudit } from '@/lib/db';
 import { getMusicSettings, setPlayerDevice, stationDeviceExists, stationDeviceOptions } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // GET — current pin + the tablets THIS manager may choose from (company-scoped).
 // An out-of-scope pin is reported as locked, not exposed.
 export async function GET() {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   const authz = authorize(CAP.manage);
   if (!authz.ok) return jsonError(authz.status, authz.error);
   const scope = companyScope(authz.user);
@@ -26,6 +30,9 @@ export async function GET() {
 // PUT — pin ONE physical tablet as the WAJ Radio player (null unpins). Changing
 // or clearing an existing pin requires authority over the CURRENT device too.
 export async function PUT(request: Request) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);

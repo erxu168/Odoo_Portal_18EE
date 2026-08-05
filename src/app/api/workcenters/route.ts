@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/workcenters
  * List all active workcenters.
  */
 export async function GET() {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const odoo = getOdoo();
@@ -29,6 +33,9 @@ export async function GET() {
  * Create a new workcenter.  Body: { name: string }
  */
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const name = (body.name || '').trim();

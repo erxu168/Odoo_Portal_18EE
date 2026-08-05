@@ -5,12 +5,16 @@ import { authorize, CAP } from '@/lib/music/access';
 import { gateAdapters, jsonError, radioFetchSource } from '@/lib/music/route-helpers';
 import { refreshRadioPools } from '@/lib/music/radio';
 import { poolDepths, purgeExpiredMetadata, seedDefaultRadioSources } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 let lastRefreshAt = 0;
 
 // POST /api/music/radio/refresh — manager-triggered pool maintenance (also the
 // first warm-up). Rate-limited: pool refreshes are operational, not a toy.
 export async function POST(request: Request) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorize(CAP.manage);
   if (!authz.ok) return jsonError(authz.status, authz.error);
@@ -27,6 +31,9 @@ export async function POST(request: Request) {
 
 // GET — pool health for the settings screen.
 export async function GET() {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   const authz = authorize(CAP.manage);
   if (!authz.ok) return jsonError(authz.status, authz.error);
   seedDefaultRadioSources();

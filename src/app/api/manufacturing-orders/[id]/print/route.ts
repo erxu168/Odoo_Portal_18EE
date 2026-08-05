@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * GET /api/manufacturing-orders/:id/print
@@ -11,6 +12,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
     const moId = parseInt(params.id);

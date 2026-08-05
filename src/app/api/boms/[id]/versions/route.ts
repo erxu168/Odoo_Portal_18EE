@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } },
 ) {
+  const denied = moduleForbidden('production');
+  if (denied) return denied;
+
   try {
     requireAuth();
   } catch (err) {

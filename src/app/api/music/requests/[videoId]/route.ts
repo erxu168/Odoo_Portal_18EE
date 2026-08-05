@@ -5,11 +5,15 @@ import { authorize, CAP } from '@/lib/music/access';
 import { jsonError } from '@/lib/music/route-helpers';
 import { getDb, logAudit } from '@/lib/db';
 import { ALL_GENRES, getManualDecision, resolveRequest, setManualDecision, type MusicGenre } from '@/lib/music/db';
+import { moduleForbidden } from '@/lib/module-access';
 
 // PATCH /api/music/requests/[videoId] — approve (with a genre shelf) or reject.
 // Decision + request resolve atomically; the manual decision is permanent
 // (reversible on the Decisions screen, with confirmation).
 export async function PATCH(request: Request, { params }: { params: { videoId: string } }) {
+  const denied = moduleForbidden('music');
+  if (denied) return denied;
+
   if (!isSameOrigin(request)) return jsonError(403, 'Blocked request.');
   const authz = authorize(CAP.manage, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
