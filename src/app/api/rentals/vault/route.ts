@@ -3,6 +3,7 @@
 // Admin role required. Role check must be enforced by middleware upstream.
 import { NextRequest, NextResponse } from 'next/server';
 import { createCredential, listCredentialsForProperty } from '@/lib/vault';
+import { moduleForbidden } from '@/lib/module-access';
 
 function getClientContext(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
@@ -15,6 +16,9 @@ function getClientContext(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const propertyId = Number(req.nextUrl.searchParams.get('property_id'));
     if (!propertyId) return NextResponse.json({ error: 'property_id required' }, { status: 400 });
@@ -29,6 +33,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { property_id, label, category, url, username, password, notes } = body;

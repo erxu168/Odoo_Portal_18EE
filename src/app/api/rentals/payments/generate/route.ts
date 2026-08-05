@@ -4,8 +4,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow, berlinToday } from '@/lib/rentals-db';
 import { Tenancy, TenancyRentStep } from '@/types/rentals';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const now = berlinNow();

@@ -3,8 +3,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb } from '@/lib/rentals-db';
 import { InspectionItem } from '@/types/rentals';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const id = Number(params.id);

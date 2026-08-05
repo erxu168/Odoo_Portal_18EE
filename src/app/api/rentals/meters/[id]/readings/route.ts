@@ -4,10 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow, berlinToday } from '@/lib/rentals-db';
 import fs from 'fs';
 import path from 'path';
+import { moduleForbidden } from '@/lib/module-access';
 
 const PHOTO_DIR = path.join(process.env.PORTAL_DB_DIR || path.join(process.cwd(), 'data'), 'rentals', 'photos', 'meters');
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const meterId = Number(params.id);
@@ -24,6 +28,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const meterId = Number(params.id);

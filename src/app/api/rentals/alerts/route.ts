@@ -2,8 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb } from '@/lib/rentals-db';
 import { runAlertsEngine } from '@/lib/alerts-engine';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const status = req.nextUrl.searchParams.get('status') || 'active';
@@ -29,6 +33,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST() {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   // Manually trigger the alerts engine (also used by cron)
   try {
     const result = runAlertsEngine();

@@ -1,8 +1,12 @@
 // src/app/api/rentals/utilities/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const propertyId = req.nextUrl.searchParams.get('property_id');
@@ -23,6 +27,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { property_id, category, custom_label, provider_name, account_no, monthly_cost, frequency, due_date, notes } = body;

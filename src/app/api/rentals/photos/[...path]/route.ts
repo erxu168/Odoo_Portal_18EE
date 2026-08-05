@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { moduleForbidden } from '@/lib/module-access';
 
 const PHOTO_BASE = path.join(process.env.PORTAL_DB_DIR || path.join(process.cwd(), 'data'), 'rentals', 'photos');
 
@@ -15,6 +16,9 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const segments = params.path;
     // Prevent directory traversal

@@ -1,8 +1,12 @@
 // src/app/api/rentals/tenants/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const q = req.nextUrl.searchParams.get('q');
@@ -25,6 +29,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const {

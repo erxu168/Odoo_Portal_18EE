@@ -2,8 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
 import { RoomFurniture } from '@/types/rentals';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const roomId = Number(params.id);
@@ -18,6 +22,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const roomId = Number(params.id);
@@ -46,6 +53,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   // Bulk update: toggle checked, update condition
   try {
     const db = getRentalsDb();
@@ -81,6 +91,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const roomId = Number(params.id);

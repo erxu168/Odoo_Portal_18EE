@@ -5,8 +5,12 @@ import { parseSepa } from '@/lib/sepa-parsers';
 import { runMatcher } from '@/lib/sepa-matcher';
 import fs from 'fs';
 import path from 'path';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

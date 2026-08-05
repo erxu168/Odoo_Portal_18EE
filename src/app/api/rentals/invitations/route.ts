@@ -2,8 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
 import crypto from 'crypto';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const {

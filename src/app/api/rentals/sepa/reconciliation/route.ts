@@ -1,8 +1,12 @@
 // src/app/api/rentals/sepa/reconciliation/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb } from '@/lib/rentals-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const importId = req.nextUrl.searchParams.get('import_id');

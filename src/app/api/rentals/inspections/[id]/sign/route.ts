@@ -5,8 +5,12 @@ import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
 import { renderInspectionPdf } from '@/lib/inspection-pdf';
 import { htmlToPdf, pdfOutputPath } from '@/lib/pdf-generator';
 import { Inspection } from '@/types/rentals';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const inspectionId = Number(params.id);

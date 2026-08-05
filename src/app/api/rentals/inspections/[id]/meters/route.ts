@@ -3,8 +3,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
 import { Inspection } from '@/types/rentals';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const inspectionId = Number(params.id);

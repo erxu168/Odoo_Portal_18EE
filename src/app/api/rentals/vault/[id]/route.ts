@@ -3,6 +3,7 @@
 // All operations log to credentials_audit. 404 if not found.
 import { NextRequest, NextResponse } from 'next/server';
 import { revealCredential, updateCredential, deleteCredential } from '@/lib/vault';
+import { moduleForbidden } from '@/lib/module-access';
 
 function ctx(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
@@ -14,6 +15,9 @@ function ctx(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const { ip, ua, userId } = ctx(req);
     const entry = revealCredential(Number(params.id), userId, ip, ua);
@@ -26,6 +30,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { ip, ua, userId } = ctx(req);
@@ -39,6 +46,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const { ip, ua, userId } = ctx(req);
     const ok = deleteCredential(Number(params.id), userId, ip, ua);

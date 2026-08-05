@@ -1,8 +1,12 @@
 // src/app/api/rentals/utilities/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const row = db.prepare(`SELECT * FROM utility_providers WHERE id = ?`).get(Number(params.id));
@@ -15,6 +19,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const id = Number(params.id);
@@ -42,6 +49,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const result = db.prepare(`DELETE FROM utility_providers WHERE id = ?`).run(Number(params.id));

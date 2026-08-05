@@ -5,8 +5,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const inspectionId = Number(params.id);
     const formData = await req.formData();

@@ -3,8 +3,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalsDb, berlinNow } from '@/lib/rentals-db';
 import { INSPECTION_FIXED_TEMPLATE, Tenancy, PropertyInspectionItem } from '@/types/rentals';
+import { moduleForbidden } from '@/lib/module-access';
 
 export async function GET(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const db = getRentalsDb();
     const tenancyId = req.nextUrl.searchParams.get('tenancy_id');
@@ -37,6 +41,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = moduleForbidden('rentals');
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { tenancy_id, type, inspection_date, inspector_name, notes } = body;
