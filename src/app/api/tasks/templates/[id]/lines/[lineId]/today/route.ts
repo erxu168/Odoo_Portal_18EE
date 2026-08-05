@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { todayLineStatus, addTemplateLineToToday, templateLineBelongsToTemplate } from '@/lib/odoo-tasks';
 import { assertTemplateCompany } from '@/lib/tasks-scope';
+import { moduleForbidden } from '@/lib/module-access';
 
 /**
  * "Add this task to today's list too."
@@ -18,6 +19,10 @@ function ids(params: { id: string; lineId: string }) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  // Module visibility gate, matching every other /api/tasks route.
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const { templateId, lineId } = ids(params);
@@ -45,6 +50,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
 }
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+  // Module visibility gate, matching every other /api/tasks route.
+  const denied = moduleForbidden('tasks');
+  if (denied) return denied;
+
   try {
     const user = requireCapability('tasks.template.manage');
     const { templateId, lineId } = ids(params);
