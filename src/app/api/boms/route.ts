@@ -6,7 +6,11 @@ import { moduleForbidden } from '@/lib/module-access';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const denied = moduleForbidden('production');
+  // READING the recipe list is not exclusive to Manufacturing: the Chef Guide /
+  // Production Guide browse it, and the staff Label Printer's "Load from recipe"
+  // picker is this very list (BomList -> LabelPrint -> /labels). Creating one
+  // (POST, below) stays Manufacturing-only.
+  const denied = moduleForbidden(['production', 'recipes', 'production-guide', 'labels']);
   if (denied) return denied;
 
   try {

@@ -74,9 +74,10 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   // Reading a recipe's BOM is also what the Chef Guide / Production Guide do
-  // (src/app/recipes/page.tsx), so those modules grant read access too.
+  // (src/app/recipes/page.tsx) and what the Label Printer does to pre-fill a
+  // label (LabelPrint.loadFromRecipe, reachable from the staff /labels tile).
   // Editing (PATCH, below) stays Manufacturing-only.
-  const denied = moduleForbidden(['production', 'recipes', 'production-guide']);
+  const denied = moduleForbidden(['production', 'recipes', 'production-guide', 'labels']);
   if (denied) return denied;
 
   try {
