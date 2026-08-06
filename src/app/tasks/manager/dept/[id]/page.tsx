@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { TaskList } from '@/lib/odoo-tasks';
 import AppHeader from '@/components/ui/AppHeader';
 import ChecklistCard from '../../../_components/ChecklistCard';
+import PrimaryButton from '@/components/ui/PrimaryButton';
 import AdHocModal, { type AdHocSubmitVals } from '../../../_components/AdHocModal';
 import { uploadTaskPhotoFile, PhotoCancelled } from '../../../_components/photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
@@ -161,30 +162,37 @@ export default function DeptReviewPage({ params }: PageProps) {
       />
 
       <div className="max-w-2xl mx-auto px-4 py-4">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <input
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
+            aria-label="Show this day's list"
+            className="px-3 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500"
           />
           {!isToday && (
             <button
               onClick={() => setDate(today)}
-              className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800"
+              className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800"
             >
               Today
             </button>
           )}
-          {!isPast && list && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="ml-auto bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-3 py-2 rounded-lg hover:bg-green-700"
-            >
-              + Add task
-            </button>
-          )}
         </div>
+
+        {/* The locked create standard: one full-width green button, not a small
+            pill squeezed onto the end of the date row where the neighbouring
+            date field catches the miss. */}
+        {!isPast && list && (
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="w-full min-h-[48px] mb-4 rounded-xl bg-green-600 text-white text-[var(--fs-sm)] font-bold flex items-center justify-center gap-2 hover:bg-green-700 active:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            Add task
+          </button>
+        )}
 
         {isPast && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-[var(--fs-xs)] mb-4">
@@ -208,13 +216,11 @@ export default function DeptReviewPage({ params }: PageProps) {
             <p className="text-3xl mb-2">📋</p>
             <p className="font-semibold">No list for {date}</p>
             {!isPast && (
-              <button
-                onClick={handleCreateList}
-                disabled={creating}
-                className="mt-4 bg-green-600 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {creating ? 'Creating…' : `Create list for ${date}`}
-              </button>
+              <div className="mt-4 max-w-xs mx-auto">
+                <PrimaryButton busy={creating} onClick={handleCreateList} className="w-full">
+                  {creating ? 'Creating…' : `Create list for ${date}`}
+                </PrimaryButton>
+              </div>
             )}
           </div>
         ) : (

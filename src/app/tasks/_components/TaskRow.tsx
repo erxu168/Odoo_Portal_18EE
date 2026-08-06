@@ -182,13 +182,8 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         leaving ? 'opacity-0 -translate-x-3' : ''
       } ${
         completing ? 'pointer-events-none' :
-        task.is_ad_hoc ? 'bg-amber-50 hover:bg-amber-100/60' :
         (readOnly ? '' : 'hover:bg-gray-50')
       }`}>
-
-      {task.is_ad_hoc && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" aria-hidden="true" />
-      )}
 
       <div className={`mt-0.5 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all text-[var(--fs-xs)] font-bold ${
         completing ? 'border-green-500 bg-green-500 text-white' :
@@ -208,8 +203,8 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
             {task.name}
           </p>
           {task.is_ad_hoc && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white flex-shrink-0 uppercase tracking-wide">
-              ⭐ One-off
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex-shrink-0 uppercase tracking-wide">
+              One-off
             </span>
           )}
         </div>

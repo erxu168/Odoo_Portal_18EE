@@ -34,7 +34,12 @@ export default function ManagerTabs() {
         return (
           <Link key={tab.href} href={tab.href}
             className={`flex-shrink-0 flex items-center gap-1.5 px-4 h-11 text-[var(--fs-sm)] font-semibold border-b-2 transition-colors whitespace-nowrap ${
-              active ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-400 hover:text-gray-700'
+              // Green, not blue. Blue is the module header and nothing else;
+              // green is the portal's one "you are here / this is chosen" colour,
+              // so a manager moving between Inventory and Tasks reads the same
+              // signal in both. This underline sat directly beneath the blue
+              // header, saying it in the header's own colour.
+              active ? 'border-green-600 text-green-700' : 'border-transparent text-gray-400 hover:text-gray-700'
             }`}>
             {tab.label}
           </Link>

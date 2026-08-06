@@ -21,12 +21,16 @@ export default function SubtaskList({ subtasks, onToggle, readOnly = false }: Pr
             e.stopPropagation();
             onToggle(sub.id, !sub.done);
           }}
-          className={`flex items-center gap-2 py-1.5 group ${readOnly ? '' : 'cursor-pointer'}`}>
-          <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
+          // The most-tapped control in the module, and it was a 16px box in a
+          // 30px row. A miss lands on the task row behind it, which answers with
+          // "complete the subtasks first" — so a fat-fingered tap on a wet
+          // tablet reads as the app refusing to cooperate.
+          className={`flex items-center gap-2 py-2 min-h-[44px] group ${readOnly ? '' : 'cursor-pointer'}`}>
+          <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
             sub.done ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white group-hover:border-green-600'
           }`}>
             {sub.done && (
-              <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none">
+              <svg className="w-3 h-3" viewBox="0 0 10 10" fill="none">
                 <path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             )}

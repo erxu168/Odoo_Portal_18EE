@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { TaskList, TaskListLine, DayPart, SubtaskToggleResult } from '@/lib/odoo-tasks';
 import TaskRow from './TaskRow';
+import { ChevronDownIcon } from '@/components/ui/ChromeIcons';
 
 interface Props {
   taskList: TaskList;
@@ -113,6 +114,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
         className="w-full px-4 pt-3.5 pb-2 flex items-center justify-between text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -124,7 +126,11 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className={`text-[var(--fs-xs)] font-bold ${rate === 100 ? 'text-green-600' : 'text-gray-500'}`}>{rate}%</span>
-          <span className="text-gray-400 text-[var(--fs-xs)]">{open ? '▲' : '▼'}</span>
+          {/* The one thin-line chrome set, not a ▲ text glyph: the tablets
+              resolve those from the emoji fallback font, so they sit off-centre
+              beside the real icons on the same screen — and a screen reader
+              reads "black up-pointing triangle" aloud. */}
+          <ChevronDownIcon size={18} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
         </div>
       </button>
       <div className="h-1 bg-gray-100 mx-4 rounded-full overflow-hidden mb-2">
@@ -164,13 +170,14 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
               <button
                 type="button"
                 onClick={() => setShowCompleted(v => !v)}
+                aria-expanded={showCompleted}
                 className="w-full flex items-center justify-between px-4 py-3 text-[var(--fs-sm)] font-semibold text-gray-700"
               >
                 <span className="flex items-center gap-2">
                   <span>✅ Completed</span>
                   <span className="bg-green-100 text-green-700 text-[var(--fs-xs)] font-bold px-2 py-0.5 rounded-full">{completed.length}</span>
                 </span>
-                <span className="text-gray-400 text-[var(--fs-xs)]">{showCompleted ? '▲' : '▼'}</span>
+                <ChevronDownIcon size={18} className={`text-gray-400 transition-transform ${showCompleted ? 'rotate-180' : ''}`} />
               </button>
               {showCompleted && (
                 <ul className="border-t border-gray-100">
