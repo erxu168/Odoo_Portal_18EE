@@ -51,6 +51,10 @@ interface CompanyBlock {
   id: number;
   name: string;
   rows: ServiceDayRow[];   // exactly one with weekday '' (the default) + overrides
+  /** False when nothing is stored yet: the times below are a SUGGESTION, and no
+   *  task is getting a deadline from them until Save is pressed. Showing them in
+   *  the same inputs as saved values would read as "already in effect". */
+  configured: boolean;
 }
 
 export default function ServiceTimesSettings() {
@@ -79,7 +83,7 @@ export default function ServiceTimesSettings() {
         const mine = rows.filter(r => r.company_id === c.id);
         const base = mine.find(r => !r.weekday) || DEFAULT_ROW(c.id, '');
         const overrides = mine.filter(r => r.weekday).sort((a, b) => a.weekday.localeCompare(b.weekday));
-        return { id: c.id, name: c.name, rows: [base, ...overrides] };
+        return { id: c.id, name: c.name, rows: [base, ...overrides], configured: mine.length > 0 };
       }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Could not load service times');
@@ -90,7 +94,7 @@ export default function ServiceTimesSettings() {
 
   useEffect(() => { void load(); }, [load]);
 
-  function patch(companyId: number, idx: number, key: keyof ServiceDayRow, value: number) {
+  function patch(companyId: number, idx: number, key: keyof ServiceDayRow, value: number | string) {
     setSavedId(null);
     setBlocks(prev => prev.map(b => b.id !== companyId ? b : {
       ...b, rows: b.rows.map((r, i) => i === idx ? { ...r, [key]: value } : r),
@@ -169,14 +173,40 @@ export default function ServiceTimesSettings() {
 
       {blocks.map(block => (
         <div key={block.id} className="mt-4 pt-4 border-t border-gray-100 first:border-t-0">
-          <p className="font-semibold text-[var(--fs-sm)] text-gray-800 mb-2">{block.name}</p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="font-semibold text-[var(--fs-sm)] text-gray-800">{block.name}</p>
+            {!block.configured && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                Not set — these are suggestions
+              </span>
+            )}
+          </div>
+          {!block.configured && (
+            <p className="text-[var(--fs-xs)] text-gray-500 mb-2">
+              Until you save, tasks without their own time stay without a deadline and
+              nothing is counted as overdue.
+            </p>
+          )}
 
           {block.rows.map((row, idx) => (
             <div key={`${row.weekday}-${idx}`} className="mb-3">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400">
-                  {row.weekday ? WEEKDAYS.find(d => d.value === row.weekday)?.label : 'Every day'}
-                </p>
+                {row.weekday ? (
+                  <select
+                    value={row.weekday}
+                    onChange={e => patch(block.id, idx, 'weekday', e.target.value)}
+                    aria-label="Which day this applies to"
+                    className="min-h-[44px] px-2 border border-gray-200 rounded-lg text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    {WEEKDAYS.filter(d =>
+                      d.value === row.weekday || !block.rows.some(r => r.weekday === d.value)
+                    ).map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                  </select>
+                ) : (
+                  <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400">
+                    Every day{!block.configured && ' · not set yet'}
+                  </p>
+                )}
                 {row.weekday ? (
                   <button
                     type="button"

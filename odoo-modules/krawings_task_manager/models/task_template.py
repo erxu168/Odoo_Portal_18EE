@@ -520,6 +520,16 @@ class KrawingsTaskTemplate(models.Model):
 
         vals = self._line_snapshot_vals(line, task_list.date, BERLIN_TZ)
         vals['list_id'] = task_list.id
+        # A task added mid-shift must not be born late. _line_snapshot_vals
+        # derives an implicit deadline from the PERIOD, with no notion of "now",
+        # so adding an Opening task at 15:00 would give it a 12:00 deadline —
+        # instantly overdue, and alerting about something nobody had a chance to
+        # do. An implicit deadline already in the past is simply dropped: the
+        # task still appears on today's list, just without a time.
+        if vals.get('deadline_is_implicit') and vals.get('deadline_datetime'):
+            if vals['deadline_datetime'] <= fields.Datetime.now():
+                vals['deadline_datetime'] = False
+                vals['deadline_is_implicit'] = False
         new_line = self.env['krawings.task.list.line'].sudo().create(vals)
         _logger.info(
             '[krawings_task_manager] template line %s added to today\'s list %s (dept %s)',

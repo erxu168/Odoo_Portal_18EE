@@ -90,8 +90,15 @@ export async function PUT(request: Request) {
       if (!Number.isInteger(id) || id <= 0) {
         return NextResponse.json({ error: 'Invalid company id' }, { status: 400 });
       }
-      if (!Number.isFinite(hour) || hour < 0 || hour >= 24) {
-        return NextResponse.json({ error: 'Pick a valid send time.' }, { status: 400 });
+      // Bounded to the evening. Free entry was the ask, but a recap of "today"
+      // sent at 02:30 reports a day that has barely begun — everything unticked,
+      // every task "missed", in the middle of the night. 17:00 is the earliest
+      // hour at which the number could mean anything.
+      if (!Number.isFinite(hour) || hour < 17 || hour > 23.75) {
+        return NextResponse.json(
+          { error: 'Pick a send time between 17:00 and 23:45 — earlier than that, the day is not over yet.' },
+          { status: 400 },
+        );
       }
       // Strict boolean — a JSON string like "false" must not read as enabled.
       updates.push({ id, enabled: row?.enabled === true, hour });

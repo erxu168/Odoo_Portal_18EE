@@ -56,9 +56,16 @@ class KrawingsTaskServiceDay(models.Model):
                 (rec.day_start, 'The day start'), (rec.opening_end, 'Opening end'),
                 (rec.service_end, 'Service end'), (rec.day_end, 'The day end'),
             ):
-                # 24.0 is allowed for a day that ends at midnight.
-                if value < 0 or value > 24:
-                    raise ValidationError('%s must be between 00:00 and 24:00.' % label)
+                # Ceiling 23:30, not 24:00: reminders for the last tasks of the
+                # night fire a grace period AFTER the day ends, and a day ending
+                # at midnight pushes that past the date rollover — where both the
+                # clock and the list's own date have moved on and the task can
+                # never be seen again.
+                if value < 0 or value > 23.5:
+                    raise ValidationError(
+                        '%s must be between 00:00 and 23:30. A day ending at midnight would push its '
+                        'last reminders past the date change, where they could never be sent.' % label
+                    )
             if not (rec.day_start < rec.opening_end < rec.service_end < rec.day_end):
                 raise ValidationError(
                     'Service times must run in order: day start, then Opening ends, '
@@ -75,6 +82,10 @@ class KrawingsTaskServiceDay(models.Model):
         Guessing times here would silently mark a restaurant's whole list overdue.
         """
         company_id = int(company_id)
+        # Coerce: the spawn passes a real date, but an RPC caller can only send
+        # 'YYYY-MM-DD'. Without this, .weekday() on a str raises and every cron
+        # run 500s — the alert would have been silently dead, not noisy.
+        target_date = fields.Date.to_date(target_date) or fields.Date.context_today(self)
         weekday = str(target_date.weekday())
         row = self.sudo().search(
             [('company_id', '=', company_id), ('weekday', '=', weekday)], limit=1,
@@ -88,6 +99,30 @@ class KrawingsTaskServiceDay(models.Model):
             'mid_day': (row.opening_end, row.service_end),
             'closing': (row.service_end, row.day_end),
         }
+
+    @api.model
+    def is_within_hours(self, company_id, now_float, target_date, tail_minutes=30):
+        """Is `now` inside this restaurant's working day?
+
+        Quiet hours for the overdue alert. When a restaurant has NOT set its
+        service times we cannot know, so a conservative 07:00–23:00 applies —
+        the point of quiet hours is that nobody's phone buzzes at 3am, and
+        defaulting to "always" would defeat it.
+
+        `tail_minutes` keeps us awake PAST the last deadline. Every Closing task
+        without a time of its own is due at exactly day_end, and only becomes
+        reportable after the grace period — so an awake window that stopped at
+        day_end made the whole Closing checklist structurally impossible to
+        alert about, on every day, at every restaurant. The tail must cover the
+        grace plus one cron tick, or the last tasks of the night are silent.
+        """
+        tail = float(tail_minutes) / 60.0
+        windows = self.windows_for(company_id, target_date)
+        if not windows:
+            return 7.0 <= float(now_float) <= 23.0 + tail
+        starts = [w[0] for w in windows.values()]
+        ends = [w[1] for w in windows.values()]
+        return min(starts) <= float(now_float) <= max(ends) + tail
 
     @api.model
     def portal_read(self, company_ids):

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
@@ -28,6 +30,10 @@ class KrawingsTaskListLine(models.Model):
     # manager typed on the task. The screens say so — "By 12:00 · end of
     # Opening" instead of a deadline that appears from nowhere.
     deadline_is_implicit = fields.Boolean(readonly=True)
+    # When we last told a manager this task was overdue. Drives "alert once,
+    # then repeat hourly while it is still outstanding" — without it a checker
+    # running every 15 minutes would send the same task four times an hour.
+    overdue_alerted_at = fields.Datetime(readonly=True)
     photo_required = fields.Boolean()
     photo_instructions = fields.Char(
         help='Hint shown to staff above the photo upload button.',
@@ -553,6 +559,69 @@ class KrawingsTaskListLine(models.Model):
             'mimetype': att.mimetype or _guess_image_mime(att.name),
             'data_base64': raw.decode('ascii') if isinstance(raw, bytes) else (raw or ''),
         }
+
+    @api.model
+    def portal_overdue_digest(self, company_id, grace_minutes=15, repeat_minutes=60):
+        """Tasks overdue long enough to shout about, grouped by department.
+
+        CLAIMS as it reads: every line returned is stamped with
+        overdue_alerted_at before this returns, so a second checker run (or a
+        retry) cannot report the same task again inside the repeat window. The
+        caller may therefore send exactly what it receives, with no bookkeeping
+        of its own.
+
+        Deliberately TODAY only: yesterday's misses belong to last night's
+        summary, not to this morning's service.
+        """
+        company_id = int(company_id)
+        now = fields.Datetime.now()
+        grace_cutoff = now - timedelta(minutes=int(grace_minutes))
+        repeat_cutoff = now - timedelta(minutes=int(repeat_minutes))
+        today = self.env['krawings.task.template']._berlin_now().date()
+
+        lines = self.sudo().search([
+            ('list_id.company_id', '=', company_id),
+            ('list_id.date', '=', today),
+            ('completed_at', '=', False),
+            ('deadline_datetime', '!=', False),
+            ('deadline_datetime', '<=', grace_cutoff),
+            '|',
+            ('overdue_alerted_at', '=', False),
+            ('overdue_alerted_at', '<=', repeat_cutoff),
+        ])
+        if not lines:
+            return []
+
+        # Everything actually outstanding right now, ignoring who has been told
+        # about what. `lines` decides WHETHER to send; this decides what the
+        # message may claim. Without the split, a repeat alert reports only the
+        # newly-eligible tasks and silently contradicts the earlier one.
+        outstanding = self.sudo().search([
+            ('list_id.company_id', '=', company_id),
+            ('list_id.date', '=', today),
+            ('completed_at', '=', False),
+            ('deadline_datetime', '!=', False),
+            ('deadline_datetime', '<=', grace_cutoff),
+        ])
+        outstanding_by_dept = {}
+        for line in outstanding:
+            outstanding_by_dept.setdefault(line.list_id.department_id.id, []).append(line.name)
+
+        by_dept = {}
+        for line in lines:
+            dept = line.list_id.department_id
+            names = outstanding_by_dept.get(dept.id) or [line.name]
+            by_dept.setdefault(dept.id, {
+                'department_id': dept.id,
+                'department_name': dept.name or 'Department',
+                'names': names,
+            })
+
+        # Stamp AFTER grouping but BEFORE returning: the caller gets one chance
+        # to send these, and a failure to deliver does not re-queue them (a
+        # push that silently failed is better than the same push four times).
+        lines.write({'overdue_alerted_at': now})
+        return list(by_dept.values())
 
     @api.model
     def portal_day_summary(self, company_id, date_str=None):

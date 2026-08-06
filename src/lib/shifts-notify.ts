@@ -54,6 +54,8 @@ function buildPushPayload(type: string, payload: object): PushPayload {
     body: explicitBody || [summary, message].filter(Boolean).join(' — ') || 'Open the portal for details.',
     url: explicitUrl || '/shifts',
     tag: explicitTag || `shifts-${type}`,
+    // Opt-in: a same-tag replace is silent unless the sender asks to re-alert.
+    renotify: p.renotify === true,
   };
 }
 

@@ -15,6 +15,11 @@ self.addEventListener('push', event => {
     data: { url: payload.url || '/' },
     // Vibrate the phone briefly to surface the alert in a noisy kitchen.
     vibrate: [80, 30, 80],
+    // A repeat with the same tag REPLACES the tray entry silently unless this
+    // is set — which made every "still overdue" reminder after the first one
+    // completely inaudible. Opt-in per message so other domains keep their
+    // current quiet-replace behaviour.
+    renotify: payload.renotify === true,
   };
   event.waitUntil(self.registration.showNotification(payload.title, options));
 });

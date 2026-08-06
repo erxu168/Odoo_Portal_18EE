@@ -36,6 +36,11 @@ export interface PushPayload {
   body: string;
   url?: string;        // Where to open when the user taps the notification.
   tag?: string;        // Collapse key — newer pushes with the same tag replace older ones.
+  /** Re-alert (sound + vibrate) when this REPLACES a notification with the same
+   *  tag. Off by default, because a same-tag replace is meant to be quiet — but
+   *  a recurring reminder that never buzzes again after the first one is no
+   *  reminder at all. Opt in per message, never globally. */
+  renotify?: boolean;
 }
 
 interface SubRow {

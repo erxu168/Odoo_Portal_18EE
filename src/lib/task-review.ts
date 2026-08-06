@@ -102,3 +102,32 @@ export async function claimSummary(companyId: number, dateStr: string): Promise<
   const r: unknown = await getOdoo().call('res.company', 'portal_claim_summary', [companyId, dateStr]);
   return r === true;
 }
+
+export interface OverdueDeptDigest {
+  department_id: number;
+  department_name: string;
+  names: string[];
+}
+
+/** Tasks overdue past the grace period, grouped by department.
+ *  CLAIMS as it reads — every task returned is marked alerted, so a retry or a
+ *  second run cannot report the same one inside the repeat window. */
+export function overdueDigest(
+  companyId: number,
+  graceMinutes: number,
+  repeatMinutes: number,
+): Promise<OverdueDeptDigest[]> {
+  return getOdoo().call('krawings.task.list.line', 'portal_overdue_digest',
+    [companyId, graceMinutes, repeatMinutes]);
+}
+
+/** Is now inside this restaurant's working day? Quiet hours for the alert. */
+export function withinServiceHours(
+  companyId: number,
+  nowFloat: number,
+  dateStr: string,
+  tailMinutes: number,
+): Promise<boolean> {
+  return getOdoo().call('krawings.task.service.day', 'is_within_hours',
+    [companyId, nowFloat, dateStr, tailMinutes]);
+}

@@ -16,7 +16,6 @@ interface CompanyRow {
   hour: number;
 }
 
-const HOUR_OPTIONS = [22, 22.5, 23, 23.5];
 /** Float hour (22.5) ⇄ "HH:MM", so the send time can be any minute rather than
  *  one of four fixed choices. */
 function hourToHHMM(v: number): string {
@@ -30,11 +29,6 @@ function hhmmToHour(s: string): number {
   return h + m / 60;
 }
 
-function hourLabel(h: number): string {
-  const hh = Math.floor(h);
-  const mm = h - hh >= 0.5 ? '30' : '00';
-  return `${String(hh).padStart(2, '0')}:${mm}`;
-}
 
 export default function SummarySettings() {
   const [rows, setRows] = useState<CompanyRow[]>([]);
@@ -133,13 +127,15 @@ export default function SummarySettings() {
                     <span className="text-[var(--fs-xs)] text-gray-500">Send at</span>
                     <input
                       type="time"
+                      min="17:00"
+                      max="23:45"
                       value={hourToHHMM(row.hour)}
                       onChange={e => patch(row.id, { hour: hhmmToHour(e.target.value) })}
                       disabled={saving}
                       aria-label={`Send time for ${row.name}`}
                       className="border border-gray-200 rounded-lg px-3 min-h-[44px] text-[var(--fs-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
-                    <span className="text-[var(--fs-xs)] text-gray-400">Berlin time · sent within 15 min of this</span>
+                    <span className="text-[var(--fs-xs)] text-gray-400">Berlin time (17:00–23:45) · sent within 15 min of this</span>
                   </div>
                 )}
               </div>
