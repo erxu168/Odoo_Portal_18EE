@@ -27,15 +27,9 @@ import { isValidYoutubeUrl, canonicalYoutubeUrl } from '@/lib/youtube-url';
 import {
   parseDrawings,
   serializeDrawings,
-  DRAWING_COLORS,
-  DRAWING_WIDTH_LEVELS,
-  DEFAULT_DRAWING_WIDTH,
-  clampDrawingWidth,
-  drawingWidthPx,
-  MAX_DRAWINGS,
   type GuideDrawing,
-  type GuideDrawingType,
 } from '@/lib/guide-drawings';
+import DrawingToolbar, { useDrawingTools } from '@/components/ui/DrawingToolbar';
 import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
@@ -1144,30 +1138,6 @@ function StepCard({
 
 // ── Photo step body: image + editable note-pins + drawings ────────────────────
 
-const DRAWING_COLOR_NAMES: Record<string, string> = {
-  '#DC2626': 'red', '#2563EB': 'blue', '#16A34A': 'green', '#FFFFFF': 'white',
-};
-
-function ToolButton({ label, active = false, disabled, onClick }: {
-  label: string; active?: boolean; disabled: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={active}
-      className={`min-h-[38px] px-2.5 rounded-lg text-[var(--fs-xs)] font-semibold border disabled:opacity-40 ${
-        active
-          ? 'bg-green-600 border-green-600 text-white'
-          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 
 interface PhotoStepProps {
   step: EditorStep;
@@ -1186,49 +1156,12 @@ interface PhotoStepProps {
 
 function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onDrawings, onPickPhoto, onImgError }: PhotoStepProps) {
   const [chooser, setChooser] = useState(false);   // Camera·Photos·Files (photo-inputs skill)
-  /** Active drawing tool — null means "place note-pins" (the default). */
-  const [tool, setTool] = useState<GuideDrawingType | null>(null);
-  const [color, setColor] = useState<string>(DRAWING_COLORS[0]);
-  /** Line weight LEVEL (1..5) for the next mark — and for the selected one. */
-  const [lineWidth, setLineWidth] = useState<number>(DEFAULT_DRAWING_WIDTH);
-  /** True when the author tried to add a mark beyond the cap (so we can say so). */
-  const [capHit, setCapHit] = useState(false);
-  /** Index of the mark the author tapped — movable, stretchable, deletable. */
-  const [selectedMark, setSelectedMark] = useState<number | null>(null);
   const { confirm, confirmElement } = useConfirm();
   const photo = hasPhoto(step);
   const shapes = step.drawings;
-  // Keep the selection valid: undo/clear/erase can remove the selected mark, and
-  // leaving a stale index would highlight the wrong shape.
-  useEffect(() => {
-    if (selectedMark != null && selectedMark >= shapes.length) setSelectedMark(null);
-  }, [selectedMark, shapes.length]);
-  // Selection only means something while a drawing tool is active.
-  useEffect(() => {
-    if (!tool) setSelectedMark(null);
-  }, [tool]);
-  // Selecting a mark loads its style into the pickers, so the toolbar always
-  // describes what is selected instead of quietly disagreeing with it.
-  useEffect(() => {
-    if (selectedMark == null) return;
-    const s = shapes[selectedMark];
-    if (!s) return;
-    setColor(s.color);
-    setLineWidth(clampDrawingWidth(s.width));
-  }, [selectedMark, shapes]);
-
-  /**
-   * The colour / thickness pickers set the style of the NEXT mark — and, when a
-   * mark is selected, restyle that one too. Without this a line drawn too thin
-   * could only be fixed by erasing and redrawing it.
-   */
-  function applyStyle(patch: Partial<Pick<GuideDrawing, 'color' | 'width'>>) {
-    if (patch.color !== undefined) setColor(patch.color);
-    if (patch.width !== undefined) setLineWidth(patch.width);
-    if (selectedMark != null && shapes[selectedMark]) {
-      onDrawings(shapes.map((s, i) => (i === selectedMark ? { ...s, ...patch } : s)));
-    }
-  }
+  // Tool, colour, weight, selection, the cap — all shared with the subtask
+  // photo editor, so the two can never behave differently.
+  const tools = useDrawingTools({ shapes, onChange: onDrawings, allowPins: true });
 
 
   /**
@@ -1303,22 +1236,13 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             onPinClick={(i) => onSetActive(activeIndex === i ? null : i)}
             onImageError={onImgError}
             drawings={shapes}
-            drawTool={tool}
-            drawColor={color}
-            drawWidth={lineWidth}
-            onDrawAdd={(shape) => {
-              // Never swallow the mark the author just drew: if we're at the cap,
-              // say so instead of silently dropping it.
-              if (shapes.length >= MAX_DRAWINGS) { setCapHit(true); return; }
-              setCapHit(false);
-              onDrawings([...shapes, shape]);
-              // Select it straight away, so it can be nudged or stretched
-              // without hunting for it first.
-              setSelectedMark(shapes.length);
-            }}
-            drawSelected={selectedMark}
-            onDrawSelect={setSelectedMark}
-            onDrawUpdate={(i, shape) => onDrawings(shapes.map((s, idx) => (idx === i ? shape : s)))}
+            drawTool={tools.tool}
+            drawColor={tools.color}
+            drawWidth={tools.width}
+            onDrawAdd={tools.add}
+            drawSelected={tools.selected}
+            onDrawSelect={tools.setSelected}
+            onDrawUpdate={tools.update}
           />
         </div>
       )}
@@ -1327,96 +1251,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           "Dots" is the default so the long-standing tap-to-place-a-pin behaviour
           is unchanged until a drawing tool is deliberately picked. */}
       {photo && !imgError && (
-        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-gray-50 border border-gray-200 rounded-lg">
-          <ToolButton label="● Dots" active={tool === null} disabled={disabled} onClick={() => setTool(null)} />
-          <ToolButton label="↗ Arrow" active={tool === 'arrow'} disabled={disabled} onClick={() => setTool('arrow')} />
-          <ToolButton label="◯ Circle" active={tool === 'circle'} disabled={disabled} onClick={() => setTool('circle')} />
-          <ToolButton label="▭ Box" active={tool === 'box'} disabled={disabled} onClick={() => setTool('box')} />
-          <ToolButton label="✎ Pen" active={tool === 'pen'} disabled={disabled} onClick={() => setTool('pen')} />
-          <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
-          {DRAWING_COLORS.map(c => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => applyStyle({ color: c })}
-              disabled={disabled}
-              aria-label={`Draw in ${DRAWING_COLOR_NAMES[c]}`}
-              aria-pressed={color === c}
-              title={DRAWING_COLOR_NAMES[c]}
-              style={{ background: c }}
-              className={`w-7 h-7 rounded-full border-2 border-white disabled:opacity-50 ${
-                color === c ? 'ring-2 ring-gray-800 scale-110' : 'ring-1 ring-gray-300'
-              }`}
-            />
-          ))}
-          <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
-          {/* Five line weights, drawn at their real thickness so the picker shows
-              what you get. Thin lines disappear on a busy kitchen photo. */}
-          {DRAWING_WIDTH_LEVELS.map(lvl => (
-            <button
-              key={lvl}
-              type="button"
-              onClick={() => applyStyle({ width: lvl })}
-              disabled={disabled}
-              aria-label={`Line thickness ${lvl} of ${DRAWING_WIDTH_LEVELS.length}`}
-              aria-pressed={lineWidth === lvl}
-              title={`Thickness ${lvl}`}
-              className={`w-7 h-7 flex items-center justify-center rounded-md bg-white disabled:opacity-50 ${
-                lineWidth === lvl ? 'ring-2 ring-gray-800' : 'ring-1 ring-gray-300'
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className="block w-4 rounded-full bg-gray-800"
-                style={{ height: `${drawingWidthPx(lvl)}px` }}
-              />
-            </button>
-          ))}
-          <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
-          <ToolButton
-            label="⌫ Erase"
-            disabled={disabled || selectedMark == null}
-            onClick={() => {
-              if (selectedMark == null) return;
-              setCapHit(false);
-              onDrawings(shapes.filter((_, idx) => idx !== selectedMark));
-              setSelectedMark(null);
-            }}
-          />
-          <ToolButton
-            label="↶ Undo"
-            disabled={disabled || shapes.length === 0}
-            onClick={() => { setCapHit(false); setSelectedMark(null); onDrawings(shapes.slice(0, -1)); }}
-          />
-          <ToolButton
-            label="Clear"
-            disabled={disabled || shapes.length === 0}
-            onClick={async () => {
-              if (!await confirm({
-                title: 'Remove all drawings?',
-                message: 'Every mark on this photo goes. The numbered note-pins stay.',
-                confirmLabel: 'Remove all',
-                variant: 'danger',
-              })) return;
-              setCapHit(false);
-              setSelectedMark(null);
-              onDrawings([]);
-            }}
-          />
-          {capHit && (
-            <span className="w-full text-[var(--fs-xs)] font-semibold text-red-600 mt-0.5">
-              That is the most marks one photo can hold ({MAX_DRAWINGS}). Erase one first.
-            </span>
-          )}
-          {tool && !capHit && (
-            <span className="w-full text-[var(--fs-xs)] text-gray-500 mt-0.5">
-              {selectedMark != null
-                ? 'Drag the mark to move it, or its white handles to stretch it. Colour and thickness restyle it; Erase deletes it.'
-                : 'Drag on the photo to draw. Tap a mark to move, stretch, restyle or erase it.'}
-              {' '}Pick <strong>Dots</strong> to place numbered notes again.
-            </span>
-          )}
-        </div>
+        <DrawingToolbar tools={tools} disabled={disabled} allowPins />
       )}
 
       {photo && !imgError && (

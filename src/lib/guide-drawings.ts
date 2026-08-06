@@ -24,6 +24,12 @@ export interface GuideDrawing {
 }
 
 export const DRAWING_COLORS = ['#DC2626', '#2563EB', '#16A34A', '#FFFFFF'] as const;
+/** Spoken names for the swatches — a colour picker whose only label is the
+ *  colour itself is unusable with a screen reader, and unreadable to anyone
+ *  who cannot tell red from green. Kept beside the list so the two can't drift. */
+export const DRAWING_COLOR_NAMES: Record<string, string> = {
+  '#DC2626': 'red', '#2563EB': 'blue', '#16A34A': 'green', '#FFFFFF': 'white',
+};
 export const MAX_DRAWINGS = 40;
 export const MAX_DRAWING_POINTS = 400;
 const DRAWING_TYPES: GuideDrawingType[] = ['arrow', 'circle', 'box', 'pen'];
