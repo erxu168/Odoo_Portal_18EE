@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Per-restaurant daily-checklist spawn time card for /tasks/admin.
+ * Per-restaurant daily-task-list spawn time card for /tasks/admin.
  * Reads/writes res.company.kw_task_spawn_hour via /api/tasks/admin/spawn-time.
  * The Odoo cron runs hourly and creates each restaurant's lists on the first
  * pass at or after its configured hour (Europe/Berlin).
@@ -79,12 +79,12 @@ export default function SpawnTimeSettings() {
 
   return (
     <section>
-      <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400 mb-2">Daily checklist</p>
+      <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400 mb-2">Daily task list</p>
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-          <p className="font-semibold text-[var(--fs-sm)] text-gray-800">Checklist creation time</p>
+          <p className="font-semibold text-[var(--fs-sm)] text-gray-800">Task list creation time</p>
           <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
-            When each restaurant&apos;s daily checklists are created (Berlin time).
+            When each restaurant&apos;s daily task lists are created (Berlin time).
             Lists appear within the hour after the chosen time.
           </p>
         </div>
@@ -109,7 +109,7 @@ export default function SpawnTimeSettings() {
                   value={row.spawn_hour}
                   onChange={e => setHour(row.id, Number(e.target.value))}
                   disabled={saving}
-                  aria-label={`Checklist creation time for ${row.name}`}
+                  aria-label={`Task list creation time for ${row.name}`}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-[var(--fs-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   {HOURS.map(h => (

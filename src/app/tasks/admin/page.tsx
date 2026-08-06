@@ -4,6 +4,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import ManagerTabs from '../_components/ManagerTabs';
 import SpawnTimeSettings from '../_components/SpawnTimeSettings';
 import SummarySettings from '../_components/SummarySettings';
+import ServiceTimesSettings from '../_components/ServiceTimesSettings';
 
 export default function AdminPage() {
   const user = getCurrentUser();
@@ -17,6 +18,8 @@ export default function AdminPage() {
       <ManagerTabs />
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+        <ServiceTimesSettings />
+
         <SummarySettings />
 
         <SpawnTimeSettings />

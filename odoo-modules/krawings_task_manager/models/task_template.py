@@ -207,9 +207,24 @@ class KrawingsTaskTemplate(models.Model):
         first time either side gained a field — and the drift would be silent.
         """
         deadline_dt = False
-        if tline.deadline_time:
-            hours = int(tline.deadline_time)
-            minutes = int(round((tline.deadline_time - hours) * 60))
+        deadline_implicit = False
+        due_hours = tline.deadline_time
+        if not due_hours:
+            # No time of its own → due when its PERIOD ends. Opening/Service/
+            # Closing were labels with no time attached, which is exactly why a
+            # task without a deadline could never be called late or remind
+            # anyone. windows_for returns {} until the restaurant has set its
+            # service times, and then nothing changes — no invented deadlines.
+            windows = self.env['krawings.task.service.day'].windows_for(
+                tline.template_id.department_id.company_id.id, target_date,
+            )
+            window = windows.get(tline.day_part)
+            if window:
+                due_hours = window[1]
+                deadline_implicit = True
+        if due_hours:
+            hours = int(due_hours)
+            minutes = int(round((due_hours - hours) * 60))
             # A Float like 7.9999 rounds minutes to 60 → time(h, 60) raises
             # ValueError and (being outside the savepoint) would abort the
             # whole department's spawn pass. Carry/clamp into a valid time.
@@ -221,6 +236,7 @@ class KrawingsTaskTemplate(models.Model):
             local_dt = tz.localize(datetime.combine(target_date, time(hours, minutes)))
             deadline_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
         return {
+            'deadline_is_implicit': deadline_implicit,
             'name': tline.name,
             'sequence': tline.sequence,
             'day_part': tline.day_part,

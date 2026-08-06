@@ -96,7 +96,7 @@ export default function ManagerDashboard() {
               {spawning ? 'Creating…' : "Create today's lists"}
             </PrimaryButton>
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5 text-center">
-              Builds today&apos;s checklists from the active templates. Safe to tap again — it won&apos;t duplicate.
+              Builds today&apos;s task lists from the active templates. Safe to tap again — it won&apos;t duplicate.
             </p>
           </>
         ) : null}

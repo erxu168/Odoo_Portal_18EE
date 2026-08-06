@@ -1,4 +1,5 @@
 from . import res_company
+from . import task_service_day
 from . import task_item
 from . import task_setup_photo
 from . import task_guide_pin

@@ -17,6 +17,19 @@ interface CompanyRow {
 }
 
 const HOUR_OPTIONS = [22, 22.5, 23, 23.5];
+/** Float hour (22.5) ⇄ "HH:MM", so the send time can be any minute rather than
+ *  one of four fixed choices. */
+function hourToHHMM(v: number): string {
+  const h = Math.max(0, Math.min(23, Math.floor(v)));
+  const m = Math.round((v - Math.floor(v)) * 60);
+  return `${String(h).padStart(2, '0')}:${String(m >= 60 ? 0 : m).padStart(2, '0')}`;
+}
+function hhmmToHour(s: string): number {
+  const [h, m] = (s || '').split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return 22.5;
+  return h + m / 60;
+}
+
 function hourLabel(h: number): string {
   const hh = Math.floor(h);
   const mm = h - hh >= 0.5 ? '30' : '00';
@@ -118,16 +131,15 @@ export default function SummarySettings() {
                 {row.enabled && (
                   <div className="mt-2.5 flex items-center gap-2">
                     <span className="text-[var(--fs-xs)] text-gray-500">Send at</span>
-                    <select
-                      value={row.hour}
-                      onChange={e => patch(row.id, { hour: Number(e.target.value) })}
+                    <input
+                      type="time"
+                      value={hourToHHMM(row.hour)}
+                      onChange={e => patch(row.id, { hour: hhmmToHour(e.target.value) })}
                       disabled={saving}
                       aria-label={`Send time for ${row.name}`}
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-[var(--fs-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
-                    >
-                      {HOUR_OPTIONS.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}
-                    </select>
-                    <span className="text-[var(--fs-xs)] text-gray-400">Berlin time</span>
+                      className="border border-gray-200 rounded-lg px-3 min-h-[44px] text-[var(--fs-sm)] bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <span className="text-[var(--fs-xs)] text-gray-400">Berlin time · sent within 15 min of this</span>
                   </div>
                 )}
               </div>

@@ -14,9 +14,9 @@ export const dynamic = 'force-dynamic';
 
 const F_ON = 'kw_task_summary_enabled';
 const F_HOUR = 'kw_task_summary_hour';
-// The send-time choices offered in the UI (Berlin). Kept server-side too so a
-// tampered client can't store an arbitrary time.
-const ALLOWED_HOURS = [22, 22.5, 23, 23.5];
+// Any time of day, to the minute (Berlin). Was four fixed choices; the owner
+// wanted to set it individually. Still bounded and still snapped to a whole
+// minute, so a tampered client can't store 22.37194 or a negative hour.
 
 async function eligibleCompanyIds(): Promise<number[]> {
   const depts = await getOdoo().searchRead(
@@ -84,11 +84,13 @@ export async function PUT(request: Request) {
     const updates: { id: number; enabled: boolean; hour: number }[] = [];
     for (const row of rows as any[]) {
       const id = Number(row?.id);
-      const hour = Number(row?.hour);
+      // Snap to a whole minute: a float straight from a client could carry
+      // meaningless precision into a value we later render back as a time.
+      const hour = Math.round(Number(row?.hour) * 60) / 60;
       if (!Number.isInteger(id) || id <= 0) {
         return NextResponse.json({ error: 'Invalid company id' }, { status: 400 });
       }
-      if (!ALLOWED_HOURS.includes(hour)) {
+      if (!Number.isFinite(hour) || hour < 0 || hour >= 24) {
         return NextResponse.json({ error: 'Pick a valid send time.' }, { status: 400 });
       }
       // Strict boolean — a JSON string like "false" must not read as enabled.

@@ -234,7 +234,7 @@ export default function StaffPage() {
           room for Training without crowding the header on a phone. */}
       <AppHeader
         supertitle={ctx?.department_name ? ctx.department_name.toUpperCase() : 'TASKS'}
-        title={isToday ? "Today's checklist" : `Checklist · ${date}`}
+        title={isToday ? "Today's task list" : `Task list · ${date}`}
         subtitle={todayLabel}
         root
         action={trainingLink}
@@ -301,7 +301,7 @@ export default function StaffPage() {
         ) : error ? (
           <EmptyState
             emoji="⚠️"
-            title={data?.code === 'NO_ACTOR' ? 'Sign in to see your checklist'
+            title={data?.code === 'NO_ACTOR' ? 'Sign in to see your task list'
               : data?.code === 'NO_DEPARTMENT' ? 'No department'
               : data?.code === 'NO_EMPLOYEE' ? 'No employee record' : 'Could not load'}
             message={error}
@@ -312,7 +312,7 @@ export default function StaffPage() {
             <p className="font-semibold text-gray-600">No list for {date}</p>
             <p className="text-[var(--fs-sm)] mt-1 max-w-xs mx-auto">
               {isToday
-                ? `No checklist has been published for ${ctx?.department_name ?? 'your department'} today.`
+                ? `No task list has been published for ${ctx?.department_name ?? 'your department'} today.`
                 : `No list exists for ${ctx?.department_name ?? 'this department'} on this date.`}
             </p>
             {showManagerControls && !isPast && (

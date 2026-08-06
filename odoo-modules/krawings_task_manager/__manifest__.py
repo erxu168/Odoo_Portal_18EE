@@ -1,6 +1,6 @@
 {
     'name': 'Krawings Task Manager',
-    'version': '18.0.16.0.0',
+    'version': '18.0.17.0.0',
     'category': 'Human Resources',
     'summary': 'Department-based daily task lists for Krawings Portal PWA',
     'description': """
@@ -11,7 +11,7 @@ Recurring daily task lists scoped per hr.department.
 
 Templates:
   - One template per (department, day-of-week combination)
-  - Tasks grouped by day-part (opening / mid-day / closing)
+  - Tasks grouped by day-part (opening / service / closing)
   - Deadlines as time-of-day, photo evidence flag, optional module link
 
 Daily instances:

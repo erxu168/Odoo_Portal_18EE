@@ -174,6 +174,7 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
       photo_uploaded: false,
       photo_instructions: tl.photo_instructions,
       manager_note: tl.manager_note,
+      deadline_is_implicit: false,
       module_link_type: tl.module_link_type,
       is_setup_guide: tl.is_setup_guide,
       has_setup_photo: tl.has_setup_photo,

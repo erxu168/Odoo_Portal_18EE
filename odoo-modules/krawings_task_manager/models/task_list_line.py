@@ -24,6 +24,10 @@ class KrawingsTaskListLine(models.Model):
     sequence = fields.Integer(default=10)
     day_part = fields.Selection(DAY_PART_SELECTION, required=True, default='opening')
     deadline_datetime = fields.Datetime()
+    # True when this time came from the PERIOD's end rather than a time the
+    # manager typed on the task. The screens say so — "By 12:00 · end of
+    # Opening" instead of a deadline that appears from nowhere.
+    deadline_is_implicit = fields.Boolean(readonly=True)
     photo_required = fields.Boolean()
     photo_instructions = fields.Char(
         help='Hint shown to staff above the photo upload button.',

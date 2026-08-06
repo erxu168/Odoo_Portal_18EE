@@ -49,6 +49,8 @@ export interface TaskListLine {
   photo_required: boolean;
   photo_uploaded: boolean;
   photo_instructions: string | null;
+  /** True when the deadline came from the PERIOD's end, not a time typed on the task. */
+  deadline_is_implicit: boolean;
   /** Manager's standing note, snapshotted from the template. Read-only to staff. */
   manager_note: string | null;
   module_link_type: ModuleLink;
@@ -283,6 +285,7 @@ const LIST_FIELDS = [
 const LINE_FIELDS = [
   'id', 'list_id', 'name', 'sequence', 'day_part', 'deadline_datetime',
   'photo_required', 'photo_uploaded', 'photo_instructions', 'manager_note',
+  'deadline_is_implicit',
   'module_link_type', 'state',
   'completed_at', 'completed_by_id', 'completed_by_name',
   'is_ad_hoc', 'source_template_line_id', 'subtask_ids',
@@ -374,6 +377,7 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     photo_required: !!l.photo_required,
     photo_uploaded: !!l.photo_uploaded,
     photo_instructions: l.photo_instructions || null,
+    deadline_is_implicit: !!l.deadline_is_implicit,
     manager_note: l.manager_note || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     state: l.state as LineState,
@@ -940,6 +944,28 @@ export async function deleteAttachment(attachmentId: number): Promise<void> {
 }
 
 // ── Spawning ──────────────────────────────────
+
+export interface ServiceDayRow {
+  id?: number;
+  company_id: number;
+  company_name?: string;
+  /** '' = the everyday default; '0'..'6' = Monday..Sunday override. */
+  weekday: string;
+  day_start: number;
+  opening_end: number;
+  service_end: number;
+  day_end: number;
+}
+
+/** When Opening / Service / Closing start and end, per restaurant. */
+export async function readServiceDays(companyIds: number[]): Promise<ServiceDayRow[]> {
+  return getOdoo().call('krawings.task.service.day', 'portal_read', [companyIds]);
+}
+
+/** Replace one restaurant's service times with exactly these rows. */
+export async function saveServiceDays(companyId: number, rows: ServiceDayRow[]): Promise<void> {
+  await getOdoo().call('krawings.task.service.day', 'portal_save', [companyId, rows]);
+}
 
 /** Per-task state of TODAY's guide copy, keyed by template line id (as a string). */
 export interface TodayGuideStatus {
