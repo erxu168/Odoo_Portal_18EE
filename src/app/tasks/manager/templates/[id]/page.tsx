@@ -33,6 +33,8 @@ import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
 import GuidePicker, { GuideAttachModal } from '../../../_components/GuidePicker';
+import SubtaskPhotoField from '../../../_components/SubtaskPhotoField';
+import { parseDrawings, serializeDrawings, type GuideDrawing } from '@/lib/guide-drawings';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -54,6 +56,18 @@ interface EditorSubtask {
   /** Sequence of the setup-guide photo this pin sits on. */
   pin_photo_seq: number;
   item_id?: number | null;
+  /** What to show: the media route for a stored photo, a data: URL while an
+   *  upload is pending, or null. */
+  photoUrl?: string | null;
+  /** Set ONLY for a new or replaced photo. Omitting it on save keeps the bytes
+   *  already stored — the subtask upsert preserves ids, so a blank here would
+   *  otherwise wipe a photo nobody touched. */
+  pendingBase64?: string;
+  pendingFilename?: string;
+  /** The manager removed the photo — tells the server to blank it. */
+  clearImage?: boolean;
+  /** Marks drawn over the photo, in fractions of it. */
+  drawings: GuideDrawing[];
 }
 
 /** One reference photo as the editor sees it — a server photo or a pending upload. */
@@ -853,7 +867,12 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
   const [moduleLink, setModuleLink]   = useState<ModuleLink>(line?.module_link_type ?? 'none');
   // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/photo/item).
   const [subtasks, setSubtasks]       = useState<EditorSubtask[]>(
-    line?.subtasks.map(s => ({ id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y, pin_photo_seq: s.pin_photo_seq, item_id: s.item_id })) ?? [],
+    line?.subtasks.map(s => ({
+      id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y,
+      pin_photo_seq: s.pin_photo_seq, item_id: s.item_id,
+      photoUrl: s.has_photo ? `/api/tasks/templates/${tplId}/lines/${line.id}/subtasks/${s.id}/photo` : null,
+      drawings: parseDrawings(s.drawings),
+    })) ?? [],
   );
   const [recurrence, setRecurrence]   = useState<RecurrenceRule>(line?.recurrence ?? defaultRecurrence());
   const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
@@ -879,7 +898,7 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
     })),
   );
   const [removedSeqs] = useState<number[]>([]);
-  const [photoBusy] = useState(0);
+  const [photoBusy, setPhotoBusy] = useState(0);
   // New lines: remember the id created by the first successful save, so a retry
   // after a failed upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
@@ -960,6 +979,11 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
         id: s.id,
         name: s.name.trim(),
         sequence: (i + 1) * 10,
+        // Bytes travel only when there ARE new bytes; drawings always travel,
+        // so erasing every mark actually clears them.
+        ...(s.pendingBase64 ? { image_base64: s.pendingBase64, image_filename: s.pendingFilename || 'photo.jpg' } : {}),
+        ...(s.clearImage ? { clear_image: true } : {}),
+        drawings: serializeDrawings(s.drawings),
         ...(isSetupGuide ? {
           pin_x: s.pin_x, pin_y: s.pin_y,
           pin_photo_seq: seqMap ? (seqMap.get(s.pin_photo_seq) ?? s.pin_photo_seq) : s.pin_photo_seq,
@@ -1237,15 +1261,33 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
             <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
             <div className="space-y-1.5">
               {subtasks.map((s, i) => (
-                <div key={i} className="flex gap-2">
-                  <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
-                    placeholder="Subtask name"
-                    className="flex-1 px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
-                    className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 px-2">Remove</button>
+                <div key={i} className="rounded-lg border border-gray-100 p-1.5">
+                  <div className="flex gap-2">
+                    <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
+                      placeholder="Subtask name"
+                      className="flex-1 px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 px-2">Remove</button>
+                  </div>
+                  {/* A photo with a circle round the part that matters says what
+                      "wipe the slicer" cannot, to someone who has never seen it. */}
+                  <SubtaskPhotoField
+                    photoUrl={s.photoUrl ?? null}
+                    drawings={s.drawings}
+                    label={s.name}
+                    disabled={submitting}
+                    onBusyChange={busy => setPhotoBusy(n => Math.max(0, n + (busy ? 1 : -1)))}
+                    onPick={({ base64, filename, dataUrl }) => setSubtasks(prev => prev.map((p, idx) => idx === i
+                      ? { ...p, pendingBase64: base64, pendingFilename: filename, photoUrl: dataUrl, clearImage: false, drawings: [] }
+                      : p))}
+                    onClear={() => setSubtasks(prev => prev.map((p, idx) => idx === i
+                      ? { ...p, pendingBase64: undefined, pendingFilename: undefined, photoUrl: null, clearImage: true, drawings: [] }
+                      : p))}
+                    onDrawings={shapes => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, drawings: shapes } : p))}
+                  />
                 </div>
               ))}
-              <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0 }])}
+              <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0, drawings: [] }])}
                 className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800">
                 + Add subtask
               </button>

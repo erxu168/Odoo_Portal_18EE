@@ -883,6 +883,9 @@ function recurrenceVals(r: RecurrenceRule): Record<string, any> {
   };
 }
 
+/** Ceiling on a subtask photo, as base64 characters (~4 MB of image). */
+const MAX_SUBTASK_PHOTO_B64 = 6_000_000;
+
 export async function upsertTemplateLine(templateId: number, line: TemplateLineInput): Promise<number> {
   const odoo = getOdoo();
   const vals: any = {
@@ -913,6 +916,13 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     const toDelete = existing.filter((e: any) => !keepIds.has(e.id)).map((e: any) => e.id);
     if (toDelete.length) await odoo.unlink('krawings.task.template.subtask', toDelete);
     for (const s of line.subtasks) {
+      // The browser compresses a subtask photo to ~200 KB before it gets here,
+      // so anything near this ceiling did not come from the editor. Bounded
+      // because every daily list deep-copies the subtask: the filestore dedupes
+      // identical bytes, but nothing bounds what one upload can be.
+      if (s.image_base64 && s.image_base64.length > MAX_SUBTASK_PHOTO_B64) {
+        throw new Error('That photo is too large — please choose a smaller one.');
+      }
       const sVals: any = { line_id: lineId, name: s.name, sequence: s.sequence ?? 10 };
       // Pins: carry coordinates + photo link + optional catalog link (setup guides).
       if (s.pin_x !== undefined) sVals.pin_x = s.pin_x;
@@ -926,8 +936,11 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
         sVals.image = s.image_base64;
         sVals.image_filename = s.image_filename || 'photo.jpg';
       }
-      if (s.clear_image) { sVals.image = false; sVals.image_filename = false; sVals.drawings = false; }
       if (s.drawings !== undefined) sVals.drawings = s.drawings || false;
+      // LAST, so "remove the photo" always wins: Odoo refuses marks on a subtask
+      // with no photo, and a caller sending both would otherwise hit that error
+      // instead of the removal it asked for.
+      if (s.clear_image) { sVals.image = false; sVals.image_filename = false; sVals.drawings = false; }
       if (s.id) await odoo.write('krawings.task.template.subtask', [s.id], sVals);
       else await odoo.create('krawings.task.template.subtask', sVals);
     }
