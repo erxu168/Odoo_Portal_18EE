@@ -15,6 +15,10 @@ interface Props {
   /** Refresh the list — used so setup-guide auto-complete/reopen moves rows between sections. */
   onReload?: () => Promise<void> | void;
   readOnly?: boolean;
+  /** This is the manager's PREVIEW of a template, not a real day. The list is
+   *  fabricated and its ids are negative, so anything that would fetch by id
+   *  must not be offered — see TaskRow's guide chip. */
+  isPreview?: boolean;
 }
 
 const DAY_PART_LABEL: Record<DayPart, string> = {
@@ -35,7 +39,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ChecklistCard({ taskList, onComplete, onUncomplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
+export default function ChecklistCard({ taskList, onComplete, onUncomplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false, isPreview = false }: Props) {
   const grouped: Record<DayPart, TaskListLine[]> = { opening: [], mid_day: [], closing: [] };
   for (const line of taskList.lines) grouped[line.day_part].push(line);
 
@@ -56,7 +60,7 @@ export default function ChecklistCard({ taskList, onComplete, onUncomplete, onSu
             onPhotoUpload={onPhotoUpload}
             onNoteSave={onNoteSave}
             onReload={onReload}
-            readOnly={readOnly}
+            readOnly={readOnly} isPreview={isPreview}
           />
         );
       })}
@@ -75,9 +79,10 @@ interface SectionProps {
   onNoteSave: Props['onNoteSave'];
   onReload: Props['onReload'];
   readOnly: boolean;
+  isPreview: boolean;
 }
 
-function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly }: SectionProps) {
+function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly, isPreview }: SectionProps) {
   const [open, setOpen] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
   const [undoing, setUndoing] = useState<Set<number>>(new Set());
@@ -143,7 +148,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onUncomplete, onS
                   onPhotoUpload={onPhotoUpload}
                   onNoteSave={onNoteSave}
                   onReload={onReload}
-                  readOnly={readOnly}
+                  readOnly={readOnly} isPreview={isPreview}
                 />
               ))}
             </div>

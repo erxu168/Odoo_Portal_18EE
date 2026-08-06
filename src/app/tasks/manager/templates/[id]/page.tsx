@@ -51,6 +51,11 @@ import { useToast } from '../../../_components/useToast';
  * shapes sharing one name is a trap worth not leaving behind.
  */
 interface EditorSubtask {
+  /** Stable local identity for React and for the per-row edits below. The array
+   *  INDEX cannot do this job: a subtask now carries its own photo and an
+   *  in-flight upload, and removing a row above would slide that state — open
+   *  editor, pending photo and all — onto a different subtask. */
+  uid: string;
   id?: number;
   name: string;
   pin_x: number;
@@ -171,7 +176,11 @@ function hhmmToFloat(s: string): number | null {
 function previewListFromTemplate(tpl: TaskTemplate): TaskList {
   const todayBase = new Date();
   todayBase.setSeconds(0, 0);
-  const lines: TaskListLine[] = tpl.lines.map(tl => {
+  // A real day's lines arrive ordered by sequence; a template's arrive in
+  // whatever order they were read, so after a drag-reorder the preview showed
+  // the OLD order and looked like the reorder had not saved.
+  const ordered = [...tpl.lines].sort((a, b) => a.sequence - b.sequence || a.id - b.id);
+  const lines: TaskListLine[] = ordered.map(tl => {
     let deadline_datetime: string | null = null;
     if (tl.deadline_time != null) {
       const h = Math.floor(tl.deadline_time);
@@ -627,6 +636,7 @@ export default function TemplateEditPage({ params }: PageProps) {
                   onSubtaskToggle={async () => {}}
                   onPhotoUpload={async () => {}}
                   readOnly
+                  isPreview
                 />
               </>
             )}
@@ -886,12 +896,16 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
   // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/photo/item).
   const [subtasks, setSubtasks]       = useState<EditorSubtask[]>(
     line?.subtasks.map(s => ({
+      uid: `s${s.id}`,
       id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y,
       pin_photo_seq: s.pin_photo_seq, item_id: s.item_id,
       photoUrl: s.has_photo ? templateSubtaskPhotoUrl(tplId, line.id, s.id) : null,
       drawings: parseDrawings(s.drawings),
     })) ?? [],
   );
+  /** Counter behind the uid of rows added this session — see EditorSubtask.uid. */
+  const nextSubtaskUid = useRef(1);
+  const { confirm: confirmInModal, confirmElement: modalConfirmElement } = useConfirm();
   const [recurrence, setRecurrence]   = useState<RecurrenceRule>(line?.recurrence ?? defaultRecurrence());
   const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
   const [pendingAtts, setPendingAtts] = useState<PendingAttachment[]>([]);
@@ -982,6 +996,13 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
     // An attachment FileReader still running would land in pendingAtts AFTER this
     // closure snapshotted it — the file would be silently dropped on save.
     if (uploadingFile) { setError('A file is still being read — try again in a moment'); return; }
+    // A row with no name used to be dropped on save. Harmless when a subtask was
+    // just a line of text; not harmless now that one can carry a photo and marks,
+    // which would go with it and never be mentioned. Ask for the name instead.
+    if (subtasks.some(s => !s.name.trim() && (s.photoUrl || s.pendingBase64))) {
+      setError('One subtask has a photo but no name. Give it a name, or remove it.');
+      return;
+    }
     const cleanSubtasks = subtasks.filter(s => s.name.trim());
     // A setup guide needs at least one photo and at least one pin.
     if (isSetupGuide) {
@@ -1185,8 +1206,21 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
     }
   }
 
+  /** Removing a subtask that carries a photo throws the photo and its marks away
+   *  too, so it asks first — the same courtesy the photo's own Remove gives. */
+  async function removeSubtask(s: EditorSubtask) {
+    if ((s.photoUrl || s.pendingBase64) && !await confirmInModal({
+      title: 'Remove this subtask?',
+      message: 'Its photo and any marks on it go with it.',
+      confirmLabel: 'Remove subtask',
+      variant: 'danger',
+    })) return;
+    setSubtasks(prev => prev.filter(p => p.uid !== s.uid));
+  }
+
   return (
     <>
+    {modalConfirmElement}
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center" onClick={handleClose}>
       <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[90dvh]" onClick={e => e.stopPropagation()}>
         <h2 className="font-bold text-gray-800 text-[var(--fs-lg)] px-5 pt-5 pb-3 flex-shrink-0">{line ? 'Edit task' : 'Add task'}</h2>
@@ -1278,14 +1312,14 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
           <div>
             <label className="block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
             <div className="space-y-1.5">
-              {subtasks.map((s, i) => (
-                <div key={i} className="rounded-lg border border-gray-100 p-1.5">
+              {subtasks.map(s => (
+                <div key={s.uid} className="rounded-lg border border-gray-100 p-1.5">
                   <div className="flex gap-2">
-                    <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
+                    <input value={s.name} onChange={e => setSubtasks(prev => prev.map(p => p.uid === s.uid ? { ...p, name: e.target.value } : p))}
                       placeholder="Subtask name"
                       className="flex-1 px-3 py-2 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-[var(--fs-xs)] text-red-500 hover:text-red-600 px-2">Remove</button>
+                    <button onClick={() => void removeSubtask(s)}
+                      className="min-h-[44px] text-[var(--fs-xs)] text-red-500 hover:text-red-600 px-2">Remove</button>
                   </div>
                   {/* A photo with a circle round the part that matters says what
                       "wipe the slicer" cannot, to someone who has never seen it. */}
@@ -1295,17 +1329,17 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
                     label={s.name}
                     disabled={submitting}
                     onBusyChange={busy => setPhotoBusy(n => Math.max(0, n + (busy ? 1 : -1)))}
-                    onPick={({ base64, filename, dataUrl }) => setSubtasks(prev => prev.map((p, idx) => idx === i
+                    onPick={({ base64, filename, dataUrl }) => setSubtasks(prev => prev.map(p => p.uid === s.uid
                       ? { ...p, pendingBase64: base64, pendingFilename: filename, photoUrl: dataUrl, clearImage: false, drawings: [] }
                       : p))}
-                    onClear={() => setSubtasks(prev => prev.map((p, idx) => idx === i
+                    onClear={() => setSubtasks(prev => prev.map(p => p.uid === s.uid
                       ? { ...p, pendingBase64: undefined, pendingFilename: undefined, photoUrl: null, clearImage: true, drawings: [] }
                       : p))}
-                    onDrawings={shapes => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, drawings: shapes } : p))}
+                    onDrawings={shapes => setSubtasks(prev => prev.map(p => p.uid === s.uid ? { ...p, drawings: shapes } : p))}
                   />
                 </div>
               ))}
-              <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0, drawings: [] }])}
+              <button onClick={() => setSubtasks(prev => [...prev, { uid: `n${nextSubtaskUid.current++}`, name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0, drawings: [] }])}
                 className="text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800">
                 + Add subtask
               </button>

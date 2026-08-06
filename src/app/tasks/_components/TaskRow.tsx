@@ -17,6 +17,9 @@ interface Props {
   onNoteSave?: (taskId: number, note: string) => Promise<void>;
   onReload?: () => Promise<void> | void;
   readOnly?: boolean;
+  /** Rendered inside the manager's PREVIEW of a template: the task list is
+   *  fabricated with negative ids, so nothing here may fetch or navigate by id. */
+  isPreview?: boolean;
 }
 
 const MODULE_STYLES: Record<ModuleLink, string> = {
@@ -66,7 +69,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
+export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false, isPreview = false }: Props) {
   // Shared, process-wide cached — many rows on screen still make ONE request.
   const canSeeModule = useCanSeeModule();
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
@@ -240,13 +243,23 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         )}
 
         {task.has_guide && (
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); setShowGuide(true); }}
-            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 transition-colors"
-          >
-            📖 Show me how{task.guide_step_count ? ` · ${task.guide_step_count} step${task.guide_step_count === 1 ? '' : 's'}` : ''}
-          </button>
+          isPreview ? (
+            // The preview's list is FABRICATED and its ids are negative, so the
+            // player — which fetches a guide BY LINE ID — could only ever fail
+            // here, on guides that are perfectly fine for staff. Say what staff
+            // will get instead of offering a button that always errors.
+            <span className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+              📖 Staff get a how-to here{task.guide_step_count ? ` · ${task.guide_step_count} step${task.guide_step_count === 1 ? '' : 's'}` : ''}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setShowGuide(true); }}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 transition-colors"
+            >
+              📖 Show me how{task.guide_step_count ? ` · ${task.guide_step_count} step${task.guide_step_count === 1 ? '' : 's'}` : ''}
+            </button>
+          )
         )}
 
         {subtasks.length > 0 && (
@@ -263,7 +276,15 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           <AttachmentList attachments={task.attachments} compact />
         )}
 
-        {task.module_link_type !== 'none' && linkHref && (
+        {task.module_link_type !== 'none' && linkHref && isPreview && (
+          // Same reason: a preview must not navigate the manager out of the
+          // editor they are working in, under a banner saying interactions are off.
+          <span className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold border ${MODULE_STYLES[task.module_link_type]}`}>
+            {MODULE_ICONS[task.module_link_type]} {linkLabel}
+          </span>
+        )}
+
+        {task.module_link_type !== 'none' && linkHref && !isPreview && (
           <a href={linkHref} onClick={e => e.stopPropagation()}
             className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[var(--fs-xs)] font-semibold border transition-all hover:shadow-sm ${MODULE_STYLES[task.module_link_type]}`}>
             {MODULE_ICONS[task.module_link_type]} {linkLabel} ↗

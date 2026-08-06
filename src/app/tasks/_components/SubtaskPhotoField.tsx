@@ -50,8 +50,16 @@ export default function SubtaskPhotoField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imgError, setImgError] = useState(false);
+  /** Bumped by "Try again" so the browser re-requests instead of serving the
+   *  failure it cached. */
+  const [reloadTick, setReloadTick] = useState(0);
   const { confirm, confirmElement } = useConfirm();
   const tools = useDrawingTools({ shapes: drawings, onChange: onDrawings });
+  // A data: URL must not gain a query string, and there is nothing to retry on
+  // one anyway — it is already in memory.
+  const shownUrl = photoUrl && reloadTick && !photoUrl.startsWith('data:')
+    ? `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}r=${reloadTick}`
+    : photoUrl;
 
   /** ONE path in for the picker AND a drop, so a dropped replacement hits the
    *  same "your marks will go" confirmation a picked one does. */
@@ -111,7 +119,7 @@ export default function SubtaskPhotoField({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={photoUrl}
+                src={shownUrl || ''}
                 alt=""
                 onError={() => setImgError(true)}
                 className="w-10 h-10 rounded-lg border border-gray-200 object-cover"
@@ -133,7 +141,26 @@ export default function SubtaskPhotoField({
       </DropZone>
 
       {imgError && photoUrl && (
-        <p className="text-[var(--fs-xs)] text-red-600 mt-1">Couldn&apos;t load this photo. Choose another one.</p>
+        // A photo that fails to load is usually a hiccup, not a lost photo — so
+        // the first thing offered must not be the one action that destroys it.
+        <div className="mt-1 flex flex-wrap items-center gap-3">
+          <p className="text-[var(--fs-xs)] text-red-600">Couldn&apos;t load this photo.</p>
+          <button
+            type="button"
+            onClick={() => { setImgError(false); setReloadTick(t => t + 1); }}
+            className="min-h-[44px] flex items-center text-[var(--fs-xs)] font-semibold text-green-700 hover:text-green-800"
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={() => void remove()}
+            disabled={disabled}
+            className="min-h-[44px] flex items-center text-[var(--fs-xs)] font-semibold text-red-500 hover:text-red-600 disabled:opacity-50"
+          >
+            Remove photo
+          </button>
+        </div>
       )}
       {error && <p className="text-[var(--fs-xs)] text-red-600 mt-1">{error}</p>}
 
@@ -141,7 +168,7 @@ export default function SubtaskPhotoField({
         <div className="mt-2 space-y-2 rounded-lg border border-gray-200 bg-white p-2">
           <div className="flex justify-center bg-gray-50 rounded-lg p-1">
             <PinnableImage
-              src={photoUrl}
+              src={shownUrl || ''}
               alt={label ? `Photo for ${label}` : 'Subtask photo'}
               mode="edit"
               disabled={disabled}
