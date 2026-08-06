@@ -345,7 +345,12 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
   const subtasks = allSubtaskIds.length
     // Exclude legacy_guide_pin rows: pins from a migrated setup-guide are now
     // guided-tutorial pins, kept only as read-only audit — never shown as subtasks.
-    ? await odoo.searchRead('krawings.task.list.subtask', [['id', 'in', allSubtaskIds], ['legacy_guide_pin', '=', false]], SUBTASK_FIELDS, { limit: 1000 })
+    // bin_size: we only ever ask "does this subtask have a photo?" — without it
+    // Odoo returns every photo's full base64 on every read of a task list, which
+    // is megabytes over the wire to compute a boolean. With it the field comes
+    // back as a size string: still truthy when there is an image, empty when
+    // there is not. The bytes have their own route.
+    ? await odoo.searchRead('krawings.task.list.subtask', [['id', 'in', allSubtaskIds], ['legacy_guide_pin', '=', false]], SUBTASK_FIELDS, { limit: 1000, context: { bin_size: true } })
     : [];
   const subtasksByLine = new Map<number, TaskSubtask[]>();
   for (const s of subtasks) {
@@ -715,7 +720,9 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     : [];
   const allSubtaskIds = lines.flatMap((l: any) => l.subtask_ids || []);
   const subtasks = allSubtaskIds.length
-    ? await odoo.searchRead('krawings.task.template.subtask', [['id', 'in', allSubtaskIds]], TEMPLATE_SUBTASK_FIELDS, { limit: 1000 })
+    // Same as the daily read: has_photo is a boolean, so ask for the size, not
+    // the picture (see the note there).
+    ? await odoo.searchRead('krawings.task.template.subtask', [['id', 'in', allSubtaskIds]], TEMPLATE_SUBTASK_FIELDS, { limit: 1000, context: { bin_size: true } })
     : [];
   const subByLine = new Map<number, TemplatePin[]>();
   for (const s of subtasks) {
@@ -749,7 +756,10 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
   const tplAttsByLine = new Map<number, TaskAttachment[]>();
   for (const a of tplAtts) {
     const arr = tplAttsByLine.get(a.line_id) || [];
-    arr.push({ id: a.id, name: a.name, mimetype: a.mimetype || '', file_size: a.file_size || 0 });
+    // Everything this call returns hangs off a TEMPLATE line, so the provenance
+    // is known. Without it the manager's preview drops the "from the template"
+    // ribbon that staff actually see on the same attachment.
+    arr.push({ id: a.id, name: a.name, mimetype: a.mimetype || '', file_size: a.file_size || 0, scope: 'template' });
     tplAttsByLine.set(a.line_id, arr);
   }
 
@@ -922,6 +932,15 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
       'krawings.task.template.subtask',
       [['line_id', '=', lineId]], ['id'], { limit: 200 },
     );
+    // The ids arrive from the browser. `existing` is every subtask that really
+    // hangs off THIS line, so an id outside it belongs to another task — very
+    // possibly in another restaurant. Odoo's write would happily reparent it,
+    // overwriting someone else's subtask with this one's name and photo. Treat
+    // an unknown id as a NEW subtask instead: fails closed, no extra round trip.
+    const ownIds = new Set(existing.map((e: any) => e.id));
+    for (const s of line.subtasks) {
+      if (s.id && !ownIds.has(s.id)) delete s.id;
+    }
     const keepIds = new Set(line.subtasks.filter(s => s.id).map(s => s.id));
     const toDelete = existing.filter((e: any) => !keepIds.has(e.id)).map((e: any) => e.id);
     if (toDelete.length) await odoo.unlink('krawings.task.template.subtask', toDelete);
