@@ -9,6 +9,7 @@
 
 import { berlinToday } from './berlin-date';
 import { getOdoo } from './odoo';
+import { dailySubtaskPhotoUrl } from './task-photo-urls';
 
 // ── Types ─────────────────────────────────────
 
@@ -31,6 +32,10 @@ export interface TaskSubtask {
   pin_photo_seq: number;
   /** This subtask's own reference photo — bytes come from the media route. */
   has_photo: boolean;
+  /** WHERE those bytes come from, or null when there is no photo. Set by
+   *  whoever produced this record, because only they know which model it is
+   *  from — never rebuilt downstream out of ids. */
+  photo_url: string | null;
   /** Drawn marks over that photo, serialised. */
   drawings: string;
 }
@@ -358,6 +363,11 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
       pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
       pin_photo_seq: typeof s.pin_photo_seq === 'number' ? s.pin_photo_seq : 0,
       has_photo: !!s.image,
+      // The reader knows which MODEL this subtask came from, so it is the only
+      // thing that can honestly name the route. A component guessing from the
+      // ids it was handed is how the manager's preview ended up requesting a
+      // daily photo with a template's (negated) id.
+      photo_url: s.image ? dailySubtaskPhotoUrl(lid, s.id) : null,
       drawings: s.drawings || '',
     });
     subtasksByLine.set(lid, arr);

@@ -257,7 +257,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           </p>
         )}
 
-        <SubtaskList taskLineId={task.id} subtasks={subtasks} onToggle={handleSubtask} readOnly={readOnly} />
+        <SubtaskList subtasks={subtasks} onToggle={handleSubtask} readOnly={readOnly} />
 
         {task.attachments.length > 0 && (
           <AttachmentList attachments={task.attachments} compact />

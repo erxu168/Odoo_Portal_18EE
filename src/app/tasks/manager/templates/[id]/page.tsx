@@ -35,6 +35,8 @@ import RecurrenceEditor from '../../../_components/RecurrenceEditor';
 import GuidePicker, { GuideAttachModal } from '../../../_components/GuidePicker';
 import SubtaskPhotoField from '../../../_components/SubtaskPhotoField';
 import { parseDrawings, serializeDrawings, type GuideDrawing } from '@/lib/guide-drawings';
+import { templateSubtaskPhotoUrl } from '@/lib/task-photo-urls';
+import AnnotatedPhotoThumb from '@/components/ui/AnnotatedPhotoThumb';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -214,6 +216,11 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
         pin_y: s.pin_y,
         pin_photo_seq: s.pin_photo_seq,
         has_photo: s.has_photo,
+        // The ids above are NEGATED so a preview can never be mistaken for a
+        // real day — which means nothing downstream can reconstruct a working
+        // photo URL from them. The template's REAL ids are right here, so the
+        // preview names the template route itself.
+        photo_url: s.has_photo ? templateSubtaskPhotoUrl(tpl.id, tl.id, s.id) : null,
         drawings: s.drawings,
       })),
       attachments: tl.attachments,
@@ -774,7 +781,18 @@ export default function TemplateEditPage({ params }: PageProps) {
                               {l.subtasks.map(s => (
                                 <li key={s.id} className="text-[var(--fs-xs)] text-gray-600 flex items-start gap-1.5">
                                   <span className="text-gray-300 mt-0.5">•</span>
-                                  <span className="flex-1">{s.name}</span>
+                                  <span className="flex-1 min-w-0">{s.name}</span>
+                                  {/* A task's photo is visible on this screen, so a
+                                      subtask's has to be too — otherwise the only way
+                                      to know one exists is to open the editor. */}
+                                  {s.has_photo && (
+                                    <AnnotatedPhotoThumb
+                                      src={templateSubtaskPhotoUrl(tpl.id, l.id, s.id)}
+                                      drawings={s.drawings}
+                                      label={s.name}
+                                      size={32}
+                                    />
+                                  )}
                                 </li>
                               ))}
                             </ul>
@@ -870,7 +888,7 @@ function LineModal({ tplId, line, onClose, onSaved, onBackgroundRefresh }: LineM
     line?.subtasks.map(s => ({
       id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y,
       pin_photo_seq: s.pin_photo_seq, item_id: s.item_id,
-      photoUrl: s.has_photo ? `/api/tasks/templates/${tplId}/lines/${line.id}/subtasks/${s.id}/photo` : null,
+      photoUrl: s.has_photo ? templateSubtaskPhotoUrl(tplId, line.id, s.id) : null,
       drawings: parseDrawings(s.drawings),
     })) ?? [],
   );
