@@ -12,10 +12,20 @@
  * 404 shows the browser's broken-image icon, which reads as "this app is
  * broken" — that is exactly the bug that prompted this component. A photo that
  * cannot be fetched says so quietly instead.
+ *
+ * The enlarged view goes through a PORTAL, and that is not a styling choice.
+ * These thumbnails sit inside rows that complete a task or tick a subtask off
+ * when you tap them. Rendered in place, the full-screen backdrop is a DOM child
+ * of that row, so closing the picture bubbled up and marked the work done —
+ * real completion data written because someone looked at a photo. A portal puts
+ * the overlay outside the row entirely; the stopPropagation below is the second
+ * lock on the same door.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import PinnableImage from './PinnableImage';
 import { parseDrawings, type GuideDrawing } from '@/lib/guide-drawings';
+import { useEscapeStack } from '@/lib/modal-stack';
 
 interface Props {
   /** Route the bytes come from. Null renders nothing at all. */
@@ -34,6 +44,10 @@ interface Props {
 export default function AnnotatedPhotoThumb({ src, drawings, label, size = 44, className = '' }: Props) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Portals need a document, which the server render does not have.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEscapeStack(() => setOpen(false), open);
 
   if (!src) return null;
 
@@ -65,11 +79,14 @@ export default function AnnotatedPhotoThumb({ src, drawings, label, size = 44, c
         <img src={src} alt="" onError={() => setFailed(true)} className="w-full h-full object-cover" />
       </button>
 
-      {open && (
+      {open && mounted && createPortal((
         <div
           className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setOpen(false)}
+          // Every one of these stops the click here. The row underneath treats a
+          // tap as "this is done" — see the note at the top of the file.
+          onClick={e => { e.stopPropagation(); setOpen(false); }}
           role="dialog"
+          aria-modal="true"
           aria-label={`Photo for ${label}`}
         >
           <div className="w-full max-w-lg" onClick={e => e.stopPropagation()}>
@@ -77,7 +94,7 @@ export default function AnnotatedPhotoThumb({ src, drawings, label, size = 44, c
               <p className="text-white font-semibold text-[var(--fs-sm)] min-w-0 truncate">{label}</p>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={e => { e.stopPropagation(); setOpen(false); }}
                 aria-label="Close"
                 className="w-11 h-11 flex-shrink-0 rounded-full bg-white/15 text-white flex items-center justify-center active:bg-white/25"
               >
@@ -100,7 +117,7 @@ export default function AnnotatedPhotoThumb({ src, drawings, label, size = 44, c
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 }
