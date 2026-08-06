@@ -132,6 +132,22 @@ the planned waves.
 > Lesson for the ratchet: **a migrated header is not a migrated module.** Judge a
 > wave by how many `ui/` primitives the screen actually imports, not by whether
 > it looks right in a screenshot of the top third.
+>
+> **Second correction (2026-08-07).** The owner looked at the task-list editor
+> and said the module still had not adopted the standard — and was right. The
+> four steps above were *repairs* (colour, confirmations, type scale, touch);
+> none of them changed what a screen is BUILT from. An audit of every manager
+> screen against this file, with each finding defended against a skeptic, found
+> seven live violations: the create action was a green text link on two screens
+> where the locked standard is a full-width green button; five green buttons
+> were hand-rolled instead of `ui/PrimaryButton`; the selected manager tab was
+> **blue**; "One-off" was a banned solid badge (white on amber ≈ 2.1:1) saying
+> the same thing three times; section chevrons were ▲/▼ text glyphs instead of
+> `ChromeIcons`; and subtask rows were 30px with a 16px checkbox, so a miss fell
+> through to the task row and was answered with an error.
+>
+> Third lesson: **audit against the written rules, not against a memory of the
+> work.** Every one of those seven was a sentence already in this file.
 
 ---
 
