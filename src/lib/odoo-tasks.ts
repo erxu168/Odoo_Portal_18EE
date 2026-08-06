@@ -29,6 +29,10 @@ export interface TaskSubtask {
   pin_y: number;
   /** Sequence of the setup photo the pin sits on (multi-photo guides). */
   pin_photo_seq: number;
+  /** This subtask's own reference photo — bytes come from the media route. */
+  has_photo: boolean;
+  /** Drawn marks over that photo, serialised. */
+  drawings: string;
 }
 
 export interface TaskAttachment {
@@ -168,6 +172,10 @@ export interface TemplatePin {
   pin_photo_seq: number;
   item_id: number | null;
   item_name: string | null;
+  /** This subtask's own reference photo — bytes come from the media route. */
+  has_photo: boolean;
+  /** Drawn marks over that photo, serialised. */
+  drawings: string;
 }
 
 export interface TaskTemplate {
@@ -298,7 +306,7 @@ const LINE_FIELDS = [
 
 const SUBTASK_FIELDS = [
   'id', 'line_id', 'name', 'sequence', 'done', 'toggled_at', 'toggled_by_id',
-  'pin_x', 'pin_y', 'pin_photo_seq',
+  'pin_x', 'pin_y', 'pin_photo_seq', 'image', 'drawings',
 ];
 
 /** Batch-fetch setup-photo sequences for lines (never the image binary).
@@ -349,6 +357,8 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
       pin_x: typeof s.pin_x === 'number' ? s.pin_x : 0,
       pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
       pin_photo_seq: typeof s.pin_photo_seq === 'number' ? s.pin_photo_seq : 0,
+      has_photo: !!s.image,
+      drawings: s.drawings || '',
     });
     subtasksByLine.set(lid, arr);
   }
@@ -647,7 +657,7 @@ const TEMPLATE_LINE_FIELDS = [
   'guide_published', 'guide_step_count', 'has_guide',
 ];
 
-const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence', 'pin_x', 'pin_y', 'pin_photo_seq', 'item_id'];
+const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence', 'pin_x', 'pin_y', 'pin_photo_seq', 'item_id', 'image', 'drawings'];
 const TEMPLATE_EXCEPTION_FIELDS = ['id', 'line_id', 'date', 'note'];
 
 function dateOrNull(v: any): string | null {
@@ -709,6 +719,8 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
       pin_x: typeof s.pin_x === 'number' ? s.pin_x : 0,
       pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
       pin_photo_seq: typeof s.pin_photo_seq === 'number' ? s.pin_photo_seq : 0,
+      has_photo: !!s.image,
+      drawings: s.drawings || '',
       item_id: m2oId(s.item_id),
       item_name: m2oName(s.item_id),
     });
@@ -809,7 +821,16 @@ export interface TemplateLineInput {
   photo_instructions?: string | null;
   manager_note?: string | null;
   module_link_type?: ModuleLink;
-  subtasks?: { id?: number; name: string; sequence?: number; pin_x?: number; pin_y?: number; pin_photo_seq?: number; item_id?: number | null }[];
+  subtasks?: {
+    id?: number; name: string; sequence?: number;
+    pin_x?: number; pin_y?: number; pin_photo_seq?: number; item_id?: number | null;
+    /** Base64 WITHOUT the data: prefix — only for a new/replaced photo. */
+    image_base64?: string; image_filename?: string;
+    /** Serialised drawings; '' clears them. */
+    drawings?: string;
+    /** Explicitly remove the photo and its marks. */
+    clear_image?: boolean;
+  }[];
   recurrence?: RecurrenceRule;
   is_setup_guide?: boolean;
 }
@@ -898,6 +919,15 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
       if (s.pin_y !== undefined) sVals.pin_y = s.pin_y;
       if (s.pin_photo_seq !== undefined) sVals.pin_photo_seq = s.pin_photo_seq;
       if (s.item_id !== undefined) sVals.item_id = s.item_id || false;
+      // Reference photo + drawn marks. image_base64 is sent ONLY for a new or
+      // replaced photo: this upsert preserves subtask ids, so omitting it keeps
+      // the bytes already stored rather than blanking them.
+      if (s.image_base64) {
+        sVals.image = s.image_base64;
+        sVals.image_filename = s.image_filename || 'photo.jpg';
+      }
+      if (s.clear_image) { sVals.image = false; sVals.image_filename = false; sVals.drawings = false; }
+      if (s.drawings !== undefined) sVals.drawings = s.drawings || false;
       if (s.id) await odoo.write('krawings.task.template.subtask', [s.id], sVals);
       else await odoo.create('krawings.task.template.subtask', sVals);
     }
@@ -944,6 +974,18 @@ export async function deleteAttachment(attachmentId: number): Promise<void> {
 }
 
 // ── Spawning ──────────────────────────────────
+
+/** A subtask's reference photo bytes. Odoo scopes by company and checks the
+ *  subtask really hangs off `parentLineId`. */
+export async function subtaskPhoto(
+  scope: 'list' | 'template',
+  subtaskId: number,
+  allowedCompanyIds: number[],
+  parentLineId: number,
+): Promise<{ filename: string; mimetype: string; data_base64: string } | false> {
+  const model = scope === 'list' ? 'krawings.task.list.subtask' : 'krawings.task.template.subtask';
+  return getOdoo().call(model, 'portal_photo', [subtaskId, allowedCompanyIds, parentLineId]);
+}
 
 export interface ServiceDayRow {
   id?: number;

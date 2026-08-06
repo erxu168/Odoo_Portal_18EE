@@ -1,6 +1,9 @@
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .task_guide_step import normalize_drawings
+from .task_template_line import _guess_image_mime
+
 
 class KrawingsTaskListSubtask(models.Model):
     _name = 'krawings.task.list.subtask'
@@ -28,6 +31,29 @@ class KrawingsTaskListSubtask(models.Model):
     # into guided-tutorial note-pins. Retained for audit (their done/toggled_at
     # history), but excluded from the portal and no longer toggleable.
     legacy_guide_pin = fields.Boolean(default=False, readonly=True)
+
+    # ── Reference photo with drawn marks (annotated-photo pattern) ───────────
+    # A subtask is one short instruction, so the photo POINTS at something —
+    # "circle the tray", "arrow to the dial". Drawings only, no numbered pins: a
+    # subtask needing three numbered notes is a guide, and guides already exist.
+    # Coordinates inside `drawings` are fractions 0..1 of the displayed image,
+    # so a mark lands identically on a phone and a kitchen tablet.
+    image = fields.Binary(attachment=True)
+    image_filename = fields.Char()
+    drawings = fields.Text(
+        help='JSON array of drawn shapes over the photo; coordinates are fractions 0..1.',
+    )
+
+    @api.constrains('drawings', 'image')
+    def _check_drawings(self):
+        for rec in self:
+            if rec.drawings and not rec.image:
+                raise ValidationError('Only a subtask with a photo can carry drawings.')
+            if rec.drawings:
+                # Same validator the guide steps use — one definition of what a
+                # drawing may contain, for every annotated photo in the module.
+                normalize_drawings(rec.drawings)
+
 
     @api.constrains('pin_x', 'pin_y')
     def _check_pin_bounds(self):
@@ -71,3 +97,26 @@ class KrawingsTaskListSubtask(models.Model):
         # and never touch completion.) Staff complete the task via the normal
         # control only.
         return {'is_setup_guide': False, 'line_completed': False}
+
+    @api.model
+    def portal_photo(self, subtask_id, allowed_company_ids=None, parent_line_id=None):
+        """This subtask's reference photo bytes, company-scoped, fail-CLOSED.
+
+        `parent_line_id` must match the subtask's own line — without it, a
+        same-company subtask id could be substituted to read a photo from a
+        different task. Mirrors krawings.task.guide.step.get_media.
+        """
+        rec = self.sudo().browse(int(subtask_id))
+        if not rec.exists() or not rec.image:
+            return False
+        if parent_line_id and rec.line_id.id != int(parent_line_id):
+            return False
+        company = rec.line_id.list_id.company_id
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed or not company.id or company.id not in allowed:
+            return False
+        return {
+            'filename': rec.image_filename or 'photo.jpg',
+            'mimetype': _guess_image_mime(rec.image_filename),
+            'data_base64': rec.image.decode() if isinstance(rec.image, bytes) else rec.image,
+        }

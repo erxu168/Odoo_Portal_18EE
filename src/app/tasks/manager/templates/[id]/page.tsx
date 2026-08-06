@@ -199,6 +199,8 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
         pin_x: s.pin_x,
         pin_y: s.pin_y,
         pin_photo_seq: s.pin_photo_seq,
+        has_photo: s.has_photo,
+        drawings: s.drawings,
       })),
       attachments: tl.attachments,
       note: null,

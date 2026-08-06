@@ -272,6 +272,13 @@ class KrawingsTaskTemplate(models.Model):
                     'pin_photo_seq': st.pin_photo_seq,
                     'pin_x': st.pin_x,
                     'pin_y': st.pin_y,
+                    # The subtask's own reference photo + its drawn marks, copied
+                    # like everything else so the day is a frozen record. The
+                    # filestore checksum-dedupes identical bytes, so a photo that
+                    # does not change costs one row per day, not one image.
+                    'image': st.image,
+                    'image_filename': st.image_filename or False,
+                    'drawings': st.drawings or False,
                 })
                 for st in tline.subtask_ids
             ],
