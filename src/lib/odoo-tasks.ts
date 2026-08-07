@@ -1005,14 +1005,29 @@ export async function addListLineAttachment(lineId: number, name: string, dataBa
   return getOdoo().call('krawings.task.list.line', 'add_attachment', [[lineId], name, dataBase64, mimetype || false]);
 }
 
-export async function getAttachmentData(attachmentId: number): Promise<{ name: string; mimetype: string; data_base64: string } | null> {
-  const result = await getOdoo().call('krawings.task.list.line', 'get_attachment_data', [attachmentId]);
+/** An attachment's bytes. Odoo resolves the task line it hangs off and refuses
+ *  anything outside these companies — an id alone proves nothing. */
+export async function getAttachmentData(
+  attachmentId: number,
+  allowedCompanyIds: number[],
+): Promise<{ name: string; mimetype: string; data_base64: string } | null> {
+  const result = await getOdoo().call(
+    'krawings.task.list.line', 'get_attachment_data', [attachmentId, allowedCompanyIds],
+  );
   if (!result) return null;
   return result;
 }
 
-export async function deleteAttachment(attachmentId: number): Promise<void> {
-  await getOdoo().unlink('ir.attachment', [attachmentId]);
+/** Delete one task attachment. Goes through Odoo's own company check rather
+ *  than unlinking ir.attachment by id — that unlinked ANY attachment in the
+ *  database, task-related or not. */
+export async function deleteAttachment(
+  attachmentId: number,
+  allowedCompanyIds: number[],
+): Promise<boolean> {
+  return !!(await getOdoo().call(
+    'krawings.task.list.line', 'portal_delete_attachment', [attachmentId, allowedCompanyIds],
+  ));
 }
 
 // ── Spawning ──────────────────────────────────

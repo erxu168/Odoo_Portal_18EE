@@ -300,24 +300,74 @@ class KrawingsTaskListLine(models.Model):
         }
 
     @api.model
-    def get_attachment_data(self, attachment_id):
-        """Fetch the raw base64 payload of an attachment, scoped to a task list line
-        or its source template line (so staff can only fetch attachments they can
-        legitimately view via the task manager)."""
+    def _task_attachment_company(self, attachment_id):
+        """The company that owns a task attachment, or (False, False).
+
+        Returns (attachment, company_id). Anything that is not a plain
+        attachment on a task line — another model, a field-backed binary like
+        setup_photo, a missing record — comes back with no company, which every
+        caller treats as "refuse".
+
+        Both routes into this file are read-your-own-restaurant paths, and
+        neither used to check WHICH restaurant. res_model alone kept people out
+        of invoices and contracts; it did nothing to stop one company reading
+        (or deleting) another company's task files by guessing an id.
+        """
         att = self.env['ir.attachment'].sudo().browse(int(attachment_id))
         if not att.exists():
-            return False
+            return False, False
         if att.res_model not in (self._name, 'krawings.task.template.line'):
-            return False
+            return False, False
         # Never serve a field-backed binary (e.g. setup_photo) through the
         # generic attachment fetch — those have their own dedicated route.
         if att.res_field:
+            return False, False
+        if att.res_model == self._name:
+            owner = self.sudo().browse(att.res_id)
+            company = owner.list_id.company_id if owner.exists() else False
+        else:
+            owner = self.env['krawings.task.template.line'].sudo().browse(att.res_id)
+            company = owner.template_id.department_id.company_id if owner.exists() else False
+        return att, (company.id if company else False)
+
+    @api.model
+    def _attachment_allowed(self, attachment_id, allowed_company_ids):
+        """(attachment, ok). Fails CLOSED: no scope passed, or a company outside
+        it, is refused — the same shape as portal_read_guide."""
+        att, company_id = self._task_attachment_company(attachment_id)
+        if not att:
+            return False, False
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed or not company_id or company_id not in allowed:
+            return att, False
+        return att, True
+
+    def get_attachment_data(self, attachment_id, allowed_company_ids=None):
+        """Fetch the raw base64 payload of an attachment on a task line or its
+        source template line. Scoped to the caller's companies; fails CLOSED."""
+        att, ok = self._attachment_allowed(attachment_id, allowed_company_ids)
+        if not ok:
             return False
         return {
             'name': att.name,
             'mimetype': att.mimetype or '',
             'data_base64': att.datas and att.datas.decode('ascii') if att.datas else '',
         }
+
+    @api.model
+    def portal_delete_attachment(self, attachment_id, allowed_company_ids=None):
+        """Delete one task attachment, in the caller's companies only.
+
+        The portal used to unlink ir.attachment by id directly, which meant a
+        manager could delete ANY attachment in the database — an invoice, a
+        signed contract, a payslip — not merely one of their own task files.
+        Deletion now goes through the same resolution as the read.
+        """
+        att, ok = self._attachment_allowed(attachment_id, allowed_company_ids)
+        if not ok:
+            return False
+        att.unlink()
+        return True
 
     def _write_completed(self, employee):
         """Attribute + stamp completion. Callers must have already validated the
