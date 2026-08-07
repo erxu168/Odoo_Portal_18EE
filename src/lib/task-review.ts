@@ -116,18 +116,22 @@ export function overdueDigest(
   companyId: number,
   graceMinutes: number,
   repeatMinutes: number,
+  dates: string[],
 ): Promise<OverdueDeptDigest[]> {
   return getOdoo().call('krawings.task.list.line', 'portal_overdue_digest',
-    [companyId, graceMinutes, repeatMinutes]);
+    [companyId, graceMinutes, repeatMinutes, dates]);
 }
 
-/** Is now inside this restaurant's working day? Quiet hours for the alert. */
-export function withinServiceHours(
+/** The service days that are OPEN right now — normally today, plus yesterday
+ *  while a day that ends at midnight is still inside its grace tail. Empty
+ *  means quiet hours: say nothing. Replaces the old boolean, because knowing
+ *  WHICH day is open is what lets the last tasks of the night be chased at all. */
+export function activeServiceDates(
   companyId: number,
   nowFloat: number,
-  dateStr: string,
+  todayStr: string,
   tailMinutes: number,
-): Promise<boolean> {
-  return getOdoo().call('krawings.task.service.day', 'is_within_hours',
-    [companyId, nowFloat, dateStr, tailMinutes]);
+): Promise<string[]> {
+  return getOdoo().call('krawings.task.service.day', 'active_service_dates',
+    [companyId, nowFloat, todayStr, tailMinutes]);
 }

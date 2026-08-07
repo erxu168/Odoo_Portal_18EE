@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
@@ -56,15 +58,15 @@ class KrawingsTaskServiceDay(models.Model):
                 (rec.day_start, 'The day start'), (rec.opening_end, 'Opening end'),
                 (rec.service_end, 'Service end'), (rec.day_end, 'The day end'),
             ):
-                # Ceiling 23:30, not 24:00: reminders for the last tasks of the
-                # night fire a grace period AFTER the day ends, and a day ending
-                # at midnight pushes that past the date rollover — where both the
-                # clock and the list's own date have moved on and the task can
-                # never be seen again.
-                if value < 0 or value > 23.5:
+                # Midnight is allowed. It used to be capped at 23:30 because a
+                # deadline at midnight puts its reminders past the date rollover,
+                # and the alert only ever looked at TODAY's list — so the last
+                # tasks of the night were structurally unalertable. The alert now
+                # follows a service day across midnight (see active_service_dates),
+                # so the real closing time can be stated instead of shaved.
+                if value < 0 or value > 24.0:
                     raise ValidationError(
-                        '%s must be between 00:00 and 23:30. A day ending at midnight would push its '
-                        'last reminders past the date change, where they could never be sent.' % label
+                        '%s must be between 00:00 and 24:00.' % label
                     )
             if not (rec.day_start < rec.opening_end < rec.service_end < rec.day_end):
                 raise ValidationError(
@@ -101,28 +103,49 @@ class KrawingsTaskServiceDay(models.Model):
         }
 
     @api.model
-    def is_within_hours(self, company_id, now_float, target_date, tail_minutes=30):
-        """Is `now` inside this restaurant's working day?
+    def active_service_dates(self, company_id, now_float, today, tail_minutes=30):
+        """Which service days are OPEN at this moment, as date strings.
 
-        Quiet hours for the overdue alert. When a restaurant has NOT set its
-        service times we cannot know, so a conservative 07:00–23:00 applies —
-        the point of quiet hours is that nobody's phone buzzes at 3am, and
-        defaulting to "always" would defeat it.
+        Normally just today. But a restaurant whose day ends at (or near)
+        midnight is still inside YESTERDAY's service day for the tail after it —
+        and that tail is exactly when its last closing tasks become reportable.
+        Look only at today and a task due at 23:59 on Friday can never be
+        chased, because by the time the grace period passes it is Saturday and
+        Friday's list is no longer 'today'.
 
-        `tail_minutes` keeps us awake PAST the last deadline. Every Closing task
-        without a time of its own is due at exactly day_end, and only becomes
-        reportable after the grace period — so an awake window that stopped at
-        day_end made the whole Closing checklist structurally impossible to
-        alert about, on every day, at every restaurant. The tail must cover the
-        grace plus one cron tick, or the last tasks of the night are silent.
+        Returns [] during quiet hours, which is the caller's cue to say nothing.
         """
+        company_id = int(company_id)
+        today = fields.Date.to_date(today) or fields.Date.context_today(self)
+        now_float = float(now_float)
         tail = float(tail_minutes) / 60.0
-        windows = self.windows_for(company_id, target_date)
-        if not windows:
-            return 7.0 <= float(now_float) <= 23.0 + tail
-        starts = [w[0] for w in windows.values()]
-        ends = [w[1] for w in windows.values()]
-        return min(starts) <= float(now_float) <= max(ends) + tail
+        out = []
+        # offset 0 = today, -1 = yesterday. For yesterday we push the clock
+        # forward a full day, so 00:15 reads as 24.25 against a window that runs
+        # to 24:00 — inside it, and outside it half an hour later.
+        for offset in (0, -1):
+            date = today + timedelta(days=offset)
+            windows = self.windows_for(company_id, date)
+            clock = now_float - 24.0 * offset
+            if not windows:
+                # Unconfigured: the conservative 07:00–23:00 default, and only
+                # for today — with no configured day there is nothing that could
+                # legitimately run past midnight.
+                if offset == 0 and 7.0 <= clock <= 23.0 + tail:
+                    out.append(fields.Date.to_string(date))
+                continue
+            start = min(w[0] for w in windows.values())
+            end = max(w[1] for w in windows.values()) + tail
+            if start <= clock <= end:
+                out.append(fields.Date.to_string(date))
+        return out
+
+    @api.model
+    def is_within_hours(self, company_id, now_float, target_date, tail_minutes=30):
+        """Is any service day open right now? Kept as the yes/no shorthand over
+        active_service_dates, which is what callers that need to CHASE a task
+        should use — they need to know which day, not merely that one is open."""
+        return bool(self.active_service_dates(company_id, now_float, target_date, tail_minutes))
 
     @api.model
     def portal_read(self, company_ids):

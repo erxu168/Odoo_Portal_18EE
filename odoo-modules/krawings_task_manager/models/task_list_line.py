@@ -615,7 +615,7 @@ class KrawingsTaskListLine(models.Model):
         }
 
     @api.model
-    def portal_overdue_digest(self, company_id, grace_minutes=15, repeat_minutes=60):
+    def portal_overdue_digest(self, company_id, grace_minutes=15, repeat_minutes=60, dates=None):
         """Tasks overdue long enough to shout about, grouped by department.
 
         CLAIMS as it reads: every line returned is stamped with
@@ -624,18 +624,28 @@ class KrawingsTaskListLine(models.Model):
         caller may therefore send exactly what it receives, with no bookkeeping
         of its own.
 
-        Deliberately TODAY only: yesterday's misses belong to last night's
-        summary, not to this morning's service.
+        Scoped to the service days that are OPEN right now — normally just
+        today, but also yesterday while a day that ends at midnight is still
+        inside its grace tail. That window is precisely when the last closing
+        tasks of the night become reportable; without it they never are.
+
+        It is still not "yesterday's misses": once yesterday's tail closes it
+        drops out, and what is left belongs to last night's summary rather than
+        this morning's service. The caller passes the open dates
+        (krawings.task.service.day.active_service_dates); today alone is the
+        fallback.
         """
         company_id = int(company_id)
         now = fields.Datetime.now()
         grace_cutoff = now - timedelta(minutes=int(grace_minutes))
         repeat_cutoff = now - timedelta(minutes=int(repeat_minutes))
-        today = self.env['krawings.task.template']._berlin_now().date()
+        open_dates = [d for d in (dates or []) if d] or [
+            self.env['krawings.task.template']._berlin_now().date()
+        ]
 
         lines = self.sudo().search([
             ('list_id.company_id', '=', company_id),
-            ('list_id.date', '=', today),
+            ('list_id.date', 'in', open_dates),
             ('completed_at', '=', False),
             ('deadline_datetime', '!=', False),
             ('deadline_datetime', '<=', grace_cutoff),
@@ -652,7 +662,7 @@ class KrawingsTaskListLine(models.Model):
         # newly-eligible tasks and silently contradicts the earlier one.
         outstanding = self.sudo().search([
             ('list_id.company_id', '=', company_id),
-            ('list_id.date', '=', today),
+            ('list_id.date', 'in', open_dates),
             ('completed_at', '=', False),
             ('deadline_datetime', '!=', False),
             ('deadline_datetime', '<=', grace_cutoff),

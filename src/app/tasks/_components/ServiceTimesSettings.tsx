@@ -27,11 +27,15 @@ const BOUNDARIES: { key: keyof ServiceDayRow; label: string; hint: string }[] = 
   { key: 'day_start', label: 'Day starts', hint: 'Opening tasks start here' },
   { key: 'opening_end', label: 'Opening ends', hint: 'Service starts here' },
   { key: 'service_end', label: 'Service ends', hint: 'Closing starts here' },
-  { key: 'day_end', label: 'Day ends', hint: 'Closing tasks are due by here' },
+  { key: 'day_end', label: 'Day ends', hint: 'Closing tasks are due by here — 23:59 for a midnight close' },
 ];
 
 function toHHMM(v: number): string {
   if (v == null || Number.isNaN(v)) return '';
+  // A stored 24:00 (midnight, the end of the day) has no representation in a
+  // time input, whose ceiling is 23:59. Show 23:59 rather than silently
+  // rounding an hour off it, which is what clamping the hour to 23 used to do.
+  if (v >= 24) return '23:59';
   const h = Math.min(23, Math.floor(v));
   const m = Math.round((v - Math.floor(v)) * 60);
   return `${String(h).padStart(2, '0')}:${String(m >= 60 ? 0 : m).padStart(2, '0')}`;

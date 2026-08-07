@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { berlinToday } from '@/lib/berlin-date';
-import { overdueDigest, withinServiceHours } from '@/lib/task-review';
+import { overdueDigest, activeServiceDates } from '@/lib/task-review';
 import { notifyManagers } from '@/lib/shifts-notify';
 
 export const dynamic = 'force-dynamic';
@@ -73,11 +73,15 @@ export async function GET(req: NextRequest) {
 
     for (const companyId of companyIds) {
       considered++;
-      // Tail = grace + one cron tick, so the last tasks of the night are still
-      // reportable after the day ends (see is_within_hours).
-      if (!(await withinServiceHours(companyId, nowFloat, today, GRACE_MINUTES + 15))) { quiet++; continue; }
+      // Which service days are open right now. Tail = grace + one cron tick, so
+      // the last tasks of the night are still reportable after the day ends —
+      // and, for a restaurant that closes at midnight, that moment is on the
+      // NEXT calendar date, which is why this returns dates rather than a
+      // yes/no. An empty list is quiet hours.
+      const openDates = await activeServiceDates(companyId, nowFloat, today, GRACE_MINUTES + 15);
+      if (!openDates.length) { quiet++; continue; }
 
-      const groups = await overdueDigest(companyId, GRACE_MINUTES, REPEAT_MINUTES);
+      const groups = await overdueDigest(companyId, GRACE_MINUTES, REPEAT_MINUTES, openDates);
       for (const g of groups) {
         if (!g.names.length) continue;
         // Each department is sent independently: the tasks are already stamped
@@ -93,7 +97,11 @@ export async function GET(req: NextRequest) {
           url: `/tasks/manager/dept/${g.department_id}`,
           // Per department + day, so a manager watching two departments gets
           // one line each rather than one collapsing over the other.
-          tag: `task-overdue-${g.department_id}-${today}`,
+          // Keyed on the department + the day being chased, not the wall-clock
+          // date: just after midnight the open day is still yesterday's, and
+          // keying on "today" would start a second, competing tray line for the
+          // same night's tasks.
+          tag: `task-overdue-${g.department_id}-${openDates[openDates.length - 1]}`,
           // One tray line per department (that is the whole point of a digest),
           // but each update must actually alert — a same-tag replace is silent
           // by default, which made every repeat after the first one useless.
