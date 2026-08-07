@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, use } from 'react';
 import DropZone from '@/components/ui/DropZone';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
+import type { TaskTemplate, TaskTemplateLine, TemplatePin, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
 import { MAX_MANAGER_NOTE } from '@/lib/task-limits';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import RichText from '@/components/ui/RichText';
@@ -185,6 +185,16 @@ function subtaskPhotoCount(line: TaskTemplateLine): number {
  *  enough to recognise WHICH list it is; a seven-subtask task otherwise pushes
  *  the next task off the screen and the list stops being scannable. */
 const SUBTASK_PREVIEW = 4;
+
+/** The first few subtasks, PLUS any later one that carries a photo.
+ *
+ *  Collapsing at four alone hid the sixth subtask of seven — which was the one
+ *  with the photo, and making that photo visible here was the whole point of
+ *  the fix a few hours earlier. Order is preserved; a photo is never the thing
+ *  that gets hidden. */
+function visibleSubtasks(subtasks: TemplatePin[]): TemplatePin[] {
+  return subtasks.filter((s, i) => i < SUBTASK_PREVIEW || s.has_photo);
+}
 
 function previewListFromTemplate(tpl: TaskTemplate): TaskList {
   const todayBase = new Date();
@@ -838,7 +848,7 @@ export default function TemplateEditPage({ params }: PageProps) {
                           )}
                           {l.subtasks.length > 0 && (
                             <ul className="mt-2 space-y-0.5">
-                              {l.subtasks.slice(0, SUBTASK_PREVIEW).map(s => (
+                              {visibleSubtasks(l.subtasks).map(s => (
                                 <li key={s.id} className="text-[var(--fs-xs)] text-gray-600 flex items-center gap-1.5 min-h-[28px]">
                                   <span className="text-gray-300">•</span>
                                   <span className="flex-1 min-w-0">{s.name}</span>
@@ -855,10 +865,10 @@ export default function TemplateEditPage({ params }: PageProps) {
                                   )}
                                 </li>
                               ))}
-                              {l.subtasks.length > SUBTASK_PREVIEW && (
+                              {l.subtasks.length > visibleSubtasks(l.subtasks).length && (
                                 <li className="text-[var(--fs-xs)] text-gray-400 flex items-center gap-1.5 min-h-[24px]">
                                   <span className="text-gray-300">•</span>
-                                  {l.subtasks.length - SUBTASK_PREVIEW} more — open the task to see them
+                                  {l.subtasks.length - visibleSubtasks(l.subtasks).length} more — open the task to see them
                                 </li>
                               )}
                             </ul>

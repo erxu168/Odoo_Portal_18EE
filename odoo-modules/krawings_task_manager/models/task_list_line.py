@@ -299,7 +299,6 @@ class KrawingsTaskListLine(models.Model):
             'data_base64': raw.decode('ascii') if isinstance(raw, bytes) else raw,
         }
 
-    @api.model
     def _task_attachment_company(self, attachment_id):
         """The company that owns a task attachment, or (False, False).
 
@@ -342,9 +341,14 @@ class KrawingsTaskListLine(models.Model):
             return att, False
         return att, True
 
+    @api.model
     def get_attachment_data(self, attachment_id, allowed_company_ids=None):
         """Fetch the raw base64 payload of an attachment on a task line or its
-        source template line. Scoped to the caller's companies; fails CLOSED."""
+        source template line. Scoped to the caller's companies; fails CLOSED.
+
+        @api.model is load-bearing: call_kw hands args[0] to browse() as record
+        ids for a plain method, so without it this receives the company list as
+        its attachment id and raises. That is a 500 on every attachment."""
         att, ok = self._attachment_allowed(attachment_id, allowed_company_ids)
         if not ok:
             return False
