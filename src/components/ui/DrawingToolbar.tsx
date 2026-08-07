@@ -22,6 +22,8 @@ import {
   DRAWING_COLOR_NAMES,
   DRAWING_WIDTH_LEVELS,
   DEFAULT_DRAWING_WIDTH,
+  MAX_DRAWING_TEXT,
+  isStamp,
   clampDrawingWidth,
   drawingWidthPx,
   MAX_DRAWINGS,
@@ -43,8 +45,14 @@ export interface DrawingTools {
   /** True when the author drew past the cap, so the screen can say so. */
   capHit: boolean;
   shapes: GuideDrawing[];
-  /** Set the style of the next mark — and of the selected one, if there is one. */
-  applyStyle: (patch: Partial<Pick<GuideDrawing, 'color' | 'width'>>) => void;
+  /** The words a new TEXT mark will carry — typed before placing, so putting a
+   *  label on a photo needs no pop-up. */
+  text: string;
+  setText: (t: string) => void;
+  /** Set the style of the next mark — and of the selected one, if there is one.
+   *  `text` is included: retyping while a label is selected rewords it, the
+   *  same way changing the colour restyles it. */
+  applyStyle: (patch: Partial<Pick<GuideDrawing, 'color' | 'width' | 'text'>>) => void;
   /** A finished mark, straight from PinnableImage's onDrawAdd. */
   add: (shape: GuideDrawing) => void;
   /** A mark was moved or stretched. */
@@ -71,6 +79,7 @@ export function useDrawingTools({ shapes, onChange, allowPins = false }: Options
   const [width, setWidth] = useState<number>(DEFAULT_DRAWING_WIDTH);
   const [capHit, setCapHit] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  const [text, setTextState] = useState('');
 
   // Keep the selection valid: undo / clear / erase can remove the selected mark,
   // and a stale index would highlight the wrong shape.
@@ -92,18 +101,26 @@ export function useDrawingTools({ shapes, onChange, allowPins = false }: Options
     if (!s) return;
     setColor(s.color);
     setWidth(clampDrawingWidth(s.width));
+    if (s.type === 'text') setTextState(s.text || '');
   }, [selected, shapes]);
 
-  function applyStyle(patch: Partial<Pick<GuideDrawing, 'color' | 'width'>>) {
+  function applyStyle(patch: Partial<Pick<GuideDrawing, 'color' | 'width' | 'text'>>) {
     if (patch.color !== undefined) setColor(patch.color);
     if (patch.width !== undefined) setWidth(patch.width);
+    if (patch.text !== undefined) setTextState(patch.text);
     if (selected != null && shapes[selected]) {
-      onChange(shapes.map((s, i) => (i === selected ? { ...s, ...patch } : s)));
+      // Rewording only applies to a label; a colour or weight applies to anything.
+      const isText = shapes[selected].type === 'text';
+      const safe = patch.text !== undefined && !isText
+        ? { ...patch, text: undefined }
+        : patch;
+      onChange(shapes.map((s, i) => (i === selected ? { ...s, ...safe } : s)));
     }
   }
 
   return {
     tool, setTool, color, width, selected, setSelected, capHit, shapes, applyStyle,
+    text, setText: setTextState,
     empty: shapes.length === 0,
     add(shape) {
       // Never swallow the mark the author just drew: at the cap, say so.
@@ -173,6 +190,8 @@ export default function DrawingToolbar({ tools, disabled = false, allowPins = fa
       <ToolButton label="◯ Circle" active={tools.tool === 'circle'} disabled={disabled} onClick={() => tools.setTool('circle')} />
       <ToolButton label="▭ Box" active={tools.tool === 'box'} disabled={disabled} onClick={() => tools.setTool('box')} />
       <ToolButton label="✎ Pen" active={tools.tool === 'pen'} disabled={disabled} onClick={() => tools.setTool('pen')} />
+      <ToolButton label="⚠ Warning" active={tools.tool === 'warning'} disabled={disabled} onClick={() => tools.setTool('warning')} />
+      <ToolButton label="T Text" active={tools.tool === 'text'} disabled={disabled} onClick={() => tools.setTool('text')} />
       <span className="w-px self-stretch bg-gray-200 mx-0.5" aria-hidden="true" />
       {DRAWING_COLORS.map(c => (
         <button
@@ -243,11 +262,29 @@ export default function DrawingToolbar({ tools, disabled = false, allowPins = fa
           That is the most marks one photo can hold ({MAX_DRAWINGS}). Erase one first.
         </span>
       )}
+      {tools.tool === 'text' && (
+        // Type the words FIRST, then tap where they go. No pop-up: a prompt
+        // would sit over the very photo the author is trying to point at.
+        <label className="w-full mt-1 block">
+          <span className="sr-only">Words to put on the photo</span>
+          <input
+            value={tools.text}
+            onChange={e => tools.applyStyle({ text: e.target.value.slice(0, MAX_DRAWING_TEXT) })}
+            disabled={disabled}
+            placeholder="Type the words, then tap the photo"
+            className="w-full px-3 min-h-[44px] border border-gray-200 rounded-lg text-[var(--fs-sm)] focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
+          />
+        </label>
+      )}
       {tools.tool && !tools.capHit && (
         <span className="w-full text-[var(--fs-xs)] text-gray-500 mt-0.5">
           {tools.selected != null
             ? 'Drag the mark to move it, or its white handles to stretch it. Colour and thickness restyle it; Erase deletes it.'
-            : 'Drag on the photo to draw. Tap a mark to move, stretch, restyle or erase it.'}
+            : isStamp(tools.tool)
+              ? (tools.tool === 'text'
+                  ? 'Type the words above, then tap the photo to put them there. The thickness picker sets how big.'
+                  : 'Tap the photo to place a warning. The thickness picker sets how big.')
+              : 'Drag on the photo to draw. Tap a mark to move, stretch, restyle or erase it.'}
           {allowPins && <> Pick <strong>Dots</strong> to place numbered notes again.</>}
         </span>
       )}

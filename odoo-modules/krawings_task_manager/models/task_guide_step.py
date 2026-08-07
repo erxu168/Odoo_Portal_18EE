@@ -10,7 +10,14 @@ from .task_template_line import _guess_image_mime
 # Drawn-shape limits. Caps keep one step's overlay bounded (a runaway pen stroke
 # is the only realistic way this field grows) and match the portal's client-side
 # caps, so the client never green-lights what the server rejects.
-DRAWING_TYPES = ('arrow', 'circle', 'box', 'pen')
+# 'warning' is a stamp (one point) and 'text' is words typed onto the photo
+# (one point, plus the words). Everything else is a two-point shape or a stroke.
+DRAWING_TYPES = ('arrow', 'circle', 'box', 'pen', 'warning', 'text')
+#: Types defined by a single anchor point rather than a start and an end.
+STAMP_TYPES = ('warning', 'text')
+#: Words typed onto a photo. Long enough for a real caution, short enough that it
+#: cannot become a paragraph nobody reads — or bloat every daily snapshot.
+MAX_DRAWING_TEXT = 120
 MAX_DRAWINGS = 40
 MAX_POINTS_PER_SHAPE = 400
 # Line weight is stored as a LEVEL (1 = fine .. 5 = bold), never pixels, so the
@@ -118,8 +125,12 @@ def normalize_drawings(raw):
             raise ValidationError('A drawing needs points.')
         if len(points) > MAX_POINTS_PER_SHAPE:
             points = points[:MAX_POINTS_PER_SHAPE]
-        # arrow/circle/box are defined by exactly two points (start, end).
-        if kind != 'pen' and len(points) != 2:
+        # A stamp is one anchor; arrow/circle/box are a start and an end; a pen
+        # stroke is everything in between.
+        if kind in STAMP_TYPES:
+            if len(points) != 1:
+                raise ValidationError('A %s sits at one point.' % kind)
+        elif kind != 'pen' and len(points) != 2:
             raise ValidationError('An %s needs exactly two points.' % kind)
         clean_points = []
         for p in points:
@@ -137,7 +148,21 @@ def normalize_drawings(raw):
                 round(min(1.0, max(0.0, x)), COORD_DECIMALS),
                 round(min(1.0, max(0.0, y)), COORD_DECIMALS),
             ])
-        out.append({'type': kind, 'color': color.upper(), 'width': width, 'points': clean_points})
+        item = {'type': kind, 'color': color.upper(), 'width': width, 'points': clean_points}
+        if kind == 'text':
+            # The words are rendered as SVG TEXT CONTENT, not into an attribute,
+            # so they are escaped by the renderer rather than validated here —
+            # but they are still trimmed and capped, because every one of these
+            # is deep-copied onto every daily task list that uses the guide.
+            words = shape.get('text')
+            words = '' if words is None else str(words)
+            words = words.replace('\r', ' ').replace('\n', ' ').strip()[:MAX_DRAWING_TEXT]
+            if not words:
+                # A label with no words is invisible and unselectable — dropping
+                # it is kinder than storing a mark nobody can find or remove.
+                continue
+            item['text'] = words
+        out.append(item)
 
     return json.dumps(out) if out else None
 

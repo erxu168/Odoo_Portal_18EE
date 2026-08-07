@@ -6,7 +6,10 @@ import {
   clampDrawingWidth,
   distanceToShape,
   drawingWidthPx,
+  MAX_DRAWING_TEXT,
+  STAMP_SIZE_PX,
   hitTestDrawing,
+  isStamp,
   moveShapeHandle,
   shapeBounds,
   shapeHandles,
@@ -44,8 +47,11 @@ export interface DrawingLayerProps {
   tool?: GuideDrawingType;
   /** draw: stroke colour (#RRGGBB) for new marks. */
   color?: string;
-  /** draw: line weight LEVEL (1..5) for new marks. */
+  /** draw: line weight LEVEL (1..5) for new marks. For a stamp it is the size. */
   width?: number;
+  /** draw: the words a new TEXT mark carries. Typed in the toolbar before
+   *  placing, so putting a label on a photo needs no pop-up. */
+  text?: string;
   /** draw: index of the selected mark, or null. */
   selectedIndex?: number | null;
   /** draw: selection changed (null = nothing selected). */
@@ -73,7 +79,7 @@ type Gesture =
   | { kind: 'handle'; pointerId: number; handle: number; orig: GuideDrawing; index: number };
 
 export default function DrawingLayer({
-  shapes, mode, tool = 'arrow', color = '#DC2626', width = DEFAULT_DRAWING_WIDTH,
+  shapes, mode, tool = 'arrow', color = '#DC2626', width = DEFAULT_DRAWING_WIDTH, text = '',
   selectedIndex = null, onSelect, onAdd, onUpdate, disabled = false,
 }: DrawingLayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -138,6 +144,8 @@ export default function DrawingLayer({
     if (!p) return;
 
     if (g.kind === 'pending') {
+      // A stamp is committed on release, never dragged into existence.
+      if (isStamp(tool)) return;
       if (Math.hypot(p[0] - g.start[0], p[1] - g.start[1]) < MIN_DRAG / 2) return;
       gesture.current = { kind: 'draw', pointerId: g.pointerId, start: g.start };
       setLive({ type: tool, color, width: clampDrawingWidth(width), points: [g.start, p] });
@@ -170,8 +178,22 @@ export default function DrawingLayer({
     if (disabled) return;
 
     if (g.kind === 'pending') {
-      // A tap: select whatever is under it, or clear the selection.
       const p = fractions(e) || g.start;
+      // A warning stamp or a text label is PLACED by a tap — there is nothing
+      // to drag out. Tapping an existing mark still selects it, so an author
+      // can always reach what is already there.
+      if (isStamp(tool) && hitTestDrawing(shapes, p[0], p[1], HIT_TOL) < 0) {
+        const words = text.replace(/[\r\n]+/g, ' ').trim().slice(0, MAX_DRAWING_TEXT);
+        // A label with nothing in it would be an invisible mark the author
+        // could neither see nor remove. The toolbar says to type first.
+        if (tool === 'text' && !words) return;
+        onAdd?.({
+          type: tool, color, width: clampDrawingWidth(width), points: [p],
+          ...(tool === 'text' ? { text: words } : {}),
+        });
+        return;
+      }
+      // Otherwise a tap selects whatever is under it, or clears the selection.
       const hit = hitTestDrawing(shapes, p[0], p[1], HIT_TOL);
       onSelect?.(hit >= 0 ? hit : null);
       return;
@@ -223,6 +245,13 @@ export default function DrawingLayer({
         {active && shownSelected && <SelectionOutline shape={shownSelected} />}
       </svg>
 
+      {/* Stamps are HTML for the same reason the handles below are: the
+          viewBox is stretched by preserveAspectRatio="none", which would shear
+          a warning triangle and squash typed words out of shape. Positioned in
+          percentages, they land on the same spot at any size — the same
+          contract the drawings themselves keep. */}
+      {all.map((s, i) => (isStamp(s.type) ? <StampMark key={`stamp-${i}`} shape={s} /> : null))}
+
       {/* Handles are HTML, not SVG: the viewBox is stretched by
           preserveAspectRatio="none", which would squash an SVG circle out of
           shape, and this way each handle gets a proper 44px touch target. */}
@@ -262,8 +291,45 @@ function SelectionOutline({ shape }: { shape: GuideDrawing }) {
   );
 }
 
+/** A warning glyph or a text label — placed at one point, drawn as HTML.
+ *
+ *  The words go in as TEXT CONTENT, so React escapes them; they are never
+ *  interpolated into an attribute or into markup. */
+function StampMark({ shape }: { shape: GuideDrawing }) {
+  const [x, y] = shape.points[0];
+  const level = clampDrawingWidth(shape.width);
+  const size = STAMP_SIZE_PX[level - 1];
+  // The same dark halo the strokes get: a white mark on a pale photo is
+  // invisible without one.
+  const halo = '0 0 3px rgba(0,0,0,0.75), 0 1px 2px rgba(0,0,0,0.55)';
+  if (shape.type === 'warning') {
+    return (
+      <span
+        aria-hidden="true"
+        style={{ left: `${x * 100}%`, top: `${y * 100}%`, fontSize: size, lineHeight: 1, color: shape.color, textShadow: halo }}
+        className="absolute -translate-x-1/2 -translate-y-1/2 select-none font-black"
+      >
+        ⚠
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        left: `${x * 100}%`, top: `${y * 100}%`,
+        fontSize: Math.max(11, size * 0.62), color: shape.color, textShadow: halo,
+      }}
+      className="absolute -translate-x-1/2 -translate-y-1/2 select-none font-extrabold whitespace-nowrap max-w-[92%] overflow-hidden text-ellipsis"
+    >
+      {shape.text}
+    </span>
+  );
+}
+
 function Shape({ shape }: { shape: GuideDrawing }) {
   const { type, color, points } = shape;
+  // Stamps are rendered as HTML beside this SVG, not inside it.
+  if (isStamp(type)) return null;
   const level = clampDrawingWidth(shape.width);
   const px = drawingWidthPx(level);
   const common = {

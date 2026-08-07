@@ -178,6 +178,7 @@ export default function SubtaskPhotoField({
               drawTool={tools.tool}
               drawColor={tools.color}
               drawWidth={tools.width}
+              drawText={tools.text}
               onDrawAdd={tools.add}
               drawSelected={tools.selected}
               onDrawSelect={tools.setSelected}

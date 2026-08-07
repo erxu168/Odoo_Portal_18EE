@@ -1239,6 +1239,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
             drawTool={tools.tool}
             drawColor={tools.color}
             drawWidth={tools.width}
+            drawText={tools.text}
             onDrawAdd={tools.add}
             drawSelected={tools.selected}
             onDrawSelect={tools.setSelected}

@@ -13,14 +13,29 @@
  * Coordinates are fractions 0..1 of the image — the same space as pins, so a
  * drawing lands on the same spot on any screen. arrow/circle/box carry exactly
  * two points (start, end); pen carries the whole stroke. */
-export type GuideDrawingType = 'arrow' | 'circle' | 'box' | 'pen';
+export type GuideDrawingType = 'arrow' | 'circle' | 'box' | 'pen' | 'warning' | 'text';
+
+/** Marks placed at ONE point rather than dragged between two: a warning stamp,
+ *  and words typed onto the photo. */
+export const STAMP_TYPES: GuideDrawingType[] = ['warning', 'text'];
+export const isStamp = (t: GuideDrawingType) => STAMP_TYPES.includes(t);
+
+/** Words typed onto a photo. Long enough for a real caution, short enough that
+ *  it cannot become a paragraph nobody reads — and every one of these is
+ *  deep-copied onto every daily task list that uses the guide. */
+export const MAX_DRAWING_TEXT = 120;
+
 export interface GuideDrawing {
   type: GuideDrawingType;
   /** #RRGGBB — rendered into an SVG attribute, so it is validated, not escaped. */
   color: string;
-  /** Line weight as a LEVEL 1..5, not pixels — see DRAWING_WIDTH_PX. */
+  /** Line weight as a LEVEL 1..5, not pixels — see DRAWING_WIDTH_PX. For a
+   *  stamp it sets the size instead of the stroke. */
   width: number;
   points: [number, number][];
+  /** type 'text' only: the words. Rendered as SVG text CONTENT, so React
+   *  escapes it — never interpolated into an attribute. */
+  text?: string;
 }
 
 export const DRAWING_COLORS = ['#DC2626', '#2563EB', '#16A34A', '#FFFFFF'] as const;
@@ -32,7 +47,7 @@ export const DRAWING_COLOR_NAMES: Record<string, string> = {
 };
 export const MAX_DRAWINGS = 40;
 export const MAX_DRAWING_POINTS = 400;
-const DRAWING_TYPES: GuideDrawingType[] = ['arrow', 'circle', 'box', 'pen'];
+const DRAWING_TYPES: GuideDrawingType[] = ['arrow', 'circle', 'box', 'pen', 'warning', 'text'];
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 /**
@@ -68,6 +83,11 @@ export function clampDrawingWidth(raw: unknown): number {
   return Math.min(DRAWING_WIDTH_PX.length, Math.max(1, n));
 }
 
+/** A stamp's size in screen pixels, by weight level. The weight picker sets how
+ *  BIG a warning or a label is, since a stamp has no stroke to thicken — and
+ *  nothing to drag out, so this is the only size control it has. */
+export const STAMP_SIZE_PX = [18, 24, 32, 44, 60] as const;
+
 /** Screen pixels for a stored level. */
 export function drawingWidthPx(level: number): number {
   return DRAWING_WIDTH_PX[clampDrawingWidth(level) - 1];
@@ -100,8 +120,20 @@ export function parseDrawings(raw: string | null | undefined): GuideDrawing[] {
       points.push([Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))]);
     }
     if (!points.length) continue;
-    if (type !== 'pen' && points.length !== 2) continue;
-    out.push({ type, color, width: clampDrawingWidth(shape.width), points });
+    if (isStamp(type)) {
+      if (points.length !== 1) continue;
+    } else if (type !== 'pen' && points.length !== 2) continue;
+    const mark: GuideDrawing = { type, color, width: clampDrawingWidth(shape.width), points };
+    if (type === 'text') {
+      const words = typeof shape.text === 'string'
+        ? shape.text.replace(/[\r\n]+/g, ' ').trim().slice(0, MAX_DRAWING_TEXT)
+        : '';
+      // A label with no words is invisible and unselectable — drop it rather
+      // than render a mark nobody can find, move or erase.
+      if (!words) continue;
+      mark.text = words;
+    }
+    out.push(mark);
   }
   return out;
 }
@@ -116,6 +148,9 @@ export function serializeDrawings(shapes: GuideDrawing[]): string {
     color: s.color,
     width: clampDrawingWidth(s.width),
     points: s.points.map(([x, y]) => [round4(x), round4(y)] as [number, number]),
+    ...(s.type === 'text'
+      ? { text: (s.text || '').replace(/[\r\n]+/g, ' ').trim().slice(0, MAX_DRAWING_TEXT) }
+      : {}),
   })));
 }
 
@@ -138,6 +173,9 @@ export function hitTestDrawing(shapes: GuideDrawing[], x: number, y: number, tol
 
 export function distanceToShape(s: GuideDrawing, x: number, y: number): number {
   const [sx, sy] = s.points[0];
+  // A stamp is a point, so "how close am I" is simply the distance to it —
+  // with a floor generous enough that a fingertip can grab a small glyph.
+  if (isStamp(s.type)) return Math.max(0, Math.hypot(x - sx, y - sy) - 0.02);
   const [ex, ey] = s.points[s.points.length - 1];
   if (s.type === 'arrow') return distToSegment(x, y, sx, sy, ex, ey);
   if (s.type === 'pen') {
@@ -182,7 +220,10 @@ export function shapeBounds(s: GuideDrawing): { x0: number; y0: number; x1: numb
  * stroke has no meaningful handles — it is moved as a whole.
  */
 export function shapeHandles(s: GuideDrawing): [number, number][] {
-  return s.type === 'pen' ? [] : [s.points[0], s.points[s.points.length - 1]];
+  // Stamps have nothing to stretch — they are moved as a whole, like a pen
+  // stroke. Their SIZE comes from the weight picker instead.
+  if (s.type === 'pen' || isStamp(s.type)) return [];
+  return [s.points[0], s.points[s.points.length - 1]];
 }
 
 /** Move every point by (dx, dy), clamped so the shape can't leave the photo. */
@@ -197,7 +238,7 @@ export function translateShape(s: GuideDrawing, dx: number, dy: number): GuideDr
 
 /** Move one handle (0 = start, 1 = end) to a new spot — the stretch gesture. */
 export function moveShapeHandle(s: GuideDrawing, handle: number, x: number, y: number): GuideDrawing {
-  if (s.type === 'pen' || s.points.length < 2) return s;
+  if (s.type === 'pen' || isStamp(s.type) || s.points.length < 2) return s;
   const pts = s.points.slice() as [number, number][];
   pts[handle === 0 ? 0 : pts.length - 1] = [clamp01(x), clamp01(y)];
   return { ...s, points: pts };
