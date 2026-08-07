@@ -135,3 +135,62 @@ export function activeServiceDates(
   return getOdoo().call('krawings.task.service.day', 'active_service_dates',
     [companyId, nowFloat, todayStr, tailMinutes]);
 }
+
+// ── Accountability (read only) ──────────────────────────────────────────────
+
+export interface AccountabilityPerson {
+  employee_id: number;
+  name: string;
+  done: number;
+  on_time: number;
+  late: number;
+  /** Completed with no deadline to measure against — most tasks until an owner
+   *  sets their service times. Kept separate so "on time" is never inflated. */
+  untimed: number;
+  flagged: number;
+  avg_late_minutes: number;
+}
+
+export interface AccountabilityTotals {
+  done: number; on_time: number; late: number; untimed: number;
+  flagged: number; people: number;
+}
+
+export interface AccountabilityRow {
+  line_id: number;
+  name: string;
+  date: string;
+  department_name: string;
+  day_part: string;
+  deadline: string;
+  deadline_is_implicit: boolean;
+  completed_at: string;
+  late_by_minutes: number;
+  flagged: boolean;
+  flag_reason: string;
+}
+
+/** Who completed what over a range. Reports on what people DID — a task nobody
+ *  did cannot be attributed, because tasks belong to a department rather than
+ *  a person. */
+export function accountability(
+  companyId: number,
+  dateFrom: string,
+  dateTo: string,
+  departmentId: number | null,
+  allowedCompanyIds: number[],
+): Promise<{ people: AccountabilityPerson[]; totals: AccountabilityTotals }> {
+  return getOdoo().call('krawings.task.list.line', 'portal_accountability',
+    [companyId, dateFrom, dateTo, departmentId, allowedCompanyIds]);
+}
+
+export function accountabilityDetail(
+  companyId: number,
+  employeeId: number,
+  dateFrom: string,
+  dateTo: string,
+  allowedCompanyIds: number[],
+): Promise<AccountabilityRow[]> {
+  return getOdoo().call('krawings.task.list.line', 'portal_accountability_detail',
+    [companyId, employeeId, dateFrom, dateTo, allowedCompanyIds]);
+}

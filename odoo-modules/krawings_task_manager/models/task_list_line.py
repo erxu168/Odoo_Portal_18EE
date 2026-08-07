@@ -688,6 +688,115 @@ class KrawingsTaskListLine(models.Model):
         return list(by_dept.values())
 
     @api.model
+    def portal_accountability(self, company_id, date_from, date_to,
+                              department_id=None, allowed_company_ids=None):
+        """Who completed what, over a date range. READ ONLY.
+
+        Reports on what people DID, never on what was missed. A task nobody did
+        cannot be pinned on anyone: tasks belong to a department and whoever is
+        on shift picks them up, so "Marco missed 3" is a sentence this data
+        cannot honestly support. "Marco completed 12, 9 on time" it can.
+
+        On time is measured only against tasks that HAD a deadline. Counting a
+        task with no deadline as on-time would inflate the number with work that
+        was never being timed — which is most tasks until an owner sets their
+        service times.
+        """
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        company_id = int(company_id)
+        if not allowed or company_id not in allowed:
+            return {'people': [], 'totals': {}}
+
+        domain = [
+            ('list_id.company_id', '=', company_id),
+            ('list_id.date', '>=', date_from),
+            ('list_id.date', '<=', date_to),
+            ('completed_at', '!=', False),
+        ]
+        if department_id:
+            domain.append(('list_id.department_id', '=', int(department_id)))
+
+        by_person = {}
+        for line in self.sudo().search(domain):
+            emp = line.completed_by_id
+            key = emp.id or 0
+            row = by_person.setdefault(key, {
+                'employee_id': emp.id or 0,
+                # The denormalised name is preserved on the line, so someone who
+                # has since left still shows as themselves rather than blank.
+                'name': line.completed_by_name or (emp.name if emp else '') or 'Unknown',
+                'done': 0, 'on_time': 0, 'late': 0, 'untimed': 0,
+                'flagged': 0, 'late_minutes_total': 0,
+            })
+            row['done'] += 1
+            if line.review_flagged:
+                row['flagged'] += 1
+            if not line.deadline_datetime:
+                row['untimed'] += 1
+            elif line.completed_at <= line.deadline_datetime:
+                row['on_time'] += 1
+            else:
+                row['late'] += 1
+                delta = line.completed_at - line.deadline_datetime
+                row['late_minutes_total'] += int(delta.total_seconds() // 60)
+
+        people = []
+        for row in by_person.values():
+            row['avg_late_minutes'] = (
+                int(round(row['late_minutes_total'] / row['late'])) if row['late'] else 0
+            )
+            row.pop('late_minutes_total')
+            people.append(row)
+        people.sort(key=lambda r: (-r['done'], r['name']))
+
+        return {
+            'people': people,
+            'totals': {
+                'done': sum(p['done'] for p in people),
+                'on_time': sum(p['on_time'] for p in people),
+                'late': sum(p['late'] for p in people),
+                'untimed': sum(p['untimed'] for p in people),
+                'flagged': sum(p['flagged'] for p in people),
+                'people': len(people),
+            },
+        }
+
+    @api.model
+    def portal_accountability_detail(self, company_id, employee_id, date_from, date_to,
+                                     allowed_company_ids=None):
+        """One person's completed tasks over the range, newest first. READ ONLY."""
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        company_id = int(company_id)
+        if not allowed or company_id not in allowed:
+            return []
+        lines = self.sudo().search([
+            ('list_id.company_id', '=', company_id),
+            ('list_id.date', '>=', date_from),
+            ('list_id.date', '<=', date_to),
+            ('completed_at', '!=', False),
+            ('completed_by_id', '=', int(employee_id)),
+        ], order='completed_at desc', limit=500)
+        out = []
+        for l in lines:
+            late_by = 0
+            if l.deadline_datetime and l.completed_at > l.deadline_datetime:
+                late_by = int((l.completed_at - l.deadline_datetime).total_seconds() // 60)
+            out.append({
+                'line_id': l.id,
+                'name': l.name,
+                'date': fields.Date.to_string(l.list_id.date),
+                'department_name': l.list_id.department_id.name or '',
+                'day_part': l.day_part,
+                'deadline': fields.Datetime.to_string(l.deadline_datetime) if l.deadline_datetime else '',
+                'deadline_is_implicit': l.deadline_is_implicit,
+                'completed_at': fields.Datetime.to_string(l.completed_at),
+                'late_by_minutes': late_by,
+                'flagged': l.review_flagged,
+                'flag_reason': l.review_flag_reason or '',
+            })
+        return out
+
+    @api.model
     def portal_day_summary(self, company_id, date_str=None):
         """End-of-day counts for one company + date: done/total, the names of
         missed (incomplete) tasks, and how many proof photos were submitted.

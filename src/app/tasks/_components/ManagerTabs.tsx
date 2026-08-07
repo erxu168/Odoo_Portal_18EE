@@ -9,6 +9,7 @@ const BASE_TABS = [
   { href: '/tasks/manager/templates', label: 'Templates', adminOnly: false },
   { href: '/tasks/manager/training',  label: 'Guides',    adminOnly: false },
   { href: '/tasks/manager/review',    label: 'Review',    adminOnly: false },
+  { href: '/tasks/manager/report',    label: 'Who did what', adminOnly: false },
   { href: '/tasks/admin',             label: 'Settings',  adminOnly: true  },
 ];
 
