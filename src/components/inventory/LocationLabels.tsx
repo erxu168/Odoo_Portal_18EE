@@ -9,6 +9,7 @@ import { locationCode, locationDeepLink } from '@/lib/location-code';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { generateLocationZPL } from '@/lib/zpl';
 import NumberField from '@/components/ui/NumberField';
+import FitText from '@/components/ui/FitText';
 
 /**
  * Printable location labels — a QR and the place's name, to stick on the shelf.
@@ -393,16 +394,46 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                       {l.branch && (
-                        <div style={{
-                          fontSize: `${branchMm(size.h)}mm`, fontWeight: 700, letterSpacing: '.01em',
-                          color: '#444', textTransform: 'uppercase', lineHeight: 1.15,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{l.branch}</div>
+                        // The PATH. It used to be one nowrap line with an
+                        // ellipsis, so "Ssam Basement / Dry Storage Room" simply
+                        // never printed — the whole point of choosing "Full path".
+                        // It now wraps at spaces and shrinks to fit its band.
+                        <FitText
+                          text={l.branch}
+                          maxMm={branchMm(size.h)}
+                          minMm={1.6}
+                          lineHeight={1.15}
+                          style={{
+                            fontWeight: 700, letterSpacing: '.01em', color: '#444',
+                            textTransform: 'uppercase',
+                            // A DEFINITE band, not max-height: a content-sized box
+                            // shrinks as its own text shrinks, so the fit spirals
+                            // down to the minimum. Two lines is enough for
+                            // "Ssam Basement / Dry Storage Room"; a longer path
+                            // shrinks to fit those two lines instead of vanishing.
+                            flex: '0 0 auto', height: `${branchMm(size.h) * 2.5}mm`,
+                          }}
+                        />
                       )}
-                      <div style={{
-                        fontSize: `${nameMm(l.name, !!l.branch)}mm`, fontWeight: 900, letterSpacing: '-.02em',
-                        lineHeight: .98, color: '#000', marginTop: '.4mm', overflowWrap: 'anywhere',
-                      }}>{l.name}</div>
+                      {/* One word per line: only the LONGEST WORD has to fit the
+                          width, so "DRY STORAGE ROOM" prints big instead of being
+                          broken into "DRY STORAG / E ROOM" and clipped. The size is
+                          MEASURED down to fit — nameMm is only the starting ceiling. */}
+                      <FitText
+                        text={l.name}
+                        maxMm={nameMm(l.name, !!l.branch)}
+                        minMm={2.6}
+                        wordPerLine
+                        lineHeight={0.98}
+                        style={{
+                          fontWeight: 900, letterSpacing: '-.02em', color: '#000',
+                          // 1 1 0%, not auto: the box must take the space LEFT
+                          // OVER, never size itself from its own content — while
+                          // measuring we set a huge font, and a content-sized box
+                          // would grow with it and always "fit".
+                          marginTop: '.4mm', flex: '1 1 0%',
+                        }}
+                      />
                       <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', gap: `${size.w * 0.035}mm` }}>
                         {withQr && l.qr && (
                           // eslint-disable-next-line @next/next/no-img-element

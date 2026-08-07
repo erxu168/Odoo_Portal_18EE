@@ -160,6 +160,7 @@ refresh, it is not finished.
 | Asset | Path | What | users |
 |---|---|---|---|
 | `Toast` | `ui/Toast.tsx` | Auto-dismiss success/error banner | 10 |
+| `FitText` | `ui/FitText.tsx` | Text that SHRINKS until it MEASURABLY fits its box (binary-searched, ResizeObserver-backed). For anything printed at a fixed physical size — estimating a font size from character counts is wrong the moment a word is long, and the label clips it ("DRY STORAG"). **Never breaks a word**; `wordPerLine` puts each word on its own line so only the LONGEST WORD must fit the width, which is what lets a two-word name print big | 1 |
 | `ConfirmDialog` | `ui/ConfirmDialog.tsx` | Bottom-slide confirm before anything irreversible | 32 |
 | `SwipeToDelete` | `ui/SwipeToDelete.tsx` | iOS-style swipe-to-reveal delete | 1 |
 | `ManagedListSheet` | `ui/ManagedListSheet.tsx` | Add/edit/delete/reorder CRUD sheet for lookup lists | 2 |
