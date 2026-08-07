@@ -5,6 +5,7 @@ from . import task_setup_photo
 from . import task_guide_pin
 from . import task_guide_step
 from . import task_guide
+from . import task_guide_question
 from . import task_template
 from . import task_template_line
 from . import task_template_subtask

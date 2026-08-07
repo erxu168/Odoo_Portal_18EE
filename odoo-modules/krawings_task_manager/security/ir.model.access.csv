@@ -25,3 +25,7 @@ access_task_guide_pin_user,krawings.task.guide.pin user,model_krawings_task_guid
 access_task_guide_pin_manager,krawings.task.guide.pin manager,model_krawings_task_guide_pin,hr.group_hr_manager,1,1,1,1
 access_task_service_day_user,krawings.task.service.day user,model_krawings_task_service_day,base.group_user,1,0,0,0
 access_task_service_day_manager,krawings.task.service.day manager,model_krawings_task_service_day,hr.group_hr_manager,1,1,1,1
+access_task_guide_question_user,krawings.task.guide.question user,model_krawings_task_guide_question,base.group_user,1,0,0,0
+access_task_guide_question_manager,krawings.task.guide.question manager,model_krawings_task_guide_question,hr.group_hr_manager,1,1,1,1
+access_task_guide_answer_user,krawings.task.guide.answer user,model_krawings_task_guide_answer,base.group_user,1,0,0,0
+access_task_guide_answer_manager,krawings.task.guide.answer manager,model_krawings_task_guide_answer,hr.group_hr_manager,1,1,1,1

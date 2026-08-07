@@ -48,6 +48,10 @@ class KrawingsTaskGuide(models.Model):
              'editor and the value each daily snapshot records.',
     )
     step_ids = fields.One2many('krawings.task.guide.step', 'guide_id', copy=True)
+    question_ids = fields.One2many(
+        'krawings.task.guide.question', 'guide_id', copy=True,
+    )
+    question_count = fields.Integer(compute='_compute_question_count', store=True)
     step_count = fields.Integer(compute='_compute_counts', store=True)
     has_steps = fields.Boolean(compute='_compute_counts', store=True)
 
@@ -65,6 +69,11 @@ class KrawingsTaskGuide(models.Model):
         for rec in self:
             rec.step_count = len(rec.step_ids)
             rec.has_steps = bool(rec.step_ids)
+
+    @api.depends('question_ids')
+    def _compute_question_count(self):
+        for rec in self:
+            rec.question_count = len(rec.question_ids)
 
     @api.depends('template_line_ids')
     def _compute_template_line_count(self):
@@ -172,6 +181,18 @@ class KrawingsTaskGuide(models.Model):
         return {
             'id': guide.id,
             'name': guide.name,
+            'questions': [
+                {
+                    'id': q.id,
+                    'text': q.text or '',
+                    'explain_step': q.explain_step or 0,
+                    'answers': [
+                        {'text': a.text or '', 'is_correct': a.is_correct}
+                        for a in q.answer_ids.sorted('sequence')
+                    ],
+                }
+                for q in guide.question_ids.sorted('sequence')
+            ],
             'company_id': guide.company_id.id,
             'revision': guide.revision,
             'published': guide.published,
@@ -180,6 +201,69 @@ class KrawingsTaskGuide(models.Model):
         }
 
     @api.model
+    @api.model
+    def portal_save_questions(self, guide_id, questions, allowed_company_ids=None):
+        """Replace a guide's questions with exactly `questions`.
+
+        Deliberately SEPARATE from portal_save_guide. That method is an atomic
+        aggregate rebuild of the steps — it unlinks and recreates every one, and
+        it is the most delicate code in this addon. Questions do not belong in
+        it: they change on a different rhythm (an author tweaks wording without
+        touching a photo), and a bug here must not be able to cost anyone their
+        step media.
+
+        Whole-set replace rather than per-row patching: the editor always sends
+        the complete list, so a deleted question genuinely disappears instead of
+        lingering and being asked forever.
+
+        Company-scoped, fails CLOSED — an empty scope is refused, like every
+        other portal entry point here.
+        """
+        guide = self.sudo().browse(int(guide_id))
+        if not guide.exists():
+            return False
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed or guide.company_id.id not in allowed:
+            return False
+
+        Question = self.env['krawings.task.guide.question'].sudo()
+        step_count = len(guide.step_ids)
+
+        vals = []
+        for i, q in enumerate(questions or []):
+            text = (q.get('text') or '').strip()
+            if not text:
+                continue
+            answers = [a for a in (q.get('answers') or []) if (a.get('text') or '').strip()]
+            # Refuse quietly rather than raise: the caller has already validated,
+            # and a half-formed question is dropped instead of blocking the save
+            # of the good ones.
+            if len(answers) < 2 or sum(1 for a in answers if a.get('is_correct')) != 1:
+                continue
+            # A pointer past the end of the guide would send a learner nowhere.
+            explain = int(q.get('explain_step') or 0)
+            if explain < 0 or explain > step_count:
+                explain = 0
+            vals.append({
+                'guide_id': guide.id,
+                'sequence': (i + 1) * 10,
+                'text': text,
+                'explain_step': explain,
+                'answer_ids': [
+                    (0, 0, {
+                        'sequence': (j + 1) * 10,
+                        'text': (a.get('text') or '').strip()[:300],
+                        'is_correct': bool(a.get('is_correct')),
+                    })
+                    for j, a in enumerate(answers)
+                ],
+            })
+
+        guide.question_ids.unlink()
+        for v in vals:
+            Question.create(v)
+        return len(vals)
+
     def portal_save_guide(self, guide_id, revision, published, steps, name=None):
         """Atomically replace a guide's whole ordered content.
 

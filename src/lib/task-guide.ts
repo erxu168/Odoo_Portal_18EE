@@ -191,6 +191,29 @@ export async function readLibraryGuide(guideId: number): Promise<LibraryGuide | 
   return (r as LibraryGuide) || null;
 }
 
+export interface GuideQuestion {
+  id?: number;
+  text: string;
+  /** 1-based step POSITION that teaches the answer, 0 for none. Never a step
+   *  id — saving a guide destroys and reissues every one of those. */
+  explain_step: number;
+  answers: { text: string; is_correct: boolean }[];
+}
+
+/** Replace a guide's questions. Separate from the step save on purpose: that
+ *  one is an atomic rebuild of the whole aggregate, and a bug here must not be
+ *  able to cost anyone their step photos. Returns how many were kept. */
+export async function saveGuideQuestions(
+  guideId: number,
+  questions: GuideQuestion[],
+  allowedCompanyIds: number[],
+): Promise<number> {
+  const kept: unknown = await getOdoo().call(
+    'krawings.task.guide', 'portal_save_questions', [guideId, questions, allowedCompanyIds],
+  );
+  return typeof kept === 'number' ? kept : 0;
+}
+
 export async function createLibraryGuide(name: string, companyId: number): Promise<{ id: number; revision: number }> {
   return getOdoo().call('krawings.task.guide', 'portal_create_guide', [name, companyId]);
 }
