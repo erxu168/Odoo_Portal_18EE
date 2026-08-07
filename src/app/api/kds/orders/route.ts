@@ -3,6 +3,7 @@ import { getKdsSettings, getCompletedOrders } from '@/lib/kds-db';
 import { getReadyLineIds } from '@/lib/cooktimer-db';
 import { fetchFiredOrders } from '@/lib/kds-order-feed';
 import { getHiddenProductIds } from '@/lib/kds-hidden-products';
+import { visibleLines } from '@/lib/kds/visible-lines';
 import { KDS_LOCATION_ID } from '@/types/kds';
 
 export const dynamic = 'force-dynamic';
@@ -47,14 +48,7 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     const orders = firedOrders
       .map((o) => {
-        const allLines = linesByOrder[o.id] || [];
-        const lines = hiddenProductIds.size === 0
-          ? allLines
-          : allLines.filter(l => {
-              const raw = l.product_id;
-              const pid = Array.isArray(raw) ? (raw[0] as number) : (raw as number);
-              return !hiddenProductIds.has(pid);
-            });
+        const lines = visibleLines(linesByOrder[o.id] || [], hiddenProductIds);
         // Refund-only, empty, or drinks-only order -- nothing for the kitchen to do.
         if (lines.length === 0) return null;
 

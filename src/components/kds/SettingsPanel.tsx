@@ -10,15 +10,22 @@ export default function SettingsPanel() {
   const { settings, settingsOpen, closeSettings, updateSettings } = useKds();
   const [draft, setDraft] = useState<KdsSettings>(settings);
   const wasOpen = useRef(false);
+  const edited = useRef(false);
 
   // This panel stays mounted for the life of the page while the real settings
   // arrive asynchronously, so a draft seeded only at mount holds the factory
   // DEFAULT_SETTINGS forever -- saving would then wipe the connected register
-  // and every threshold. Re-seed from the live settings on each open. Only on
-  // the closed -> open transition, so edits in progress are never clobbered.
+  // and every threshold.
+  //
+  // Re-seed on each open, AND again if the settings land while the panel is
+  // already open (opening /kds and hitting the gear within the first second is
+  // easy to do, and beats the fetch). Never once the cook has typed something:
+  // `edited` guards work in progress.
   useEffect(() => {
-    if (settingsOpen && !wasOpen.current) setDraft(settings);
+    const justOpened = settingsOpen && !wasOpen.current;
     wasOpen.current = settingsOpen;
+    if (justOpened) edited.current = false;
+    if (justOpened || !edited.current) setDraft(settings);
   }, [settingsOpen, settings]);
 
   if (!settingsOpen) return null;
@@ -29,6 +36,7 @@ export default function SettingsPanel() {
   }
 
   function setField<K extends keyof KdsSettings>(key: K, value: KdsSettings[K]) {
+    edited.current = true;
     setDraft(prev => ({ ...prev, [key]: value }));
   }
 
