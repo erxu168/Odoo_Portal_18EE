@@ -1023,6 +1023,22 @@ export function resolveCompanySetting(companyId: number | undefined, key: string
 
 // -- Audit Log --
 
+/** How many times an action was logged today (Berlin dates are close enough to
+ *  UTC for a spend ceiling, and a ceiling that resets an hour early or late is
+ *  still a ceiling). Used as a PERSISTENT daily cap for paid work: the
+ *  in-memory rate limiter resets on every deploy, and this portal deploys
+ *  several times an hour. */
+export function countAuditToday(action: string, userId?: number): number {
+  const db = getDb();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const row = userId
+    ? db.prepare('SELECT COUNT(*) AS n FROM audit_log WHERE action = ? AND user_id = ? AND created_at >= ?')
+        .get(action, userId, since) as { n: number }
+    : db.prepare('SELECT COUNT(*) AS n FROM audit_log WHERE action = ? AND created_at >= ?')
+        .get(action, since) as { n: number };
+  return row?.n ?? 0;
+}
+
 export function logAudit(data: {
   user_id?: number | null;
   user_name?: string | null;

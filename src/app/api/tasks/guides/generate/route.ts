@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
 import { moduleForbidden } from '@/lib/module-access';
-import { writeGuide, MAX_PHOTOS, MAX_BULLETS, type GuidePhotoInput } from '@/lib/ai/guide-writer';
-import { logAudit } from '@/lib/db';
+import { writeGuide, MAX_PHOTOS, MAX_BULLETS, type GuidePhotoInput, type GuideWriterUsage } from '@/lib/ai/guide-writer';
+import { logAudit, countAuditToday } from '@/lib/db';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 /**
  * POST — write a draft guide from photos and notes. Returns it; saves NOTHING.
@@ -26,12 +27,38 @@ const MAX_TITLE = 200;
 
 const ALLOWED_MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+const AUDIT_ACTION = 'guide.generate';
+/** Bursts, per manager. Writing three guides back to back is real work; thirty
+ *  in ten minutes is a loop. */
+const BURST_LIMIT = 5;
+const BURST_WINDOW_MS = 10 * 60 * 1000;
+/** The ceiling that actually protects the bill. Counted from the audit log
+ *  rather than memory, because the in-process limiter resets on every deploy
+ *  and this portal deploys several times an hour. */
+const DAILY_LIMIT_PER_USER = 40;
+const DAILY_LIMIT_TOTAL = 150;
+
+/** One generation at a time per person. The screen already disables its button;
+ *  this is the same rule where it cannot be bypassed by a second tab or curl. */
+const inFlight = new Set<number>();
+
+/** Bill first, ask questions later is not an option: a refusal and a truncated
+ *  reply both cost money, so every outcome that reached the API is recorded. */
+function audit(user: { id: number; name: string }, detail: Record<string, unknown>) {
+  try {
+    logAudit({ user_id: user.id, user_name: user.name, action: AUDIT_ACTION, module: 'tasks', detail: JSON.stringify(detail) });
+  } catch (e) {
+    console.error('[ai] audit log failed for guide generation:', e);
+  }
+}
+
 /** Plain English for each way this can fail. A manager should never see
  *  "bad-output" — they should be told whether to try again, fix something, or
  *  fetch someone. */
 const FAILURE_MESSAGE: Record<string, string> = {
   'not-configured': 'The AI writer is not switched on for this server yet.',
   refused: 'The assistant would not write this one. Check the photos and notes, or write it by hand.',
+  'too-long': 'That came out longer than there was room for. Try it with fewer photos.',
   'bad-output': 'The reply came back unusable. Try again — if it happens twice, the photos may be unclear.',
   error: 'Could not reach the assistant. Check your connection and try again.',
 };
@@ -81,9 +108,49 @@ export async function POST(req: NextRequest) {
       photos.push({ base64, mediaType });
     }
 
-    const result = await writeGuide({ title, bullets, photos });
+    // ── Everything below here can spend money. Guard it. ──────────────────
+    if (inFlight.has(user.id)) {
+      return NextResponse.json(
+        { error: 'One guide is already being written. Wait for it to finish.' },
+        { status: 429 },
+      );
+    }
+    const burst = checkRateLimit(`guide-generate:${user.id}`, BURST_LIMIT, BURST_WINDOW_MS);
+    if (!burst.allowed) {
+      return NextResponse.json(
+        { error: `That is ${BURST_LIMIT} guides in a few minutes. Try again in ${Math.ceil(burst.retryAfterSec / 60)} minute(s).` },
+        { status: 429, headers: { 'Retry-After': String(burst.retryAfterSec) } },
+      );
+    }
+    if (countAuditToday(AUDIT_ACTION, user.id) >= DAILY_LIMIT_PER_USER) {
+      return NextResponse.json(
+        { error: `That is ${DAILY_LIMIT_PER_USER} guides written today. The limit resets tomorrow.` },
+        { status: 429 },
+      );
+    }
+    if (countAuditToday(AUDIT_ACTION) >= DAILY_LIMIT_TOTAL) {
+      return NextResponse.json(
+        { error: 'The daily limit for writing guides has been reached across the business.' },
+        { status: 429 },
+      );
+    }
+
+    inFlight.add(user.id);
+    let result;
+    try {
+      result = await writeGuide({ title, bullets, photos });
+    } finally {
+      inFlight.delete(user.id);
+    }
 
     if (!result.ok) {
+      // Audited even though it failed: a refusal and a truncated reply both
+      // reached the API and both cost money. An unrecorded cost is a line on an
+      // invoice nobody can explain.
+      audit(user, {
+        title, photos: photos.length, outcome: result.failure,
+        usage: (result as { usage?: GuideWriterUsage }).usage ?? null,
+      });
       // 503 for "the server is not set up" so it reads as an operator problem,
       // not something the manager typed wrong.
       const status = result.failure === 'not-configured' ? 503 : 502;
@@ -93,28 +160,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Who spent what. This bills to the owner's account, so a surprising invoice
-    // must be answerable without guessing.
-    try {
-      logAudit({
-        user_id: user.id,
-        user_name: user.name,
-        action: 'guide.generate',
-        module: 'tasks',
-        detail: JSON.stringify({
-          title,
-          photos: photos.length,
-          steps: result.guide.steps.length,
-          questions: result.guide.questions.length,
-          model: result.model,
-          prompt_version: result.promptVersion,
-          usage: result.usage,
-        }),
-      });
-    } catch (e) {
-      // Never fail the manager's work because bookkeeping failed.
-      console.error('[ai] audit log failed for guide generation:', e);
-    }
+    audit(user, {
+      title,
+      photos: photos.length,
+      outcome: 'ok',
+      steps: result.guide.steps.length,
+      questions: result.guide.questions.length,
+      model: result.model,
+      prompt_version: result.promptVersion,
+      usage: result.usage,
+    });
 
     return NextResponse.json({
       ok: true,
