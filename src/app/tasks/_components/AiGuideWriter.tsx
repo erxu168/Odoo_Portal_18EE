@@ -13,7 +13,7 @@
  * teaches — the server prompt forbids re-sequencing, because the author
  * photographed the job as it happens and that sequence IS the instruction.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 import { DropZone } from '@/components/ui/DropZone';
 import PrimaryButton from '@/components/ui/PrimaryButton';
@@ -51,6 +51,14 @@ export default function AiGuideWriter({ onClose, onCreated }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** The photos as they were when the request went out. A draft's photo_index
+   *  points into THAT list — the manager can still edit `shots` afterwards, and
+   *  binding the review to the live array would show and save the wrong picture
+   *  (or silently drop a step whose photo had been removed). */
+  const [sent, setSent] = useState<Shot[]>([]);
+  /** The guide created by a previous save attempt. Retrying reuses it instead of
+   *  creating a second one and leaving the first behind as an empty orphan. */
+  const createdId = useRef<number | null>(null);
   const { confirm, confirmElement } = useConfirm();
 
   async function addPhotos(files: File[]) {
@@ -101,6 +109,7 @@ export default function AiGuideWriter({ onClose, onCreated }: {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) { setError(body.error || 'Could not write the guide.'); return; }
+      setSent(shots);
       setDraft(body.guide as Draft);
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -116,49 +125,69 @@ export default function AiGuideWriter({ onClose, onCreated }: {
     if (!draft) return;
     setSaving(true); setError(null);
     try {
-      const made = await fetch('/api/tasks/guides', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: draft.name || title.trim() }),
-      });
-      const g = await made.json().catch(() => ({}));
-      if (!made.ok || !g.id) { setError(g.error || 'Could not create the guide.'); return; }
+      const name = draft.name || title.trim();
+
+      // Reuse a guide from a previous attempt. Without this, a retry after a
+      // lost response created a second guide and left the first as an empty
+      // shell in the library.
+      let guideId = createdId.current;
+      let revision = 0;
+      if (guideId === null) {
+        const made = await fetch('/api/tasks/guides', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const g = await made.json().catch(() => ({}));
+        if (!made.ok || !g.id) { setError(g.error || 'Could not create the guide.'); return; }
+        guideId = g.id as number;
+        revision = g.revision ?? 0;
+        createdId.current = guideId;
+      } else {
+        // Re-read the revision: the save is optimistic-concurrency checked, and
+        // a partly-succeeded earlier attempt may have moved it on.
+        const cur = await fetch(`/api/tasks/guides/${guideId}`).then(r => r.json()).catch(() => null);
+        revision = cur?.revision ?? 0;
+      }
 
       const steps = draft.steps.map(s => ({
         media_type: 'photo' as const,
         explanation: s.heading ? `${s.heading}\n${s.explanation}` : s.explanation,
-        image_base64: shots[s.photo_index]?.base64,
-        image_filename: shots[s.photo_index]?.filename || 'photo.jpg',
+        image_base64: sent[s.photo_index]?.base64,
+        image_filename: sent[s.photo_index]?.filename || 'photo.jpg',
       })).filter(s => s.image_base64);
 
-      const saved = await fetch(`/api/tasks/guides/${g.id}`, {
+      const saved = await fetch(`/api/tasks/guides/${guideId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ revision: g.revision ?? 0, published: false, name: draft.name || title.trim(), steps }),
+        body: JSON.stringify({ revision, published: false, name, steps }),
       });
       const sBody = await saved.json().catch(() => ({}));
       if (!saved.ok) {
-        // The guide exists but is empty. Say so rather than leaving a mystery
-        // shell in the library with no explanation.
-        setError((sBody.error || 'Could not save the steps.') + ' The guide was created but is empty — open it and try again.');
-        onCreated(g.id);
+        // STAY OPEN. Calling onCreated here unmounted this component before the
+        // message could paint, so the manager saw the editor open on an empty
+        // guide with no explanation and the paid draft was gone. The draft is
+        // still here; "Keep it" tries again into the same guide.
+        setError((sBody.error || 'Could not save the steps.')
+          + ' The guide was created but is still empty — press Keep it again to retry.');
         return;
       }
 
       if (draft.questions.length) {
-        const q = await fetch(`/api/tasks/guides/${g.id}/questions`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+        const q = await fetch(`/api/tasks/guides/${guideId}/questions`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ questions: draft.questions }),
         });
         if (!q.ok) {
-          // The guide and its steps are safe; only the questions failed. That is
-          // worth finishing on, not rolling back.
           const qb = await q.json().catch(() => ({}));
-          setError((qb.error || 'The questions could not be saved.') + ' The guide itself is saved.');
+          // Also stay open: the guide and steps are safe, but the questions are
+          // the part that would silently disappear, so it must be said.
+          setError((qb.error || 'The questions could not be saved.')
+            + ' The guide and its steps are saved — press Keep it again to retry the questions.');
+          return;
         }
       }
-      onCreated(g.id);
+      createdId.current = null;
+      onCreated(guideId);
     } catch {
       setError('Could not save. Check your connection and try again.');
     } finally {
@@ -177,6 +206,13 @@ export default function AiGuideWriter({ onClose, onCreated }: {
   }
 
   async function close() {
+    // Closing mid-save is not a cancel: the requests keep running, the guide
+    // still gets created, and the editor pops open over the library seconds
+    // later. Refuse instead of promising a discard that will not happen.
+    if (saving) {
+      setError('Still saving — give it a moment.');
+      return;
+    }
     if ((shots.length || bullets.trim() || draft) && !await confirm({
       title: 'Close without saving?',
       message: 'Your photos, notes and anything written go.',
@@ -234,7 +270,7 @@ export default function AiGuideWriter({ onClose, onCreated }: {
                 <p className="text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1">
                   Photos — in the order it happens
                 </p>
-                <DropZone onFiles={fs => void addPhotos(fs)} multiple disabled={busy} hint="Drop the photos here">
+                <DropZone onFiles={fs => void addPhotos(fs)} multiple disabled={busy || writing} hint="Drop the photos here">
                   <div className="grid grid-cols-3 gap-2">
                     {shots.map((s, i) => (
                       <div key={i} className="relative aspect-square rounded-lg border border-gray-200 overflow-hidden bg-gray-50">
@@ -243,21 +279,26 @@ export default function AiGuideWriter({ onClose, onCreated }: {
                         <span className="absolute left-1 top-1 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] font-bold grid place-items-center">
                           {i + 1}
                         </span>
+                        {/* Frozen while the model writes: the draft that comes
+                            back points at the photos as they were SENT, so
+                            editing them mid-flight would make the review show a
+                            picture the guide was never written about. */}
                         <div className="absolute inset-x-0 bottom-0 flex">
-                          <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
+                          <button type="button" onClick={() => move(i, -1)} disabled={writing || i === 0}
                             aria-label={`Move photo ${i + 1} earlier`}
                             className="flex-1 h-7 bg-black/55 text-white text-[11px] disabled:opacity-30">←</button>
                           <button type="button" onClick={() => setShots(p => p.filter((_, j) => j !== i))}
+                            disabled={writing}
                             aria-label={`Remove photo ${i + 1}`}
-                            className="flex-1 h-7 bg-black/55 text-white text-[11px]">✕</button>
-                          <button type="button" onClick={() => move(i, 1)} disabled={i === shots.length - 1}
+                            className="flex-1 h-7 bg-black/55 text-white text-[11px] disabled:opacity-30">✕</button>
+                          <button type="button" onClick={() => move(i, 1)} disabled={writing || i === shots.length - 1}
                             aria-label={`Move photo ${i + 1} later`}
                             className="flex-1 h-7 bg-black/55 text-white text-[11px] disabled:opacity-30">→</button>
                         </div>
                       </div>
                     ))}
                     {shots.length < MAX_PHOTOS && (
-                      <button type="button" onClick={() => setChooser(true)} disabled={busy}
+                      <button type="button" onClick={() => setChooser(true)} disabled={busy || writing}
                         className="aspect-square rounded-lg border-2 border-dashed border-gray-300 text-gray-400 text-2xl grid place-items-center disabled:opacity-50">
                         {busy ? '…' : '+'}
                       </button>
@@ -297,7 +338,7 @@ export default function AiGuideWriter({ onClose, onCreated }: {
               {draft.steps.map((s, i) => (
                 <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={shots[s.photo_index]?.dataUrl} alt=""
+                  <img src={sent[s.photo_index]?.dataUrl} alt=""
                     className="w-14 h-14 rounded-lg border border-gray-200 object-cover flex-shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400">

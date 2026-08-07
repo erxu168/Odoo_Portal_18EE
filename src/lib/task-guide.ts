@@ -202,16 +202,22 @@ export interface GuideQuestion {
 
 /** Replace a guide's questions. Separate from the step save on purpose: that
  *  one is an atomic rebuild of the whole aggregate, and a bug here must not be
- *  able to cost anyone their step photos. Returns how many were kept. */
+ *  able to cost anyone their step photos.
+ *
+ *  Returns how many were kept, or NULL when Odoo refused the write. The
+ *  distinction is the point: Odoo fails closed on company scope and returns
+ *  false, and coercing that to 0 made a refusal indistinguishable from "you
+ *  sent no questions" — so a refused save was reported to the manager as a
+ *  success and their questions silently disappeared. */
 export async function saveGuideQuestions(
   guideId: number,
   questions: GuideQuestion[],
   allowedCompanyIds: number[],
-): Promise<number> {
+): Promise<number | null> {
   const kept: unknown = await getOdoo().call(
     'krawings.task.guide', 'portal_save_questions', [guideId, questions, allowedCompanyIds],
   );
-  return typeof kept === 'number' ? kept : 0;
+  return typeof kept === 'number' ? kept : null;
 }
 
 export async function createLibraryGuide(name: string, companyId: number): Promise<{ id: number; revision: number }> {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError, type PortalUser } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
 import { getGuideScope } from '@/lib/odoo-tasks';
 import { userCompanyAllowed } from '@/lib/company-scope';
 import { saveGuideQuestions, type GuideQuestion } from '@/lib/task-guide';
@@ -19,10 +18,22 @@ export const dynamic = 'force-dynamic';
 const MAX_QUESTIONS = 20;
 const MAX_ANSWERS = 6;
 
-async function assertScope(user: PortalUser, id: number): Promise<void> {
+/** Returns the guide's company once the caller is allowed to write it.
+ *
+ *  Handing that company to Odoo — rather than the caller's own list — is what
+ *  makes the two checks agree. userCompanyAllowed is true for any admin, but
+ *  Odoo's own scope check fails CLOSED against the caller's list, so an admin
+ *  whose list did not happen to contain this company was authorised here and
+ *  refused there. The route is the tenancy boundary; once it has decided, it
+ *  says which company it decided about. */
+async function scopeFor(user: PortalUser, id: number): Promise<number> {
   const scope = await getGuideScope(id);
   if (!scope) throw new AuthError('Not found', 404);
   if (!userCompanyAllowed(user, scope.companyId)) throw new AuthError('Forbidden', 403);
+  // A guide with no company cannot be scoped, so nobody may write it. 404 not
+  // 403: whether such a record exists is not worth telling anyone.
+  if (!scope.companyId) throw new AuthError('Not found', 404);
+  return scope.companyId;
 }
 
 /** Says what is wrong in the author's terms, rather than dropping it silently:
@@ -52,7 +63,7 @@ export async function PUT(req: NextRequest, { params }: { params: { guideId: str
     const user = requireRole('manager');
     const id = parseInt(params.guideId, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
-    await assertScope(user, id);
+    const companyId = await scopeFor(user, id);
 
     const body = await req.json();
     const questions = Array.isArray(body?.questions) ? body.questions : null;
@@ -68,7 +79,20 @@ export async function PUT(req: NextRequest, { params }: { params: { guideId: str
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
     }
 
-    const kept = await saveGuideQuestions(id, questions as GuideQuestion[], parseCompanyIds(user.allowed_company_ids));
+    const kept = await saveGuideQuestions(id, questions as GuideQuestion[], [companyId]);
+    // null means Odoo refused. Never report a refusal as a success: the manager
+    // would close the screen believing their questions were saved.
+    if (kept === null) {
+      return NextResponse.json({ error: 'The questions were not saved.' }, { status: 500 });
+    }
+    if (kept < questions.length) {
+      // Everything was validated above, so a shortfall means something dropped
+      // them silently — say so rather than letting the count quietly disagree.
+      return NextResponse.json(
+        { error: `Only ${kept} of ${questions.length} questions could be saved.`, kept },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ ok: true, kept });
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
