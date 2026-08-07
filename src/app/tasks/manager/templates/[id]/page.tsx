@@ -37,6 +37,7 @@ import SubtaskPhotoField from '../../../_components/SubtaskPhotoField';
 import { parseDrawings, serializeDrawings, type GuideDrawing } from '@/lib/guide-drawings';
 import { templateSubtaskPhotoUrl } from '@/lib/task-photo-urls';
 import PrimaryButton from '@/components/ui/PrimaryButton';
+import RowMenu from '@/components/ui/RowMenu';
 import { ds } from '@/lib/design-system';
 import AnnotatedPhotoThumb from '@/components/ui/AnnotatedPhotoThumb';
 import Toast from '@/components/ui/Toast';
@@ -175,6 +176,16 @@ function hhmmToFloat(s: string): number | null {
  * a real staff user sees, but anchored to today and with no completion state.
  * Used by the manager-side preview toggle — interaction is read-only.
  */
+/** How many of a task's subtasks carry a reference photo. */
+function subtaskPhotoCount(line: TaskTemplateLine): number {
+  return line.subtasks.filter(s => s.has_photo).length;
+}
+
+/** Subtasks shown on the task card before it collapses to "+N more". Four is
+ *  enough to recognise WHICH list it is; a seven-subtask task otherwise pushes
+ *  the next task off the screen and the list stops being scannable. */
+const SUBTASK_PREVIEW = 4;
+
 function previewListFromTemplate(tpl: TaskTemplate): TaskList {
   const todayBase = new Date();
   todayBase.setSeconds(0, 0);
@@ -713,9 +724,12 @@ export default function TemplateEditPage({ params }: PageProps) {
               const lines = grouped[part];
               if (lines.length === 0) return null;
               return (
-                <div key={part} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                  <p className="px-4 py-2 text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200">
-                    {DAY_PART_OPTIONS.find(o => o.value === part)?.label}
+                <div key={part}>
+                  {/* The day part is a heading, not a container. Each task below is
+                      its own card — a thing you can point at and drag — instead of
+                      a stripe in a slab separated from its neighbour by 1px. */}
+                  <p className="px-1 pb-2 text-[var(--fs-xs)] font-bold uppercase tracking-wider text-gray-400">
+                    {DAY_PART_OPTIONS.find(o => o.value === part)?.label} · {lines.length}
                   </p>
                   <DndContext
                     sensors={sensors}
@@ -723,32 +737,59 @@ export default function TemplateEditPage({ params }: PageProps) {
                     onDragEnd={e => onSectionDragEnd(part, e)}
                   >
                   <SortableContext items={lines.map(l => l.id)} strategy={verticalListSortingStrategy}>
-                  {lines.map((l, i) => (
+                  {lines.map(l => (
                     <DragRow
                       key={l.id}
                       id={l.id}
-                      className={`bg-white px-4 py-3 ${i < lines.length - 1 ? 'border-b border-gray-100' : ''}`}
+                      className="bg-white rounded-2xl border border-gray-200 p-3 mb-2 last:mb-0"
                     >
                       {handle => (
                       <div className="flex items-start justify-between gap-3">
                         <div className="pt-0.5">{handle}</div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-[var(--fs-sm)] text-gray-800">{l.name}</p>
-                          <p className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
-                            {l.deadline_time != null ? `By ${floatToHHMM(l.deadline_time)} · ` : ''}
-                            {l.photo_required ? '\u{1F4F8} required · ' : ''}
-                            {l.module_link_type !== 'none' ? `${l.module_link_type} · ` : ''}
-                            {l.subtasks.length > 0 ? `${l.subtasks.length} subtask${l.subtasks.length === 1 ? '' : 's'}` : 'no subtasks'}
-                          </p>
-                          <p className="text-[var(--fs-xs)] font-semibold text-green-700 mt-1">
-                            🔁 {recurrenceSummary(l.recurrence)}
-                          </p>
-                          {l.guide_step_count > 0 && (
-                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                          <p className="font-semibold text-[var(--fs-sm)] text-gray-800 leading-snug">{l.name}</p>
+                          {/* One line of facts instead of three: when it is due, how
+                              often, how much work it carries. Small facts spread over
+                              three lines in three colours have to be read one at a
+                              time; as chips they land in one pass. */}
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            {l.deadline_time != null && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200 tabular-nums">
+                                By {floatToHHMM(l.deadline_time)}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
+                              🔁 {recurrenceSummary(l.recurrence)}
+                            </span>
+                            {l.subtasks.length > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
+                                ☑ {l.subtasks.length} subtask{l.subtasks.length === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            {subtaskPhotoCount(l) > 0 && (
+                              // Otherwise the only way to know a subtask carries a
+                              // photo is to scroll to it or open the task.
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
+                                📷 {subtaskPhotoCount(l)} photo{subtaskPhotoCount(l) === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            {l.photo_required && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
+                                📸 Photo required
+                              </span>
+                            )}
+                            {l.module_link_type !== 'none' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200 capitalize">
+                                {l.module_link_type}
+                              </span>
+                            )}
+                            {l.guide_step_count > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
                                 📖 Guide · {l.guide_step_count} step{l.guide_step_count === 1 ? '' : 's'}
                               </span>
-                              {l.guide_published ? (
+                            )}
+                            {l.guide_step_count > 0 && (
+                              l.guide_published ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-green-50 text-green-700 border border-green-200">
                                   ● Live
                                 </span>
@@ -761,9 +802,9 @@ export default function TemplateEditPage({ params }: PageProps) {
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                                   ● Draft — staff can&apos;t see it yet
                                 </span>
-                              )}
-                            </div>
-                          )}
+                              )
+                            )}
+                          </div>
                           {todayGuides[String(l.id)]?.stale && (
                             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                               {/* Only offer the refresh when it would actually work.
@@ -790,16 +831,16 @@ export default function TemplateEditPage({ params }: PageProps) {
                             </div>
                           )}
                           {l.manager_note && (
-                            <div className="text-[var(--fs-xs)] text-gray-500 mt-1.5 flex items-start gap-1">
-                              <span aria-hidden="true">📌</span>
-                              <RichText value={l.manager_note} className="min-w-0 flex-1" />
+                            <div className="mt-2 rounded-lg bg-gray-50 border border-gray-100 px-2.5 py-2 text-[var(--fs-xs)] text-gray-600 leading-snug">
+                              <p className="font-bold text-gray-700 mb-0.5">Note for staff</p>
+                              <RichText value={l.manager_note} className="min-w-0" />
                             </div>
                           )}
                           {l.subtasks.length > 0 && (
-                            <ul className="mt-1.5 space-y-0.5">
-                              {l.subtasks.map(s => (
-                                <li key={s.id} className="text-[var(--fs-xs)] text-gray-600 flex items-start gap-1.5">
-                                  <span className="text-gray-300 mt-0.5">•</span>
+                            <ul className="mt-2 space-y-0.5">
+                              {l.subtasks.slice(0, SUBTASK_PREVIEW).map(s => (
+                                <li key={s.id} className="text-[var(--fs-xs)] text-gray-600 flex items-center gap-1.5 min-h-[28px]">
+                                  <span className="text-gray-300">•</span>
                                   <span className="flex-1 min-w-0">{s.name}</span>
                                   {/* A task's photo is visible on this screen, so a
                                       subtask's has to be too — otherwise the only way
@@ -809,15 +850,21 @@ export default function TemplateEditPage({ params }: PageProps) {
                                       src={templateSubtaskPhotoUrl(tpl.id, l.id, s.id)}
                                       drawings={s.drawings}
                                       label={s.name}
-                                      size={32}
+                                      size={28}
                                     />
                                   )}
                                 </li>
                               ))}
+                              {l.subtasks.length > SUBTASK_PREVIEW && (
+                                <li className="text-[var(--fs-xs)] text-gray-400 flex items-center gap-1.5 min-h-[24px]">
+                                  <span className="text-gray-300">•</span>
+                                  {l.subtasks.length - SUBTASK_PREVIEW} more — open the task to see them
+                                </li>
+                              )}
                             </ul>
                           )}
                           {l.photo_instructions && (
-                            <p className="text-[var(--fs-xs)] text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
+                            <p className="text-[var(--fs-xs)] text-gray-500 mt-1.5">📋 {l.photo_instructions}</p>
                           )}
                           {l.attachments.length > 0 && (
                             <div className="mt-1.5">
@@ -825,10 +872,13 @@ export default function TemplateEditPage({ params }: PageProps) {
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button onClick={() => setEditingLine(l)} className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-gray-500 hover:text-green-700">Edit</button>
-                          <button onClick={() => deleteLine(l.id)} className="min-h-[44px] px-3 inline-flex items-center text-[var(--fs-xs)] font-semibold text-red-500 hover:text-red-700">Delete</button>
-                        </div>
+                        <RowMenu
+                          label={`Actions for ${l.name}`}
+                          items={[
+                            { label: 'Edit', onClick: () => setEditingLine(l) },
+                            { label: 'Delete', onClick: () => deleteLine(l.id), danger: true },
+                          ]}
+                        />
                       </div>
                       )}
                     </DragRow>
