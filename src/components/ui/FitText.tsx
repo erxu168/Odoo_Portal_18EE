@@ -67,7 +67,13 @@ export default function FitText({
 
     const measure = () => {
       if (box.clientHeight <= 0 || box.clientWidth <= 0) return;   // not laid out yet
-      if (fits(maxMm)) { ink.style.fontSize = ''; setMm(maxMm); return; }
+      // Write the resolved size STRAIGHT TO THE DOM as well as into state.
+      // Clearing it and trusting the re-render is what broke this: measure runs
+      // again (ResizeObserver), computes the SAME size, React skips the render
+      // because the state did not change — and the element is left with no
+      // inline size at all, falling back to the inherited 16px. On a 297x210
+      // sheet that is 4.2mm of text in a 116mm box. (Ethan, 2026-08-04.)
+      if (fits(maxMm)) { ink.style.fontSize = `${maxMm}mm`; setMm(maxMm); return; }
       // Binary search the largest size that fits. 12 rounds resolves a 60 mm
       // range to well under a tenth of a millimetre — far finer than a printer.
       let lo = minMm;
@@ -76,12 +82,13 @@ export default function FitText({
         const mid = (lo + hi) / 2;
         if (fits(mid)) lo = mid; else hi = mid;
       }
-      ink.style.fontSize = '';       // hand control back to React's style prop
       // 2% back off. The fit is measured on SCREEN; the printer re-renders the
       // same mm box with its own font rasteriser, and a size that fits by a
       // hair here can spill by a hair there — which on a label means a clipped
       // word and a wasted sticker.
-      setMm(Math.max(minMm, lo * 0.98));
+      const settled = Math.max(minMm, lo * 0.98);
+      ink.style.fontSize = `${settled}mm`;
+      setMm(settled);
     };
 
     measure();
