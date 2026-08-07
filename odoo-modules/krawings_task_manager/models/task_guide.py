@@ -201,7 +201,6 @@ class KrawingsTaskGuide(models.Model):
         }
 
     @api.model
-    @api.model
     def portal_save_questions(self, guide_id, questions, allowed_company_ids=None):
         """Replace a guide's questions with exactly `questions`.
 
@@ -264,6 +263,7 @@ class KrawingsTaskGuide(models.Model):
             Question.create(v)
         return len(vals)
 
+    @api.model
     def portal_save_guide(self, guide_id, revision, published, steps, name=None):
         """Atomically replace a guide's whole ordered content.
 
@@ -414,8 +414,15 @@ class KrawingsTaskGuide(models.Model):
         guide.write({'revision': new_rev, 'published': bool(published)})
         return {'ok': True, 'revision': new_rev}
 
+    @api.model
     def portal_delete_guide(self, guide_id=None):
-        """Delete a guide — only when no task links it. A used guide is kept
+        """Delete a guide — only when no task links it.
+
+        @api.model with a still-optional guide_id: the portal passes the id, and
+        the `else self` branch keeps any instance-style caller working. Without
+        the decorator this happened to work by accident — call_kw swallowed the
+        id as a recordset and the `else` branch picked it up — which is exactly
+        the ambiguity that cost two outages in one day. A used guide is kept
         (ondelete='restrict' also protects it at the DB level); the caller is
         told to detach it first. Unused → cascade steps/pins; any daily snapshots
         already taken remain (their source ref just goes null)."""
