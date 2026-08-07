@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useKds } from '@/lib/kds/state';
 import NumberField from '@/components/ui/NumberField';
 import type { KdsSettings, SourceStation, PrepType } from '@/types/kds';
@@ -9,6 +9,17 @@ import { STATION_META, PREP_TYPE_META } from '@/types/kds';
 export default function SettingsPanel() {
   const { settings, settingsOpen, closeSettings, updateSettings } = useKds();
   const [draft, setDraft] = useState<KdsSettings>(settings);
+  const wasOpen = useRef(false);
+
+  // This panel stays mounted for the life of the page while the real settings
+  // arrive asynchronously, so a draft seeded only at mount holds the factory
+  // DEFAULT_SETTINGS forever -- saving would then wipe the connected register
+  // and every threshold. Re-seed from the live settings on each open. Only on
+  // the closed -> open transition, so edits in progress are never clobbered.
+  useEffect(() => {
+    if (settingsOpen && !wasOpen.current) setDraft(settings);
+    wasOpen.current = settingsOpen;
+  }, [settingsOpen, settings]);
 
   if (!settingsOpen) return null;
 
