@@ -206,6 +206,9 @@ export function OverviewTab({ d }: { d: SalesPayload }) {
         <KpiTile label="Orders" value={num.format(orders)} deltas={[mk(orders, d.prevOrders, d.prevOrders, d.prevLabel), mk(orders, d.yoyOrders, d.yoyOrders, d.yoyLabel)]} />
         <KpiTile label="Avg / order" value={eur2.format(avg)} deltas={[mk(avg, prevAvg, d.prevOrders, d.prevLabel), mk(avg, yoyAvg, d.yoyOrders, d.yoyLabel)]} />
       </div>
+      {d.tips.total > 0 && (
+        <div className="tips-line">+ {eur2.format(d.tips.total)} in tips <span>collected separately — not counted in sales</span></div>
+      )}
       <div className="card">
         <div className="card-head">
           <span className="card-title">{metric === 'orders' ? 'Orders' : metric === 'avg' ? 'Avg order' : 'Sales'} trend</span>

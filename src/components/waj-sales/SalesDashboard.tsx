@@ -257,6 +257,8 @@ export default function SalesDashboard() {
         .wajs .delta { display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px; }
         .wajs .delta.up { color:var(--good); } .wajs .delta.down { color:var(--bad); }
         .wajs .delta .vs { color:var(--faint);font-weight:500;font-size:11px; }
+        .wajs .tips-line { display:flex;align-items:baseline;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:11px 14px;font-size:15px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums; }
+        .wajs .tips-line span { font-size:11px;font-weight:500;color:var(--muted); }
         .wajs .hbars { display:flex;flex-direction:column;gap:11px; }
         .wajs .hbar { display:grid;grid-template-columns:1fr auto;gap:3px 10px;align-items:baseline; }
         .wajs .hbar .nm { font-size:14px;font-weight:600;color:var(--ink);min-width:0; }

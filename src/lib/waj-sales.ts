@@ -24,6 +24,8 @@ import {
 export type { Range } from './waj-sales-time';
 
 const SOLD = ['paid', 'done', 'invoiced'];
+// Odoo's amount_total INCLUDES the tip; true sales exclude it (tips are shown separately).
+const saleOf = (o: { amount_total: number; tip_amount?: number }) => o.amount_total - (o.tip_amount || 0);
 // Food-cost % per menu group — WAJ owner's figures (2026-07-15): 30% food, 35% drinks.
 // Sides/sauces treated as food. Adjust here if the real costs change.
 const COST_PCT: Record<string, number> = { food: 30, drink: 35, side: 30, sauce: 30 };
@@ -135,8 +137,8 @@ async function periodTotals(companyId: number, startMs: number, endMs: number): 
   if (!startMs || endMs <= startMs) return { sales: 0, orders: 0 };
   const rows = await fetchAll('pos.order',
     [['company_id', '=', companyId], ['date_order', '>=', utcStr(startMs)], ['date_order', '<', utcStr(endMs)], ['state', 'in', SOLD]],
-    ['amount_total']);
-  return { sales: Math.round((rows as any[]).reduce((a, o) => a + o.amount_total, 0)), orders: rows.length };
+    ['amount_total', 'tip_amount']);
+  return { sales: Math.round((rows as any[]).reduce((a, o) => a + saleOf(o), 0)), orders: rows.length };
 }
 
 // ── main compute ────────────────────────────────────────
@@ -168,13 +170,13 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     ghostStartMs
       ? fetchAll('pos.order',
         [['company_id', '=', waj.companyId], ['date_order', '>=', utcStr(ghostStartMs)], ['date_order', '<', utcStr(ghostEndMs)], ['state', 'in', SOLD]],
-        ['date_order', 'amount_total'])
+        ['date_order', 'amount_total', 'tip_amount'])
       : Promise.resolve([]),
     // Only the comparison window NOT covered by ghostOrders needs its own totals:
     // for day/week/month that's YoY; for YTD/Year there is no separate previous period.
     b.prevLabel ? periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs) : Promise.resolve({ sales: 0, orders: 0 }),
   ]);
-  const ghostTotals = { sales: Math.round((ghostOrders as any[]).reduce((a, o) => a + o.amount_total, 0)), orders: (ghostOrders as any[]).length };
+  const ghostTotals = { sales: Math.round((ghostOrders as any[]).reduce((a, o) => a + saleOf(o), 0)), orders: (ghostOrders as any[]).length };
   const prev = b.prevLabel ? ghostTotals : { sales: 0, orders: 0 };
   const yoy = b.prevLabel ? otherTotals : ghostTotals;
 
@@ -185,7 +187,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   for (const o of ghostOrders as any[]) {
     const key = trendKeyOf(berlinParts(o.date_order), b);
     const e = ghostMap.get(key) || { s: 0, o: 0 };
-    e.s += o.amount_total; e.o += 1; ghostMap.set(key, e);
+    e.s += saleOf(o); e.o += 1; ghostMap.set(key, e);
   }
   const trendPrev: ([number, number] | null)[] = trendPts.map(p => {
     const g = ghostMap.get(p.key);
@@ -278,7 +280,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     const dates = new Map<number, Set<string>>();
     for (const o of orders as any[]) {
       const p = berlinParts(o.date_order);
-      bySales.set(p.dow, (bySales.get(p.dow) || 0) + o.amount_total);
+      bySales.set(p.dow, (bySales.get(p.dow) || 0) + saleOf(o));
       if (!dates.has(p.dow)) dates.set(p.dow, new Set());
       dates.get(p.dow)!.add(p.day);
     }
@@ -292,7 +294,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   }
 
   // ---- totals (exact, so the client never reconstructs from rounded %) ----
-  const salesTotal = Math.round((orders as any[]).reduce((a, o) => a + o.amount_total, 0));
+  const salesTotal = Math.round((orders as any[]).reduce((a, o) => a + saleOf(o), 0));
   const ordersTotal = orders.length;
 
   // ---- payments (WAJ has only Cash + Card methods; non-cash => card) ----
@@ -382,7 +384,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   for (const o of saleOrders) {
     const id = o.employee_id ? o.employee_id[0] : -1;
     const e = staffMap.get(id) || { name: o.employee_id ? String(o.employee_id[1]) : 'Unassigned', orders: 0, sales: 0 };
-    e.orders += 1; e.sales += o.amount_total; staffMap.set(id, e);
+    e.orders += 1; e.sales += saleOf(o); staffMap.set(id, e);
   }
   const staff: [string, number, number][] = Array.from(staffMap.values())
     .map(e => [e.name, e.orders, Math.round(e.sales)] as [string, number, number])
@@ -468,7 +470,7 @@ function buildTrend(orders: any[], b: Bounds): TrendPoint[] {
     for (const o of orders) {
       const h = berlinParts(o.date_order).hour;
       const e = m.get(h) || { s: 0, o: 0 };
-      e.s += o.amount_total; e.o += 1; m.set(h, e);
+      e.s += saleOf(o); e.o += 1; m.set(h, e);
     }
     return Array.from(m.keys()).sort((a, c) => a - c)
       .map(h => ({ key: h, label: String(h).padStart(2, '0'), sales: m.get(h)!.s, orders: m.get(h)!.o }));
@@ -490,7 +492,7 @@ function buildTrend(orders: any[], b: Bounds): TrendPoint[] {
     const day = berlinParts(o.date_order).day;
     const key = byMonth ? day.slice(0, 7) : day; // YYYY-MM or YYYY-MM-DD
     const e = m.get(key) || { s: 0, o: 0 };
-    e.s += o.amount_total; e.o += 1; m.set(key, e);
+    e.s += saleOf(o); e.o += 1; m.set(key, e);
   }
   return Array.from(m.keys()).sort().map(k => ({
     key: byMonth ? Number(k.slice(5, 7)) : b.weekly ? DOW.indexOf(weekdayLabel(k)) : Number(k.slice(8, 10)),
