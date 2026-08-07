@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/ui/useConfirm';
 import Toast from '@/components/ui/Toast';
 import ManagerTabs from '../../_components/ManagerTabs';
 import GuidedTutorialEditor from '../../_components/GuidedTutorialEditor';
+import AiGuideWriter from '../../_components/AiGuideWriter';
 import GuidedTutorialPlayer from '../../_components/GuidedTutorialPlayer';
 import type { LibraryGuideSummary } from '@/lib/task-guide';
 
@@ -79,6 +80,7 @@ export default function GuideLibraryPage() {
 
   // ── New-guide dialog + open editor state. ───────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
+  const [showWriter, setShowWriter] = useState(false);
   const [editing, setEditing] = useState<{ id: number; name: string } | null>(null);
   const [previewing, setPreviewing] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
@@ -180,6 +182,17 @@ export default function GuideLibraryPage() {
           New guide
         </button>
 
+        {/* The second way in. Secondary styling on purpose: writing a guide by
+            hand is still the normal path, and this one spends money. */}
+        <button
+          type="button"
+          onClick={() => setShowWriter(true)}
+          className="w-full min-h-[44px] mb-4 -mt-2 rounded-xl border border-gray-200 bg-white text-[var(--fs-sm)] font-semibold text-gray-700 flex items-center justify-center gap-2 hover:bg-gray-50 active:bg-gray-100"
+        >
+          <span aria-hidden="true">✨</span>
+          Write one from photos
+        </button>
+
         {loading ? (
           <div className="space-y-2">
             {[1, 2, 3].map(i => <div key={i} className="h-20 bg-gray-200 rounded-2xl animate-pulse" />)}
@@ -226,6 +239,13 @@ export default function GuideLibraryPage() {
         <CreateGuideDialog
           onClose={() => setShowCreate(false)}
           onCreated={openCreated}
+        />
+      )}
+
+      {showWriter && (
+        <AiGuideWriter
+          onClose={() => setShowWriter(false)}
+          onCreated={(id) => { setShowWriter(false); load(); setEditing({ id, name: '' }); }}
         />
       )}
 
