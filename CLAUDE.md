@@ -287,13 +287,28 @@ Full 24-section spec: vault `claude-memory/feedback_user_flow_process.md`.
 
 ## Test Users
 
-| Name | Role | employee_id | Password |
-|------|------|-------------|----------|
-| Hana Kim | staff | 1 | test1234 |
-| Marco Bauer | manager | 2 | test1234 |
-| Yuki Tanaka | staff | 3 | test1234 |
+**Robot accounts on STAGING** — restored 2026-08-04 after the previous ones
+(hana/marco/yuki@test.krawings.de) were deleted, which left every browser test
+unable to log in.
 
-Company: 5 / What a Jerk
+| Account | Role | Sees | Used by |
+|---|---|---|---|
+| `zz-e2e-robot-manager@test.krawings.de` | manager | WAJ (6) | `SMOKE_EMAIL`, `SMOKE_MANAGER_*` |
+| `zz-e2e-robot-staff@test.krawings.de` | staff | WAJ (6) | `SMOKE_STAFF_*` |
+| `zz-e2e-robot-smoke@test.krawings.de` | **admin** | 1,2,3,6 | pre-existing; password not held here |
+
+**Passwords live in `.env.smoke.local`** (gitignored, never committed). Playwright
+loads it automatically. Without it every browser test SKIPS rather than fails —
+so a green run proves nothing on its own; check that tests actually ran.
+
+Two things worth knowing:
+- The manager robot had `allowed_company_ids = []`, which in this app means
+  "sees nothing" — it could log in and then find every screen empty. It is now
+  scoped to WAJ.
+- These are real logins on a publicly reachable URL. They carry long random
+  passwords, are named `ZZ E2E Robot` so nobody mistakes them for staff, and are
+  scoped to one restaurant. The admin one predates this and is the widest — worth
+  retiring if nothing needs admin.
 
 ## Companies
 
