@@ -25,15 +25,17 @@ const TEMPLATE_ID = 5;
 const PHOTO_SUBTASK = 'Burger buns';
 
 /**
- * Console noise this suite deliberately does not fail on, because it is not what
- * these screens do and it predates them:
- *  - /api/auth/session-flags and /api/auth/modules 401 on the very first paint
- *    after a client-side navigation, before the session cookie is attached. Every
- *    screen in the portal does this, not just Task Manager.
+ * Console noise this suite deliberately does not fail on, because it happens
+ * BEFORE these screens exist:
+ *  - /api/auth/session-flags and /api/auth/modules 401 on the LOGIN page, where
+ *    nobody is authenticated yet. That is correct behaviour, not a defect —
+ *    measured 2026-08-08 with the listener attached only after sign-in: zero
+ *    401s across two screens. (An earlier note here claimed it happened on every
+ *    screen after navigation. It does not, and the difference matters: a real
+ *    post-login 401 would make StationGate end a station session.)
  *  - "Dashboard fetch failed" is a fetch aborted by navigating away mid-request.
- * Listed explicitly rather than filtered by a loose pattern, so a NEW error can
- * never hide behind this allowance — and so the noise stays visible as a real
- * (small, separate) thing worth fixing rather than quietly normalised.
+ * Listed as explicit patterns rather than a loose filter, so a NEW error can
+ * never hide behind the allowance.
  */
 const KNOWN_NOISE = [/401 \(Unauthorized\)/, /Dashboard fetch failed/];
 const realErrors = (all: string[]) => all.filter(e => !KNOWN_NOISE.some(rx => rx.test(e)));
