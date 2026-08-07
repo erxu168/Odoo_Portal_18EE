@@ -13,6 +13,11 @@ from .task_template_line import (
     _guess_image_mime,
 )
 
+#: Rows returned per person in the accountability drawer. Beyond this the screen
+#: says how many were left out rather than quietly ending — a report people are
+#: judged by must not truncate in silence.
+DETAIL_LIMIT = 500
+
 
 class KrawingsTaskListLine(models.Model):
     _name = 'krawings.task.list.line'
@@ -719,12 +724,17 @@ class KrawingsTaskListLine(models.Model):
         by_person = {}
         for line in self.sudo().search(domain):
             emp = line.completed_by_id
-            key = emp.id or 0
+            # Key on the identity actually being reported, not on the employee
+            # id alone. completed_by_id is ondelete='set null', so everyone whose
+            # employee record was deleted collapsed to key 0 — two departed
+            # people and every unattributed completion merged into ONE row
+            # labelled with whichever name happened to be seen first.
+            key = ('e', emp.id) if emp.id else ('n', line.completed_by_name or '')
             row = by_person.setdefault(key, {
                 'employee_id': emp.id or 0,
                 # The denormalised name is preserved on the line, so someone who
                 # has since left still shows as themselves rather than blank.
-                'name': line.completed_by_name or (emp.name if emp else '') or 'Unknown',
+                'name': line.completed_by_name or (emp.name if emp else '') or 'Not recorded',
                 'done': 0, 'on_time': 0, 'late': 0, 'untimed': 0,
                 'flagged': 0, 'late_minutes_total': 0,
             })
@@ -764,18 +774,31 @@ class KrawingsTaskListLine(models.Model):
     @api.model
     def portal_accountability_detail(self, company_id, employee_id, date_from, date_to,
                                      allowed_company_ids=None):
-        """One person's completed tasks over the range, newest first. READ ONLY."""
+        """One person's completed tasks over the range, newest first. READ ONLY.
+
+        Returns {rows, total} — total is the true match count so the screen can
+        say when it is showing only the most recent slice.
+        """
         allowed = [int(c) for c in (allowed_company_ids or [])]
         company_id = int(company_id)
         if not allowed or company_id not in allowed:
-            return []
+            return {'rows': [], 'total': 0}
         lines = self.sudo().search([
             ('list_id.company_id', '=', company_id),
             ('list_id.date', '>=', date_from),
             ('list_id.date', '<=', date_to),
             ('completed_at', '!=', False),
             ('completed_by_id', '=', int(employee_id)),
-        ], order='completed_at desc', limit=500)
+        ], order='completed_at desc', limit=DETAIL_LIMIT)
+        # The true count, so the screen can admit to truncating. A silent cap in
+        # a report used to judge people reads as "they did nothing that month".
+        total = self.sudo().search_count([
+            ('list_id.company_id', '=', company_id),
+            ('list_id.date', '>=', date_from),
+            ('list_id.date', '<=', date_to),
+            ('completed_at', '!=', False),
+            ('completed_by_id', '=', int(employee_id)),
+        ])
         out = []
         for l in lines:
             late_by = 0
@@ -794,7 +817,7 @@ class KrawingsTaskListLine(models.Model):
                 'flagged': l.review_flagged,
                 'flag_reason': l.review_flag_reason or '',
             })
-        return out
+        return {'rows': out, 'total': total}
 
     @api.model
     def portal_day_summary(self, company_id, date_str=None):

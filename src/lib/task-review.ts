@@ -184,13 +184,16 @@ export function accountability(
     [companyId, dateFrom, dateTo, departmentId, allowedCompanyIds]);
 }
 
+/** {rows, total} — total is the true match count, so the screen can say when it
+ *  is only showing the most recent slice. A silent cap in a report used to
+ *  judge people reads as "they did nothing that month". */
 export function accountabilityDetail(
   companyId: number,
   employeeId: number,
   dateFrom: string,
   dateTo: string,
   allowedCompanyIds: number[],
-): Promise<AccountabilityRow[]> {
+): Promise<{ rows: AccountabilityRow[]; total: number }> {
   return getOdoo().call('krawings.task.list.line', 'portal_accountability_detail',
     [companyId, employeeId, dateFrom, dateTo, allowedCompanyIds]);
 }

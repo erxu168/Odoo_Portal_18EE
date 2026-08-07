@@ -18,9 +18,15 @@ import { useCompany } from '@/lib/company-context';
 import { berlinToday } from '@/lib/berlin-date';
 import type { AccountabilityPerson, AccountabilityTotals, AccountabilityRow } from '@/lib/task-review';
 
+/** N days before today, anchored in UTC.
+ *
+ *  It used to parse Berlin's date as LOCAL noon and read it back in UTC, so on
+ *  a device more than twelve hours from UTC the start of the range came out a
+ *  day early while the end stayed Berlin-correct — a window quietly one day
+ *  wider than the button claimed. */
 function daysAgo(n: number): string {
-  const d = new Date(`${berlinToday()}T12:00:00`);
-  d.setDate(d.getDate() - n);
+  const d = new Date(`${berlinToday()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
 }
 
@@ -46,6 +52,8 @@ export default function TaskReportPage() {
   const [totals, setTotals] = useState<AccountabilityTotals | null>(null);
   const [open, setOpen] = useState<AccountabilityPerson | null>(null);
   const [rows, setRows] = useState<AccountabilityRow[] | null>(null);
+  /** True match count — the drawer shows only the most recent slice. */
+  const [rowTotal, setRowTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,13 +88,17 @@ export default function TaskReportPage() {
   }
 
   async function openPerson(p: AccountabilityPerson) {
-    setOpen(p); setRows(null);
+    setOpen(p); setRows(null); setRowTotal(0);
+    // A person with no employee record has nothing to look up — their
+    // completions are grouped by the name preserved on the task.
+    if (!p.employee_id) { setRows([]); return; }
     const res = await fetch(
       `/api/tasks/report?company_id=${companyId}&from=${from}&to=${to}&employee_id=${p.employee_id}`,
       { cache: 'no-store' },
     );
     const body = await res.json().catch(() => ({}));
     setRows(res.ok && body.ok ? (body.rows || []) : []);
+    setRowTotal(res.ok && body.ok ? (body.total || 0) : 0);
   }
 
   return (
@@ -202,8 +214,19 @@ export default function TaskReportPage() {
               {rows === null ? (
                 <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}</div>
               ) : rows.length === 0 ? (
-                <p className="text-[var(--fs-sm)] text-gray-400 py-6 text-center">Nothing in this period.</p>
-              ) : rows.map(r => (
+                <p className="text-[var(--fs-sm)] text-gray-400 py-6 text-center">
+                  {open.employee_id
+                    ? 'Nothing in this period.'
+                    : 'These completions are not linked to a staff record, so there is no individual list.'}
+                </p>
+              ) : (<>
+              {rowTotal > rows.length && (
+                // Never truncate in silence in a report people are judged by.
+                <p className="text-[var(--fs-xs)] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2">
+                  Showing the most recent {rows.length} of {rowTotal}. Narrow the date range to see the rest.
+                </p>
+              )}
+              {rows.map(r => (
                 <div key={r.line_id} className="py-2.5 border-b border-gray-100 last:border-0">
                   <p className="font-semibold text-[var(--fs-sm)] text-gray-800 leading-snug">{r.name}</p>
                   <p className="text-[var(--fs-xs)] text-gray-500 tabular-nums mt-0.5">
@@ -219,6 +242,7 @@ export default function TaskReportPage() {
                   )}
                 </div>
               ))}
+              </>)}
             </div>
           </div>
         </div>
