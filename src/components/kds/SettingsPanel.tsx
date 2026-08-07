@@ -47,6 +47,12 @@ export default function SettingsPanel() {
           <SyncProductsRow disabled={!draft.posConfigId} />
         </div>
 
+        <KitchenCategoriesSection
+          configId={draft.posConfigId}
+          hidden={draft.hiddenPosCategIds}
+          onChange={v => setField('hiddenPosCategIds', v)}
+        />
+
         <ProductMappingSection />
 
         <div className="kds-settings-section">
@@ -225,6 +231,78 @@ function RangeRow({ label, value, onChange }: { label: string; value: number; on
         />
         <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 30 }}>{Math.round(value * 100)}%</span>
       </div>
+    </div>
+  );
+}
+
+interface PosCategory { id: number; name: string }
+
+/**
+ * "Show in kitchen" -- untick a menu category and the kitchen screen stops
+ * showing it. Built for self-service drinks: the guest takes the bottle, the
+ * cooks should never see it on a card.
+ *
+ * Ticked = shown, so the stored value is the INVERSE (the hidden IDs). An empty
+ * hidden list means "show everything", and the server treats it the same way,
+ * so there is no way to blank the kitchen screen from here.
+ */
+function KitchenCategoriesSection({
+  configId, hidden, onChange,
+}: { configId: number; hidden: number[]; onChange: (v: number[]) => void }) {
+  const [cats, setCats] = useState<PosCategory[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!configId) { setCats([]); return; }
+    // Request token: only the latest register's response may write state.
+    let active = true;
+    setCats(null);
+    setErr(null);
+    fetch(`/api/kds/pos-categories?configId=${configId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!active) return;
+        setCats(Array.isArray(data.categories) ? data.categories : []);
+        if (data.error) setErr(String(data.error));
+      })
+      .catch(() => { if (active) { setCats([]); setErr('Could not reach Odoo'); } });
+    return () => { active = false; };
+  }, [configId]);
+
+  if (!configId) return null;
+
+  const hiddenSet = new Set(hidden);
+
+  function toggle(id: number, show: boolean) {
+    const next = new Set(hidden);
+    if (show) next.delete(id); else next.add(id);
+    onChange(Array.from(next).sort((a, b) => a - b));
+  }
+
+  return (
+    <div className="kds-settings-section">
+      <div className="kds-settings-section-title">Show in Kitchen</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', padding: '0 0 8px' }}>
+        Untick anything the kitchen doesn&apos;t make &mdash; self-service drinks, for
+        example. Hidden items disappear from the order cards, and an order with
+        nothing but hidden items never reaches the kitchen at all.
+      </div>
+      {cats === null && !err && (
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Loading&hellip;</div>
+      )}
+      {cats !== null && cats.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+          {err ? `Could not load menu categories: ${err}` : 'No menu categories on this register.'}
+        </div>
+      )}
+      {cats?.map(c => (
+        <ToggleRow
+          key={c.id}
+          label={c.name}
+          checked={!hiddenSet.has(c.id)}
+          onChange={show => toggle(c.id, show)}
+        />
+      ))}
     </div>
   );
 }

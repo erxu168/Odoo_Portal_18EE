@@ -97,6 +97,10 @@ function ensureTables() {
   if (!cols.some(c => c.name === 'pos_config_id')) {
     db.exec('ALTER TABLE kds_settings ADD COLUMN pos_config_id INTEGER DEFAULT 0');
   }
+  // CSV of pos.category IDs hidden from the kitchen (self-service drinks etc).
+  if (!cols.some(c => c.name === 'hidden_pos_categ_ids')) {
+    db.exec("ALTER TABLE kds_settings ADD COLUMN hidden_pos_categ_ids TEXT DEFAULT ''");
+  }
   // Prune completed-order stages older than 3 days so the table stays small.
   db.prepare('DELETE FROM kds_completed_orders WHERE COALESCE(done_at, ready_at, 0) < ?')
     .run(Date.now() - 3 * 24 * 3600 * 1000);
@@ -155,7 +159,17 @@ export function getKdsSettings(locationId: number): KdsSettings {
     sndRoundVol: row.snd_round_vol as number,
     autoScrollSec: (row.auto_scroll_sec as number) ?? 10,
     posConfigId: (row.pos_config_id as number) ?? 0,
+    hiddenPosCategIds: parseCategCsv(row.hidden_pos_categ_ids),
   };
+}
+
+/** "195,201" -> [195, 201]. Tolerates null, '', spaces and junk entries. */
+function parseCategCsv(raw: unknown): number[] {
+  if (typeof raw !== 'string' || !raw.trim()) return [];
+  return raw
+    .split(',')
+    .map(s => Number(s.trim()))
+    .filter(n => Number.isInteger(n) && n > 0);
 }
 
 // -- Product config read/write --
@@ -362,19 +376,24 @@ export function saveKdsSettings(s: KdsSettings): void {
   ensureTables();
   const db = getDb();
   db.prepare(`
-    INSERT INTO kds_settings (location_id, takeaway_boost, dine_warn, dine_urg, ta_warn, ta_urg, pass_warn, pass_crit, snd_new_order, snd_new_order_mode, snd_new_order_vol, snd_pass, snd_pass_mode, snd_pass_vol, snd_round, snd_round_vol, auto_scroll_sec, pos_config_id, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO kds_settings (location_id, takeaway_boost, dine_warn, dine_urg, ta_warn, ta_urg, pass_warn, pass_crit, snd_new_order, snd_new_order_mode, snd_new_order_vol, snd_pass, snd_pass_mode, snd_pass_vol, snd_round, snd_round_vol, auto_scroll_sec, pos_config_id, hidden_pos_categ_ids, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(location_id) DO UPDATE SET
       takeaway_boost=excluded.takeaway_boost, dine_warn=excluded.dine_warn, dine_urg=excluded.dine_urg,
       ta_warn=excluded.ta_warn, ta_urg=excluded.ta_urg, pass_warn=excluded.pass_warn, pass_crit=excluded.pass_crit,
       snd_new_order=excluded.snd_new_order, snd_new_order_mode=excluded.snd_new_order_mode, snd_new_order_vol=excluded.snd_new_order_vol,
       snd_pass=excluded.snd_pass, snd_pass_mode=excluded.snd_pass_mode, snd_pass_vol=excluded.snd_pass_vol,
       snd_round=excluded.snd_round, snd_round_vol=excluded.snd_round_vol, auto_scroll_sec=excluded.auto_scroll_sec,
-      pos_config_id=excluded.pos_config_id, updated_at=excluded.updated_at
+      pos_config_id=excluded.pos_config_id, hidden_pos_categ_ids=excluded.hidden_pos_categ_ids,
+      updated_at=excluded.updated_at
   `).run(
     s.locationId, s.takeawayBoost, s.dineWarn, s.dineUrg, s.taWarn, s.taUrg,
     s.passWarn, s.passCrit, s.sndNewOrder ? 1 : 0, s.sndNewOrderMode, s.sndNewOrderVol,
     s.sndPass ? 1 : 0, s.sndPassMode, s.sndPassVol, s.sndRound ? 1 : 0, s.sndRoundVol,
-    s.autoScrollSec, s.posConfigId, nowISO()
+    s.autoScrollSec, s.posConfigId,
+    // Sanitise: /api/kds/settings is a no-login route, so this may be anything.
+    (Array.isArray(s.hiddenPosCategIds) ? s.hiddenPosCategIds : [])
+      .map(Number).filter(n => Number.isInteger(n) && n > 0).join(','),
+    nowISO()
   );
 }

@@ -82,6 +82,9 @@ export interface KdsSettings {
   sndRoundVol: number;
   autoScrollSec: number; // 0 = disabled, otherwise seconds of inactivity before auto-scroll
   posConfigId: number;   // Odoo pos.config ID (0 = use mock data)
+  // Odoo pos.category IDs the kitchen must NOT see (self-service items such as
+  // bottled drinks). Empty = show everything. See src/lib/kds-hidden-products.ts.
+  hiddenPosCategIds: number[];
 }
 
 export const DEFAULT_SETTINGS: KdsSettings = {
@@ -103,6 +106,7 @@ export const DEFAULT_SETTINGS: KdsSettings = {
   sndRoundVol: 0.6,
   autoScrollSec: 10,
   posConfigId: 0,
+  hiddenPosCategIds: [],
 };
 
 // -- UI state types --

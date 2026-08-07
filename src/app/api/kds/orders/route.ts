@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getKdsSettings, getCompletedOrders } from '@/lib/kds-db';
 import { getReadyLineIds } from '@/lib/cooktimer-db';
 import { fetchFiredOrders } from '@/lib/kds-order-feed';
+import { getHiddenProductIds } from '@/lib/kds-hidden-products';
 import { KDS_LOCATION_ID } from '@/types/kds';
 
 export const dynamic = 'force-dynamic';
@@ -38,11 +39,24 @@ export async function GET(req: NextRequest) {
     // Per-line "cooked by the Cooking Timer" overlay.
     const readyLineIds = getReadyLineIds();
 
+    // Self-service categories (bottled drinks) the kitchen must not see. Applied
+    // HERE and not in the shared feed so the Cooking Timer queue is unaffected.
+    // Empty set = hide nothing, which is also what a failed lookup returns.
+    const hiddenProductIds = await getHiddenProductIds(settings.hiddenPosCategIds);
+
     const now = Date.now();
     const orders = firedOrders
       .map((o) => {
-        const lines = linesByOrder[o.id] || [];
-        if (lines.length === 0) return null; // refund-only or empty order
+        const allLines = linesByOrder[o.id] || [];
+        const lines = hiddenProductIds.size === 0
+          ? allLines
+          : allLines.filter(l => {
+              const raw = l.product_id;
+              const pid = Array.isArray(raw) ? (raw[0] as number) : (raw as number);
+              return !hiddenProductIds.has(pid);
+            });
+        // Refund-only, empty, or drinks-only order -- nothing for the kitchen to do.
+        if (lines.length === 0) return null;
 
         const orderDate = new Date((o.date_order as string).replace(' ', 'T') + 'Z');
         const waitMin = Math.max(0, Math.floor((now - orderDate.getTime()) / 60000));
