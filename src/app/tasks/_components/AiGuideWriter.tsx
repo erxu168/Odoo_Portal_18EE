@@ -35,7 +35,12 @@ interface Shot {
 interface DraftStep { photo_index: number; heading: string; explanation: string }
 interface DraftAnswer { text: string; is_correct: boolean }
 interface DraftQuestion { text: string; explain_step: number; answers: DraftAnswer[] }
-interface Draft { name: string; steps: DraftStep[]; questions: DraftQuestion[] }
+interface Draft {
+  name: string; steps: DraftStep[]; questions: DraftQuestion[];
+  /** Photos no step was written about — shown so an omission is the manager's
+   *  decision rather than something that quietly happened to them. */
+  unusedPhotos?: number[];
+}
 
 export default function AiGuideWriter({ onClose, onCreated }: {
   onClose: () => void;
@@ -334,6 +339,18 @@ export default function AiGuideWriter({ onClose, onCreated }: {
                 photos and notes, it has not been saved, nobody can see it, and it can be wrong about
                 things that matter.
               </div>
+
+              {draft.unusedPhotos && draft.unusedPhotos.length > 0 && (
+                // You photographed something on purpose and it did not make the
+                // guide. That should be a decision, not a silent omission.
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[var(--fs-xs)] leading-snug text-amber-900">
+                  <b className="font-extrabold">
+                    Photo{draft.unusedPhotos.length === 1 ? '' : 's'} {draft.unusedPhotos.map(i => i + 1).join(', ')} {draft.unusedPhotos.length === 1 ? 'was' : 'were'} not used.
+                  </b>{' '}
+                  No step was written about {draft.unusedPhotos.length === 1 ? 'it' : 'them'}. Write it
+                  again if that photo matters, or keep this and add the step yourself.
+                </div>
+              )}
 
               {draft.steps.map((s, i) => (
                 <div key={i} className="flex gap-3 py-2 border-b border-gray-100 last:border-0">

@@ -10,7 +10,7 @@
  */
 
 import { AuthError } from '@/lib/auth';
-import { sanitizeRichText, richTextToPlain } from './rich-text';
+import { sanitizeRichText, richTextToPlain, isRichText } from './rich-text';
 import { MAX_RICH_TEXT_BYTES } from './task-limits';
 import { isValidYoutubeUrl } from '@/lib/youtube-url';
 import { parseDrawings, serializeDrawings, type GuideStepSave } from '@/lib/task-guide';
@@ -51,7 +51,14 @@ export function sanitizeSteps(raw: unknown, published: boolean): GuideStepSave[]
     if (rawExplanation.length > MAX_RICH_TEXT_BYTES) {
       throw new AuthError(`Step ${i + 1}: that explanation is too large`, 400);
     }
-    const explanation = sanitizeRichText(rawExplanation);
+    // Only sanitise HTML. A PLAIN-text explanation is stored and rendered as
+    // written, so escaping it here turned "cool to <5°C" into a literal
+    // "cool to &lt;5°C" on the cook's screen — and the AI writer is the only
+    // producer of plain-text steps, so it was the only one affected. Mirrors
+    // the same short-circuit the Odoo side already has.
+    const explanation = isRichText(rawExplanation)
+      ? sanitizeRichText(rawExplanation)
+      : rawExplanation;
     const explanationText = richTextToPlain(explanation);
     if (published && !explanationText) throw new AuthError(`Step ${i + 1}: an explanation is required`, 400);
     const out: GuideStepSave = { media_type: mt, explanation: explanationText ? explanation : '' };

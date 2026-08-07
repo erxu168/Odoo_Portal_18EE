@@ -65,6 +65,10 @@ export interface GeneratedGuide {
   name: string;
   steps: GeneratedStep[];
   questions: GeneratedQuestion[];
+  /** 0-based indexes of photos the model never wrote a step about. Surfaced to
+   *  the reviewer rather than dropped: a manager who photographed the gas
+   *  isolation valve on purpose should not lose it silently. */
+  unusedPhotos: number[];
 }
 
 const RESPONSE_SCHEMA = {
@@ -234,15 +238,30 @@ export function sanitizeGenerated(raw: unknown, photoCount: number): GeneratedGu
   const g = raw as Partial<GeneratedGuide> | null;
   if (!g || typeof g !== 'object') return null;
 
-  const steps: GeneratedStep[] = (Array.isArray(g.steps) ? g.steps : [])
-    .filter(s => s && Number.isInteger(s.photo_index)
-      && s.photo_index >= 0 && s.photo_index < photoCount
-      && typeof s.explanation === 'string' && s.explanation.trim().length > 0)
-    .map(s => ({
+  const rawSteps = Array.isArray(g.steps) ? g.steps : [];
+  const steps: GeneratedStep[] = [];
+  /** Where each of the model's own step numbers ended up after filtering.
+   *  Without this a dropped step silently shifts every later question onto the
+   *  WRONG instruction — a learner who answers a knife-safety question wrongly
+   *  is sent to re-read the step about wiping a counter. */
+  const remap = new Map<number, number>();
+  const usedPhotos = new Set<number>();
+
+  rawSteps.forEach((s, i) => {
+    if (!s || !Number.isInteger(s.photo_index)) return;
+    if (s.photo_index < 0 || s.photo_index >= photoCount) return;
+    if (typeof s.explanation !== 'string' || !s.explanation.trim()) return;
+    // One step per photo. A repeated index means the model wrote two steps
+    // about one picture and skipped another entirely — keep the first.
+    if (usedPhotos.has(s.photo_index)) return;
+    usedPhotos.add(s.photo_index);
+    steps.push({
       photo_index: s.photo_index,
       heading: typeof s.heading === 'string' ? s.heading.trim().slice(0, 120) : '',
       explanation: s.explanation.trim().slice(0, 4000),
-    }));
+    });
+    remap.set(i + 1, steps.length);   // model's 1-based number → ours
+  });
   if (!steps.length) return null;
 
   const questions: GeneratedQuestion[] = (Array.isArray(g.questions) ? g.questions : [])
@@ -250,16 +269,21 @@ export function sanitizeGenerated(raw: unknown, photoCount: number): GeneratedGu
       && Array.isArray(q.answers) && q.answers.length >= 2 && q.answers.length <= 4
       && q.answers.filter(a => a && a.is_correct === true).length === 1
       && q.answers.every(a => a && typeof a.text === 'string' && a.text.trim())
-      && Number.isInteger(q.explain_step) && q.explain_step >= 1 && q.explain_step <= steps.length)
+      // Drop a question whose step did not survive, rather than range-checking
+      // the raw number and letting it land on whatever is now in that slot.
+      && Number.isInteger(q.explain_step) && remap.has(q.explain_step))
     .slice(0, MAX_QUESTIONS)
     .map(q => ({
       text: q.text.trim().slice(0, 500),
-      explain_step: q.explain_step,
+      explain_step: remap.get(q.explain_step) as number,
       answers: q.answers.map(a => ({ text: a.text.trim().slice(0, 300), is_correct: !!a.is_correct })),
     }));
 
+  const unusedPhotos: number[] = [];
+  for (let i = 0; i < photoCount; i++) if (!usedPhotos.has(i)) unusedPhotos.push(i);
+
   const name = typeof g.name === 'string' && g.name.trim() ? g.name.trim().slice(0, 200) : '';
-  return { name, steps, questions };
+  return { name, steps, questions, unusedPhotos };
 }
 
 export async function writeGuide(input: GuideWriterInput): Promise<GuideWriterResult> {
