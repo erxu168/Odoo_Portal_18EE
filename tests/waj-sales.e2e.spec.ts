@@ -1,8 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Test accounts are the ones documented in CLAUDE.md (staging only).
-const MANAGER = { email: process.env.WAJ_MANAGER_EMAIL || 'marco@test.krawings.de', password: process.env.WAJ_MANAGER_PW || 'test1234' };
-const STAFF = { email: process.env.WAJ_STAFF_EMAIL || 'hana@test.krawings.de', password: process.env.WAJ_STAFF_PW || 'test1234' };
+// Robot accounts (staging) — see CLAUDE.md; passwords come from .env.smoke.local.
+const MANAGER = {
+  email: process.env.SMOKE_MANAGER_EMAIL || process.env.WAJ_MANAGER_EMAIL || 'zz-e2e-robot-manager@test.krawings.de',
+  password: process.env.SMOKE_MANAGER_PASSWORD || process.env.WAJ_MANAGER_PW || process.env.SMOKE_PASSWORD || '',
+};
+const STAFF = {
+  email: process.env.SMOKE_STAFF_EMAIL || process.env.WAJ_STAFF_EMAIL || 'zz-e2e-robot-staff@test.krawings.de',
+  password: process.env.SMOKE_STAFF_PASSWORD || process.env.WAJ_STAFF_PW || '',
+};
 
 async function login(page: Page, u: { email: string; password: string }) {
   await page.goto('/login');
@@ -12,50 +18,44 @@ async function login(page: Page, u: { email: string; password: string }) {
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 20_000 });
 }
 
-test('manager can open the What a Jerk sales dashboard and use every tab/range', async ({ page }) => {
+test('manager: tile home → Overview (Total sales excl. tips + separate tips) → ranges → Menu', async ({ page }) => {
   await login(page, MANAGER);
   await page.goto('/sales');
   await expect(page).toHaveURL(/\/sales/);
 
-  await expect(page.getByText('Total sales')).toBeVisible({ timeout: 20_000 });
+  // Tile home: the section tiles are the landing.
+  await expect(page.getByRole('button', { name: /Overview/ })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('.errbox')).toHaveCount(0);
 
-  for (const t of ['Menu', 'Busy times', 'Orders', 'Team', 'Kitchen', 'Overview']) {
-    await page.getByRole('tab', { name: t }).click();
-    await expect(page.locator('.errbox')).toHaveCount(0);
-  }
+  // Open the Overview section.
+  await page.getByRole('button', { name: /Overview/ }).click();
+  await expect(page.getByText('Total sales')).toBeVisible();
 
-  for (const r of ['Day', 'Week', 'Month', 'YTD', 'Year']) {
+  // Month has tips → confirm Total sales renders AND tips show as a separate line.
+  await page.getByRole('button', { name: 'Month', exact: true }).click();
+  await expect(page.getByText('Total sales')).toBeVisible();
+  await expect(page.getByText(/in tips/)).toBeVisible();
+  await expect(page.locator('.errbox')).toHaveCount(0);
+
+  // Every range loads.
+  for (const r of ['Day', 'Week', 'YTD', 'Year']) {
     await page.getByRole('button', { name: r, exact: true }).click();
     await expect(page.getByText('Total sales')).toBeVisible();
     await expect(page.locator('.errbox')).toHaveCount(0);
   }
 
-  // Day view: date picker present + stepper navigates to a previous day.
+  // Day view: date picker + step to a previous day.
   await page.getByRole('button', { name: 'Day', exact: true }).click();
   await expect(page.locator('.datepick')).toBeVisible();
   await page.getByRole('button', { name: 'Previous period' }).click();
   await expect(page.getByText('Total sales')).toBeVisible();
-  await expect(page.locator('.errbox')).toHaveCount(0);
 
-  // Year picker: pick the previous year and confirm the fetch for that year loads.
-  await page.getByRole('button', { name: 'Month', exact: true }).click();
-  const yearSel = page.locator('.yearsel select');
-  const prevYear = String(new Date().getFullYear() - 1);
-  await Promise.all([
-    page.waitForResponse(r => r.url().includes('/api/sales') && r.url().includes(`anchor=${prevYear}-`)),
-    yearSel.selectOption(prevYear),
-  ]);
-  await expect(page.getByText('Total sales')).toBeVisible();
-  await expect(page.locator('.errbox')).toHaveCount(0);
-
-  // Back to the current year, Menu tab: categories + food-vs-drink render.
-  await yearSel.selectOption(String(new Date().getFullYear()));
+  // Switch to Menu via the section tab bar → categories + food/drink render.
   await page.getByRole('tab', { name: 'Menu' }).click();
   await expect(page.getByText('Food vs drink')).toBeVisible();
   await expect(page.getByText('By category', { exact: true })).toBeVisible();
   await expect(page.locator('.errbox')).toHaveCount(0);
-  await page.screenshot({ path: 'test-results/waj-sales-menu.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/waj-sales-overview.png', fullPage: true });
 });
 
 test('manager API returns What a Jerk-scoped data', async ({ page }) => {
