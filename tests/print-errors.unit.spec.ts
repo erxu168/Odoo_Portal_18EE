@@ -104,3 +104,14 @@ test('the named variant follows the same rule', () => {
   expect(namedPrintFailure('Container 3', '[delivery-uncertain] boom'))
     .toContain('Container 3 may not have printed');
 });
+
+test('a network failure does not send anyone to the printer', () => {
+  // The label never got MADE. Telling someone to wake a printer that is
+  // sitting there ready is a wild goose chase. (Codex round 4.)
+  for (const raw of ['Failed to fetch', 'NetworkError when attempting to fetch resource.', 'Load failed']) {
+    const out = explainPrintFailure(raw);
+    expect(out).toContain('wifi');
+    expect(out).toContain('printer is not the problem');
+    expect(out).not.toContain('refused the label');
+  }
+});

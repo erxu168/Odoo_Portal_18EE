@@ -110,8 +110,12 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
           else setFailed((f) => [...f, name]);
           setError((prev) => prev ?? reason);
         }
-      } catch {
+      } catch (err: unknown) {
+        // This used to record the NAME and bin the cause, which is the exact
+        // dead end this whole change set exists to remove. (Codex round 4.)
         setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
+        const reason = explainPrintFailure(err instanceof Error ? err.message : String(err));
+        setError((prev) => prev ?? reason);
       }
       await new Promise((r) => setTimeout(r, 500));
     }

@@ -88,6 +88,15 @@ export function explainPrintFailure(raw: string | null | undefined): string {
            `on the Android tablet, which uses the printer's serial connection. (${msg})`;
   }
 
+  // The label never got MADE — this is the portal not reaching its own server,
+  // which has nothing to do with the printer. Telling someone to wake a printer
+  // that is sitting there ready is a wild goose chase. (Codex round 4.)
+  if (low.includes('failed to fetch') || low.includes('networkerror') ||
+      low.includes('load failed') || low.includes('err_internet') || low.includes('fetch failed')) {
+    return `The label could not be prepared — this tablet could not reach the portal. ` +
+           `Check the wifi, then tap Print again. The printer is not the problem. (${msg})`;
+  }
+
   return `The printer refused the label: ${msg}. Check it is on and awake, then tap Print again.`;
 }
 

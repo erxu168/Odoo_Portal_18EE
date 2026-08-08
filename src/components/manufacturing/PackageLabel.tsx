@@ -343,18 +343,24 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         params.set('custom_height_mm', customHeight);
       }
       const targets = containerIds || existingContainers.map((c: any) => c.id);
-      // A container whose label already came off the printer is not printed
-      // again: rerunning the batch after a mid-way failure used to reprint
-      // every container before it. (Codex round 3.)
+      // Skip-what-already-printed applies to the WHOLE-BATCH run only. Naming
+      // containers IS the Reprint button, and the round-3 guard silently made
+      // it do nothing — a button that looks like it worked and did not is
+      // worse than the duplicate it was avoiding. (Codex round 4 caught this
+      // regression.)
+      const skipPrinted = !containerIds;
       const alreadyPrinted = printedIds;
       for (const cId of targets) {
         if (stopped.current) break;
-        if (alreadyPrinted.has(cId)) continue;
+        if (skipPrinted && alreadyPrinted.has(cId)) continue;
         setPrintingContainerId(cId);
         params.set('container_id', String(cId));
         const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
         const data = await res.json();
         if (!res.ok || data.error) { setError(data.error || `Label generation failed (${res.status})`); break; }
+        // The fetch is awaited, so the screen may have closed while it was in
+        // flight — check again before anything reaches the printer.
+        if (stopped.current) break;
         if (data.previews && data.previews.length > 0) {
           const success = await ble.print(data.previews[0].zpl);
           if (success) {
@@ -371,7 +377,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         } else {
           // The call succeeded and carried no label. Silence here read as
           // "nothing happened, tap it again". (Codex round 3.)
-          setError('The server returned no label for this container. Check the label size, then try again.');
+          setError('The server sent back no label for this container. It may have no lot or quantity yet — open the container, check it is complete, then print again.');
           break;
         }
       }

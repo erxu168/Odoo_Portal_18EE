@@ -346,6 +346,9 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         setPrintingSeq(seq);
         const zpl = await fetchZpl(i);
         if (!zpl) break;
+        // fetchZpl is awaited — the screen may have closed meanwhile. Check
+        // again before anything reaches the printer. (Codex round 4.)
+        if (stopped.current) break;
         const ok = await ble.print(zpl);
         if (!ok) { setError(printFailure(seq, ble.lastError())); break; }
         setPrintedSeqs(prev => new Set([...Array.from(prev), seq]));
