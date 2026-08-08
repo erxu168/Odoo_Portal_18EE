@@ -313,6 +313,9 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
     try {
       const zpl = await fetchZpl(idx);
       if (!zpl) return;
+      // Same await, same race as the batch path: leaving the screen while the
+      // ZPL request is in flight must not still push a label out. (Codex.)
+      if (stopped.current) return;
       const ok = await ble.print(zpl);
       if (ok) {
         setPrintedSeqs(prev => new Set([...Array.from(prev), seq]));
