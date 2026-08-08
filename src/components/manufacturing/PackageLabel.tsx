@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import NumberField from '@/components/ui/NumberField';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
@@ -8,7 +8,7 @@ import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
-import { explainPrintFailure } from '@/lib/print-errors';
+import { explainPrintFailure, namedPrintFailure } from '@/lib/print-errors';
 
 interface PackageLabelProps {
   moId: number;
@@ -108,6 +108,12 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [copiedZpl, setCopiedZpl] = useState<string | null>(null);
 
   const ble = useZebraBluetooth();
+
+  // Leaving the screen must STOP the batch — otherwise the loop keeps feeding
+  // the printer after the UI is gone and reopening interleaves two batches on
+  // one roll. (Codex round 3.)
+  const stopped = useRef(false);
+  useEffect(() => () => { stopped.current = true; }, []);
 
   const chilledDays: number = mo?.shelf_life_chilled_days || 0;
   const frozenDays: number = mo?.shelf_life_frozen_days || 0;
@@ -337,7 +343,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         params.set('custom_height_mm', customHeight);
       }
       const targets = containerIds || existingContainers.map((c: any) => c.id);
+      // A container whose label already came off the printer is not printed
+      // again: rerunning the batch after a mid-way failure used to reprint
+      // every container before it. (Codex round 3.)
+      const alreadyPrinted = printedIds;
       for (const cId of targets) {
+        if (stopped.current) break;
+        if (alreadyPrinted.has(cId)) continue;
         setPrintingContainerId(cId);
         params.set('container_id', String(cId));
         const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
@@ -349,17 +361,23 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             setPrintedIds(prev => new Set([...Array.from(prev), cId]));
             setExistingContainers(prev => prev.map(c => c.id === cId ? { ...c, label_printed: 1 } : c));
           } else {
-            setError(
-              `Container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'} did not print. ` +
-              explainPrintFailure(ble.lastError())
-            );
+            setError(namedPrintFailure(
+              `Container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}`,
+              ble.lastError(),
+            ));
             break;
           }
           if (targets.length > 1) await new Promise(r => setTimeout(r, 500));
+        } else {
+          // The call succeeded and carried no label. Silence here read as
+          // "nothing happened, tap it again". (Codex round 3.)
+          setError('The server returned no label for this container. Check the label size, then try again.');
+          break;
         }
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Print failed');
+      // A raw fetch message ("Failed to fetch") tells a cook nothing.
+      setError(explainPrintFailure(err instanceof Error ? err.message : String(err)));
     } finally {
       setPrinting(false);
       setPrintingContainerId(null);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import NumberField from '@/components/ui/NumberField';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
@@ -10,7 +10,7 @@ import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
 import type { Bom } from '@/types/manufacturing';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
-import { printFailure } from '@/lib/print-errors';
+import { explainPrintFailure, printFailure } from '@/lib/print-errors';
 
 interface LabelPrintProps {
   onBack: () => void;
@@ -141,6 +141,13 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
   const [savingTemplate, setSavingTemplate] = useState(false);
 
   const ble = useZebraBluetooth();
+
+  // Leaving the screen must STOP the batch. Without this the loop keeps feeding
+  // the printer after the UI is gone, and coming back starts a second one —
+  // two batches interleaved on one roll. ShelfLabelPrint already guards this;
+  // it was missing here. (Codex round 3.)
+  const stopped = useRef(false);
+  useEffect(() => () => { stopped.current = true; }, []);
 
   const labelDims = useMemo(() => ({
     widthMm: parseFloat(customWidth) || 55,
@@ -313,7 +320,9 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         setError(printFailure(seq, ble.lastError()));
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Print failed');
+      // A raw exception ("Failed to fetch", "NetworkError") is not something a
+      // cook can act on. Route it like every other failure. (Codex round 3.)
+      setError(explainPrintFailure(err instanceof Error ? err.message : String(err)));
     } finally {
       setPrinting(false);
       setPrintingSeq(null);
@@ -325,8 +334,15 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
     setPrinting(true);
     setError(null);
     try {
+      // Whatever already came off the printer is NOT printed again. Running the
+      // batch after a mid-way failure used to restart at label 1, so every
+      // sticker before the failure came out twice — with the same lot number.
+      // (Codex round 3.)
+      const alreadyPrinted = printedSeqs;
       for (let i = 0; i < labels.length; i++) {
+        if (stopped.current) break;
         const seq = i + 1;
+        if (alreadyPrinted.has(seq)) continue;
         setPrintingSeq(seq);
         const zpl = await fetchZpl(i);
         if (!zpl) break;
@@ -336,7 +352,9 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         if (i < labels.length - 1) await new Promise(r => setTimeout(r, 500));
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Print failed');
+      // A raw exception ("Failed to fetch", "NetworkError") is not something a
+      // cook can act on. Route it like every other failure. (Codex round 3.)
+      setError(explainPrintFailure(err instanceof Error ? err.message : String(err)));
     } finally {
       setPrinting(false);
       setPrintingSeq(null);

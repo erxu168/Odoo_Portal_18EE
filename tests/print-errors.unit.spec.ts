@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { explainPrintFailure, printFailure, isDeliveryUncertain } from '../src/lib/print-errors';
+import { explainPrintFailure, printFailure, namedPrintFailure, isDeliveryUncertain } from '../src/lib/print-errors';
 
 /**
  * WHAT A FAILED LABEL TELLS THE PERSON HOLDING THE PRINTER.
@@ -86,4 +86,21 @@ test('a numbered label names itself and keeps the reason', () => {
   const out = printFailure(3, 'Write failed: Broken pipe');
   expect(out).toContain('Label 3');
   expect(out).toContain('went to sleep');
+});
+
+test('a batch line never CLAIMS a label did not print when it cannot know', () => {
+  // "did not print" is what sends someone back to print a duplicate.
+  const certain = printFailure(2, 'Write failed: Broken pipe');
+  expect(certain).toContain('Label 2 did not print');
+
+  const unsure = printFailure(2, '[delivery-uncertain] Write failed: Broken pipe');
+  expect(unsure).toContain('Label 2 may not have printed');
+  expect(unsure).not.toContain('did not print');
+});
+
+test('the named variant follows the same rule', () => {
+  expect(namedPrintFailure('Container 3', 'Write failed: Broken pipe'))
+    .toContain('Container 3 did not print');
+  expect(namedPrintFailure('Container 3', '[delivery-uncertain] boom'))
+    .toContain('Container 3 may not have printed');
 });

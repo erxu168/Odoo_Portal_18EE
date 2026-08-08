@@ -49,6 +49,9 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
   const [failed, setFailed] = useState<string[]>([]);
   // Sent, but the link died before we could know if it came out — check, don't rerun.
   const [unsure, setUnsure] = useState<string[]>([]);
+  // Stickers already off the printer — a rerun after a mid-batch failure must
+  // not put a second one on every shelf before it. (Codex round 3.)
+  const [printedKeys, setPrintedKeys] = useState<Set<string>>(new Set());
   // Stamped so a sticker left on a shelf that was later renamed can be spotted.
   const [stamp, setStamp] = useState(true);
   // Ethan's ZD421 is 203dpi (he read the sticker). Threaded rather than assumed,
@@ -76,11 +79,17 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
     setDone(0);
     setFailed([]);
     setUnsure([]);
+    const alreadyPrinted = printedKeys;
     for (const j of jobs) {
       if (stopped.current) break;
+      const key = `${j.productId}:${j.spotId ?? 'none'}`;
+      if (alreadyPrinted.has(key)) { setDone((n) => n + 1); continue; }
       try {
         const ok = await ble.print(zplFor(j));
-        if (ok) setDone((n) => n + 1);
+        if (ok) {
+          setDone((n) => n + 1);
+          setPrintedKeys((p) => new Set([...Array.from(p), key]));
+        }
         // A failure names the label rather than aborting the batch: with 40
         // stickers you need to know WHICH three to run again, not that
         // "printing failed". The REASON goes in the banner once — repeating it

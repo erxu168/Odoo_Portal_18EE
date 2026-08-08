@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import { buildLocationTree, locationPath } from '@/lib/location-tree';
@@ -8,7 +8,7 @@ import { useLocationTypes } from '@/lib/use-location-types';
 import { locationCode, locationDeepLink } from '@/lib/location-code';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { generateLocationZPL } from '@/lib/zpl';
-import { explainPrintFailure } from '@/lib/print-errors';
+import { explainPrintFailure, isDeliveryUncertain } from '@/lib/print-errors';
 import NumberField from '@/components/ui/NumberField';
 import FitText from '@/components/ui/FitText';
 
@@ -69,6 +69,12 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
   // not a replacement.
   const zebra = useZebraBluetooth();
   const [zebraMsg, setZebraMsg] = useState<string | null>(null);
+  // Which places already came off the printer, so a rerun after a failure does
+  // not put a second sticker on every shelf before it. (Codex round 3.)
+  const [zebraDone, setZebraDone] = useState<Set<number>>(new Set());
+  // Closing the sheet must stop the loop, not leave it feeding the printer.
+  const stopped = useRef(false);
+  useEffect(() => () => { stopped.current = true; }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -171,6 +177,8 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
     // Only the labels still ticked — "Skip this one" must not waste stickers
     // on the Zebra path any more than on paper.
     for (const l of printing) {
+      if (stopped.current) break;
+      if (zebraDone.has(l.id)) { done += 1; continue; }
       const zpl = generateLocationZPL(
         // The QR toggle applies to Zebra too: with QR "off" the label still
         // prints a small classic-code QR (the ZPL layout is built around one),
@@ -184,10 +192,19 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
         // handler — it holds the value from BEFORE the print, so it was almost
         // always null and this read "the printer stopped responding" no matter
         // what actually happened. lastError() is a ref, and current.
-        setZebraMsg(`${done} of ${labels.length} printed, then: ${explainPrintFailure(zebra.lastError())}`);
+        // An uncertain label is neither printed nor not-printed. Counting it as
+        // unprinted invites a rerun that puts a second sticker on the shelf.
+        // (Codex round 3.)
+        const raw = zebra.lastError();
+        setZebraMsg(
+          isDeliveryUncertain(raw)
+            ? `${done} of ${labels.length} printed. The next one, ${l.name}, may or may not have. ${explainPrintFailure(raw)}`
+            : `${done} of ${labels.length} printed, then: ${explainPrintFailure(raw)}`
+        );
         return;
       }
       done += 1;
+      setZebraDone((p) => new Set([...Array.from(p), l.id]));
     }
     setZebraMsg(`${done} label${done === 1 ? '' : 's'} sent to ${zebra.printerName || 'the printer'}.`);
   }
@@ -305,7 +322,13 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
                     onClick={async () => {
                       setZebraMsg(null);
                       const ok = await zebra.connectTo(d.address, d.name);
+                      // A failure here used to say NOTHING — the button simply
+                      // did nothing and the reason was dropped. (Codex round 3.)
                       if (ok) setZebraMsg(`Connected to ${d.name || d.address}.`);
+                      else {
+                        const why = zebra.lastError();
+                        setZebraMsg(why ? explainPrintFailure(why) : `Could not connect to ${d.name || d.address}.`);
+                      }
                     }}
                     className="px-3 h-9 rounded-lg border border-gray-300 bg-white text-[13px] font-bold text-gray-800 active:bg-gray-100">
                     {d.name || d.address}

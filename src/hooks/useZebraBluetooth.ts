@@ -242,9 +242,13 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
           await nativeBT.connect({ address: nativeAddressRef.current });
           reconnected = true;
         } catch (retryErr: unknown) {
+          // Whether the RECONNECT worked says nothing about what the original
+          // write delivered. Unless that write provably sent nothing, this is
+          // still uncertain. (Codex round 3.)
           const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-          lastErrorRef.current = `${msg} (reconnect also failed: ${retryMsg})`;
-          setError(`Print failed: ${lastErrorRef.current}`);
+          const combined = `${msg} (reconnect also failed: ${retryMsg})`;
+          lastErrorRef.current = nothingSent ? combined : `${DELIVERY_UNCERTAIN} ${combined}`;
+          setError(`Print failed: ${combined}`);
           setStatus('error');
           return false;
         }
@@ -271,7 +275,10 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
         setStatus('connected');   // the link IS back; one tap should print
         return false;
       }
-      lastErrorRef.current = msg;
+      // No saved address to reconnect with — but the write still may or may not
+      // have landed, and that does not become knowable just because we have
+      // nowhere to reconnect to. (Codex round 3.)
+      lastErrorRef.current = nothingSent ? msg : `${DELIVERY_UNCERTAIN} ${msg}`;
       setError(`Print failed: ${msg}`);
       setStatus('error');
       return false;

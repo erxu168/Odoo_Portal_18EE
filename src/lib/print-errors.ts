@@ -91,7 +91,20 @@ export function explainPrintFailure(raw: string | null | undefined): string {
   return `The printer refused the label: ${msg}. Check it is on and awake, then tap Print again.`;
 }
 
-/** The same, for a numbered label in a batch. */
+/**
+ * The same, for a numbered label in a batch.
+ *
+ * "did not print" is a CLAIM. When the link died mid-send we cannot make it,
+ * and making it anyway is what sends someone back to print a duplicate.
+ * (Codex round 3.)
+ */
 export function printFailure(seq: number, raw: string | null | undefined): string {
-  return `Label ${seq} did not print. ${explainPrintFailure(raw)}`;
+  const lead = isDeliveryUncertain(raw) ? `Label ${seq} may not have printed.` : `Label ${seq} did not print.`;
+  return `${lead} ${explainPrintFailure(raw)}`;
+}
+
+/** The same again, for something named rather than numbered (a container). */
+export function namedPrintFailure(what: string, raw: string | null | undefined): string {
+  const lead = isDeliveryUncertain(raw) ? `${what} may not have printed.` : `${what} did not print.`;
+  return `${lead} ${explainPrintFailure(raw)}`;
 }
