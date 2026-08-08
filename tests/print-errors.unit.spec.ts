@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { explainPrintFailure, printFailure } from '../src/lib/print-errors';
+import { explainPrintFailure, printFailure, isDeliveryUncertain } from '../src/lib/print-errors';
 
 /**
  * WHAT A FAILED LABEL TELLS THE PERSON HOLDING THE PRINTER.
@@ -41,8 +41,31 @@ test('an uncertain delivery never says "just print it again"', () => {
   const out = explainPrintFailure('[delivery-uncertain] Write failed: Broken pipe');
   expect(out).toContain('LOOK AT THE PRINTER');
   expect(out).toContain('may or may not');
+  expect(out).toContain('same lot number');
   // and it must not leak the internal marker onto a kitchen screen
   expect(out).not.toContain('[delivery-uncertain]');
+});
+
+test('the uncertain message promises no reconnect it cannot deliver', () => {
+  // The native path reconnects before saying this; Web Bluetooth does not.
+  // One shared sentence must not claim both. (Codex re-review of de32d7b8.)
+  const out = explainPrintFailure('[delivery-uncertain] NetworkError: GATT operation failed');
+  expect(out).not.toContain('re-established');
+  expect(out).not.toContain('reconnected');
+});
+
+test('uncertainty outranks every other route', () => {
+  // A dropped link during a permission-flavoured failure is still uncertain:
+  // "check the printer" must win over "go fix your permissions".
+  const out = explainPrintFailure('[delivery-uncertain] Write failed: permission denied');
+  expect(out).toContain('LOOK AT THE PRINTER');
+});
+
+test('isDeliveryUncertain reads the marker, and nothing else does', () => {
+  expect(isDeliveryUncertain('[delivery-uncertain] boom')).toBe(true);
+  expect(isDeliveryUncertain('Write failed: Broken pipe')).toBe(false);
+  expect(isDeliveryUncertain(null)).toBe(false);
+  expect(isDeliveryUncertain(undefined)).toBe(false);
 });
 
 test('a browser that cannot carry the label points at the Android app', () => {

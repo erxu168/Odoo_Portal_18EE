@@ -5,7 +5,7 @@ import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
 import { generateProductStorageZPL } from '@/lib/zpl';
 import { locationCode } from '@/lib/location-code';
-import { explainPrintFailure } from '@/lib/print-errors';
+import { explainPrintFailure, isDeliveryUncertain } from '@/lib/print-errors';
 import { LABEL_SIZE_PRESETS } from '@/types/labeling';
 
 /**
@@ -47,6 +47,8 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
   const [printing, setPrinting] = useState(false);
   const [done, setDone] = useState(0);
   const [failed, setFailed] = useState<string[]>([]);
+  // Sent, but the link died before we could know if it came out — check, don't rerun.
+  const [unsure, setUnsure] = useState<string[]>([]);
   // Stamped so a sticker left on a shelf that was later renamed can be spotted.
   const [stamp, setStamp] = useState(true);
   // Ethan's ZD421 is 203dpi (he read the sticker). Threaded rather than assumed,
@@ -73,6 +75,7 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
     setError(null);
     setDone(0);
     setFailed([]);
+    setUnsure([]);
     for (const j of jobs) {
       if (stopped.current) break;
       try {
@@ -87,8 +90,15 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
           // and the next ble.print() clears the ref. React may run the updater
           // after that, which would blame this failure on a later label — or
           // on nothing at all. (Codex review of 627df661.)
-          const reason = explainPrintFailure(ble.lastError());
-          setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
+          const raw = ble.lastError();
+          const reason = explainPrintFailure(raw);
+          const name = `${j.productName} — ${j.spotLabel || 'no place'}`;
+          // "did not print" is a claim, and for a dropped link it is one we
+          // cannot make. Listing an uncertain sticker under it invites someone
+          // to run it again and put a SECOND one on the shelf. Say which it is.
+          // (Codex re-review of de32d7b8.)
+          if (isDeliveryUncertain(raw)) setUnsure((f) => [...f, name]);
+          else setFailed((f) => [...f, name]);
           setError((prev) => prev ?? reason);
         }
       } catch {
@@ -164,13 +174,21 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
             ))}
           </ul>
 
-          {(done > 0 || failed.length > 0) && (
+          {(done > 0 || failed.length > 0 || unsure.length > 0) && (
             <div className="mb-3 text-[13px]">
               <span className="font-bold text-green-700">{done} printed</span>
               {failed.length > 0 && (
                 <div className="mt-1.5 text-red-700">
                   <div className="font-bold">{failed.length} did not print:</div>
                   {failed.map((f) => <div key={f} className="text-[12px]">· {f}</div>)}
+                </div>
+              )}
+              {unsure.length > 0 && (
+                <div className="mt-1.5 text-amber-700">
+                  <div className="font-bold">
+                    {unsure.length === 1 ? 'One may have printed' : `${unsure.length} may have printed`} — check the printer before running {unsure.length === 1 ? 'it' : 'them'} again:
+                  </div>
+                  {unsure.map((f) => <div key={f} className="text-[12px]">· {f}</div>)}
                 </div>
               )}
             </div>

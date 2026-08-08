@@ -6,6 +6,7 @@
  * On mount, the hook checks if a connection already exists and restores state.
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { DELIVERY_UNCERTAIN } from '@/lib/print-errors';
 
 const ZEBRA_PARSER_SERVICE = '38eb4a80-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_WRITE_CHAR = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
@@ -17,9 +18,6 @@ const ALL_OPTIONAL_SERVICES = [ZEBRA_PARSER_SERVICE, ZEBRA_FE79_SERVICE, DIS_SER
 // never negotiated up. So this is a ceiling to start from, not a size to use.
 const MAX_CHUNK = 512;
 const MIN_CHUNK = 20;   // the guaranteed floor: MTU 23 - 3 ATT header bytes
-
-/** Marks a print whose bytes may or may not have reached the printer. */
-const DELIVERY_UNCERTAIN = '[delivery-uncertain]';
 
 /**
  * Did Chrome refuse this write because the PAYLOAD IS TOO LONG for the link?
@@ -230,7 +228,13 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       // first cut resent on any failure, reasoning that a fresh ^XA discards a
       // half-written format. Zebra documents ~JX for that, not ^XA — the
       // assumption was mine, not the printer's.)
-      const nothingSent = /not connected/i.test(msg);
+      // EXACT match, not a substring. The plugin's pre-write guard rejects with
+      // precisely "Not connected"; a POSIX I/O failure can also SAY it —
+      // ENOTCONN prints as "Transport endpoint is not connected" — and that one
+      // comes from write()/flush(), where bytes may already have gone. If the
+      // wording ever drifts we simply lose the free resend and fall through to
+      // the honest "may or may not have printed" path. (Codex re-review.)
+      const nothingSent = msg.trim().toLowerCase() === 'not connected';
 
       if (nativeAddressRef.current) {
         let reconnected = false;
@@ -250,9 +254,12 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
             setStatus('connected');
             return true;
           } catch (retryErr: unknown) {
+            // The RESEND can itself die after handing bytes over, so this is
+            // uncertain too — it must not read as a clean "nothing printed".
             const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-            lastErrorRef.current = `${msg} (resend also failed: ${retryMsg})`;
-            setError(`Print failed: ${lastErrorRef.current}`);
+            const combined = `${msg} (resend also failed: ${retryMsg})`;
+            lastErrorRef.current = `${DELIVERY_UNCERTAIN} ${combined}`;
+            setError(`Print failed: ${combined}`);
             setStatus('error');
             return false;
           }
@@ -401,20 +408,24 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
         } catch (writeErr: unknown) {
           // Shrink ONLY for a length rejection, and ONLY while nothing has
           // gone out yet. The MTU is a property of the link, so a too-big
-          // chunk always fails on the first one; a failure part-way through is
-          // something else entirely and must not be re-sent — those bytes may
-          // already be at the printer.
+          // chunk always fails on the first one.
           if (off === 0 && chunkSize > MIN_CHUNK && isLengthRejection(writeErr)) {
             chunkSize = Math.max(MIN_CHUNK, Math.floor(chunkSize / 2));
             continue;
           }
-          if (off > 0) {
-            lastErrorRef.current = `${DELIVERY_UNCERTAIN} ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`;
-            setError(`Print failed: ${lastErrorRef.current}`);
-            setStatus('error');
-            return false;
-          }
-          throw writeErr;
+          // A length rejection is refused LOCALLY, so nothing was sent and the
+          // caller may safely retry. Everything else — including on the very
+          // first chunk — may have reached the printer before it failed: a
+          // write-without-response is never acknowledged. `off === 0` says
+          // nothing about what left the radio, only about what this loop
+          // counted. (Codex re-review of de32d7b8; the first cut treated a
+          // first-chunk failure as safe.)
+          if (isLengthRejection(writeErr)) throw writeErr;
+          const wm = writeErr instanceof Error ? writeErr.message : String(writeErr);
+          lastErrorRef.current = `${DELIVERY_UNCERTAIN} ${wm}`;
+          setError(`Print failed: ${wm}`);   // never the marker — screens render this raw
+          setStatus('error');
+          return false;
         }
         off += chunk.length;
       }

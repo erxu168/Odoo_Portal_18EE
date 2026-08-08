@@ -18,8 +18,17 @@
  * (Codex review of 627df661.)
  */
 
-/** The hook's marker for a print whose bytes may or may not have landed. */
-const DELIVERY_UNCERTAIN = '[delivery-uncertain]';
+/**
+ * The hook's marker for a print whose bytes may or may not have landed.
+ * Exported so the hook stamps the same string this module strips — two copies
+ * of a magic string is one rename away from silently losing the warning.
+ */
+export const DELIVERY_UNCERTAIN = '[delivery-uncertain]';
+
+/** Did this failure leave it unknown whether the label came out? */
+export function isDeliveryUncertain(raw: string | null | undefined): boolean {
+  return (raw || '').includes(DELIVERY_UNCERTAIN);
+}
 
 /** What went wrong, and what to do about it. */
 export function explainPrintFailure(raw: string | null | undefined): string {
@@ -29,10 +38,13 @@ export function explainPrintFailure(raw: string | null | undefined): string {
   // The link died mid-send. We genuinely do not know whether the label came
   // out, and saying "try again" could put a second sticker, carrying the same
   // lot number, on a second tub. Send them to look at the printer instead.
-  if ((raw || '').includes(DELIVERY_UNCERTAIN)) {
+  if (isDeliveryUncertain(raw)) {
+    // Deliberately does NOT promise the connection is back: the native path
+    // reconnects before saying this, the Web Bluetooth path does not, and one
+    // shared sentence cannot claim both. (Codex re-review of de32d7b8.)
     return `The connection dropped while the label was being sent, so it may or may not ` +
-           `have come out. LOOK AT THE PRINTER first: if nothing came out, tap Print again. ` +
-           `The connection has been re-established. (${msg})`;
+           `have come out. LOOK AT THE PRINTER first: print again only if nothing came out, ` +
+           `otherwise you get a second sticker with the same lot number. (${msg})`;
   }
 
   if (!msg) {
