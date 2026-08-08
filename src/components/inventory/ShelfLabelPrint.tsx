@@ -5,6 +5,7 @@ import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
 import { generateProductStorageZPL } from '@/lib/zpl';
 import { locationCode } from '@/lib/location-code';
+import { explainPrintFailure } from '@/lib/print-errors';
 import { LABEL_SIZE_PRESETS } from '@/types/labeling';
 
 /**
@@ -79,8 +80,12 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
         if (ok) setDone((n) => n + 1);
         // A failure names the label rather than aborting the batch: with 40
         // stickers you need to know WHICH three to run again, not that
-        // "printing failed".
-        else setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
+        // "printing failed". The REASON goes in the banner once — repeating it
+        // per sticker would bury the list it sits above.
+        else {
+          setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
+          setError((prev) => prev ?? explainPrintFailure(ble.printError()));
+        }
       } catch {
         setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
       }

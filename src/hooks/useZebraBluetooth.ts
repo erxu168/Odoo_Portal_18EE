@@ -12,7 +12,11 @@ const ZEBRA_WRITE_CHAR = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_FE79_SERVICE = '0000fe79-0000-1000-8000-00805f9b34fb';
 const DIS_SERVICE = '0000180a-0000-1000-8000-00805f9b34fb';
 const ALL_OPTIONAL_SERVICES = [ZEBRA_PARSER_SERVICE, ZEBRA_FE79_SERVICE, DIS_SERVICE];
-const CHUNK_SIZE = 512;
+// Web Bluetooth never exposes the negotiated ATT MTU, and Chrome REJECTS a
+// write whose payload exceeds MTU-3 — as little as 20 bytes on a link that
+// never negotiated up. So this is a ceiling to start from, not a size to use.
+const MAX_CHUNK = 512;
+const MIN_CHUNK = 20;   // the guaranteed floor: MTU 23 - 3 ATT header bytes
 
 export type BleStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'printing' | 'error' | 'unsupported';
 
@@ -24,6 +28,16 @@ export interface UseZebraBluetoothReturn {
   connectTo: (address: string, name?: string) => Promise<boolean>;
   disconnect: () => void;
   print: (zpl: string) => Promise<boolean>;
+  /**
+   * Why the LAST print returned false — read it AFTER awaiting print().
+   *
+   * A function, not the `error` field, because `error` is React state: a screen
+   * that does `const ok = await ble.print(z)` is holding the `ble` object from
+   * the render that created the handler, so reading `ble.error` on the next
+   * line gets the value from BEFORE the print. That is how every screen ended
+   * up showing a bare "Print failed" while the real reason sat unread.
+   */
+  printError: () => string | null;
   isConnected: boolean;
   isSupported: boolean;
   printerName: string | null;
@@ -60,6 +74,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const serverRef = useRef<BleAny>(null);
   const serviceUuidRef = useRef<string>('');
   const nativeAddressRef = useRef<string>('');
+  const printErrorRef = useRef<string | null>(null);
 
   const nativeBT = getNativeBT();
   const isNative = !!nativeBT;
@@ -168,19 +183,40 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     try {
       setStatus('printing');
       setError(null);
+      printErrorRef.current = null;
       await nativeBT.write({ data: zpl });
       setStatus('connected');
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not connected') || msg.includes('socket') || msg.includes('closed') || msg.includes('Not connected')) {
+      // ONE reconnect-and-resend on ANY write failure we have an address for.
+      //
+      // This used to fire only when the message contained 'not connected',
+      // 'socket' or 'closed'. A printer that has gone to sleep — far and away
+      // the common case — fails the write with "Broken pipe", which matches
+      // none of those, so the retry that exists precisely for a dead socket
+      // was skipped and staff got a hard failure on a printer that was fine
+      // two minutes earlier. Matching on an OS error string was never going
+      // to hold; there is nothing to lose by simply trying once.
+      //
+      // Safe against double-printing: a broken socket delivered nothing, and
+      // a partially-written format has no ^XZ, so the printer never renders
+      // it — the retry's ^XA starts a fresh format and the fragment dies.
+      if (nativeAddressRef.current) {
         try {
           await nativeBT.connect({ address: nativeAddressRef.current });
           await nativeBT.write({ data: zpl });
           setStatus('connected');
           return true;
-        } catch { /* reconnect failed */ }
+        } catch (retryErr: unknown) {
+          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          printErrorRef.current = `${msg} (reconnect also failed: ${retryMsg})`;
+          setError(`Print failed: ${printErrorRef.current}`);
+          setStatus('error');
+          return false;
+        }
       }
+      printErrorRef.current = msg;
       setError(`Print failed: ${msg}`);
       setStatus('error');
       return false;
@@ -280,24 +316,51 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   }, []);
 
   const printBle = useCallback(async (zpl: string): Promise<boolean> => {
-    if (!writeCharRef.current) { setError('Not connected'); return false; }
+    if (!writeCharRef.current) {
+      printErrorRef.current = 'Not connected';
+      setError('Not connected');
+      return false;
+    }
     try {
       setStatus('printing');
       setError(null);
+      printErrorRef.current = null;
       const encoder = new TextEncoder();
       const data = encoder.encode(zpl);
-      for (let off = 0; off < data.length; off += CHUNK_SIZE) {
-        const chunk = data.slice(off, Math.min(off + CHUNK_SIZE, data.length));
-        if (writeCharRef.current.properties?.writeWithoutResponse) {
-          await writeCharRef.current.writeValueWithoutResponse(chunk);
-        } else {
-          await writeCharRef.current.writeValue(chunk);
+      // Chunk DOWN until the link accepts it, rather than sending a fixed 512.
+      //
+      // Web Bluetooth gives no way to ask what the MTU is, and Chrome rejects
+      // an oversized payload outright ("GATT Error: attribute length invalid"
+      // / NotSupportedError). A hard-coded 512 therefore failed on the FIRST
+      // chunk of the FIRST label on any link that had not negotiated a large
+      // MTU — which is what "Print failed for label 1" was.
+      //
+      // Retrying the SAME offset is safe: a rejected GATT write puts nothing
+      // on the wire, so no part of the label is sent twice.
+      let chunkSize = MAX_CHUNK;
+      let off = 0;
+      while (off < data.length) {
+        const chunk = data.slice(off, Math.min(off + chunkSize, data.length));
+        try {
+          if (writeCharRef.current.properties?.writeWithoutResponse) {
+            await writeCharRef.current.writeValueWithoutResponse(chunk);
+          } else {
+            await writeCharRef.current.writeValue(chunk);
+          }
+        } catch (writeErr: unknown) {
+          if (chunkSize > MIN_CHUNK) {
+            chunkSize = Math.max(MIN_CHUNK, Math.floor(chunkSize / 2));
+            continue;
+          }
+          throw writeErr;
         }
+        off += chunk.length;
       }
       setStatus('connected');
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      printErrorRef.current = msg;
       setError(`Print failed: ${msg}`);
       setStatus('error');
       return false;
@@ -316,6 +379,9 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const print = useCallback(async (zpl: string) => {
     return isNative ? printNative(zpl) : printBle(zpl);
   }, [isNative, printNative, printBle]);
+
+  /** The reason the last print() returned false. Stable across renders. */
+  const printError = useCallback(() => printErrorRef.current, []);
 
   /**
    * Connect to a device the user picked from the paired list.
@@ -343,5 +409,5 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     }
   }, [nativeBT]);
 
-  return { connect, connectTo, paired, disconnect, print, isConnected, isSupported, printerName, status, error };
+  return { connect, connectTo, paired, disconnect, print, printError, isConnected, isSupported, printerName, status, error };
 }

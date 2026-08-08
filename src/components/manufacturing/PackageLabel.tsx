@@ -8,6 +8,7 @@ import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
+import { explainPrintFailure } from '@/lib/print-errors';
 
 interface PackageLabelProps {
   moId: number;
@@ -348,7 +349,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             setPrintedIds(prev => new Set([...Array.from(prev), cId]));
             setExistingContainers(prev => prev.map(c => c.id === cId ? { ...c, label_printed: 1 } : c));
           } else {
-            setError(`Print failed for container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}`);
+            setError(
+              `Container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'} did not print. ` +
+              explainPrintFailure(ble.printError())
+            );
             break;
           }
           if (targets.length > 1) await new Promise(r => setTimeout(r, 500));

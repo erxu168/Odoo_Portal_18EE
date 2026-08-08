@@ -8,6 +8,7 @@ import { useLocationTypes } from '@/lib/use-location-types';
 import { locationCode, locationDeepLink } from '@/lib/location-code';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { generateLocationZPL } from '@/lib/zpl';
+import { explainPrintFailure } from '@/lib/print-errors';
 import NumberField from '@/components/ui/NumberField';
 import FitText from '@/components/ui/FitText';
 
@@ -172,7 +173,11 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
       );
       const ok = await zebra.print(zpl);
       if (!ok) {
-        setZebraMsg(`${done} of ${labels.length} printed, then: ${zebra.error || 'the printer stopped responding'}.`);
+        // `zebra.error` here is React state from the render that made this
+        // handler — it holds the value from BEFORE the print, so it was almost
+        // always null and this read "the printer stopped responding" no matter
+        // what actually happened. printError() is a ref, and current.
+        setZebraMsg(`${done} of ${labels.length} printed, then: ${explainPrintFailure(zebra.printError())}`);
         return;
       }
       done += 1;

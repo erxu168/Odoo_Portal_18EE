@@ -10,6 +10,7 @@ import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
 import type { Bom } from '@/types/manufacturing';
 import ZebraPrinterBar from '@/components/ui/ZebraPrinterBar';
+import { printFailure } from '@/lib/print-errors';
 
 interface LabelPrintProps {
   onBack: () => void;
@@ -309,7 +310,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
       if (ok) {
         setPrintedSeqs(prev => new Set([...Array.from(prev), seq]));
       } else {
-        setError(`Print failed for label ${seq}`);
+        setError(printFailure(seq, ble.printError()));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Print failed');
@@ -330,7 +331,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         const zpl = await fetchZpl(i);
         if (!zpl) break;
         const ok = await ble.print(zpl);
-        if (!ok) { setError(`Print failed for label ${seq}`); break; }
+        if (!ok) { setError(printFailure(seq, ble.printError())); break; }
         setPrintedSeqs(prev => new Set([...Array.from(prev), seq]));
         if (i < labels.length - 1) await new Promise(r => setTimeout(r, 500));
       }
