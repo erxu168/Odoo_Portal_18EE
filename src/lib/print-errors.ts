@@ -9,16 +9,59 @@
  *
  * The raw text is kept on the end: it is what makes a report from the kitchen
  * diagnosable, and it costs one line on screen.
+ *
+ * ORDER MATTERS. A failure that was retried carries BOTH messages — e.g.
+ * "Write failed: Broken pipe (reconnect also failed: Bluetooth permission
+ * denied)". Matching on "broken pipe" first would tell someone to wake a
+ * printer when the actual blocker is an Android permission, so the checks that
+ * name a specific, fixable cause run before the generic link ones.
+ * (Codex review of 627df661.)
  */
+
+/** The hook's marker for a print whose bytes may or may not have landed. */
+const DELIVERY_UNCERTAIN = '[delivery-uncertain]';
 
 /** What went wrong, and what to do about it. */
 export function explainPrintFailure(raw: string | null | undefined): string {
-  const msg = (raw || '').trim();
+  const msg = (raw || '').replace(DELIVERY_UNCERTAIN, '').trim();
   const low = msg.toLowerCase();
+
+  // The link died mid-send. We genuinely do not know whether the label came
+  // out, and saying "try again" could put a second sticker, carrying the same
+  // lot number, on a second tub. Send them to look at the printer instead.
+  if ((raw || '').includes(DELIVERY_UNCERTAIN)) {
+    return `The connection dropped while the label was being sent, so it may or may not ` +
+           `have come out. LOOK AT THE PRINTER first: if nothing came out, tap Print again. ` +
+           `The connection has been re-established. (${msg})`;
+  }
 
   if (!msg) {
     return 'The printer did not accept the label. Check it is on and awake, then tap Print again.';
   }
+
+  // ── Specific, fixable causes first ──
+
+  if (low.includes('permission')) {
+    return `Android is blocking Bluetooth for this app. Open Settings → Apps → Krawings ` +
+           `→ Permissions and allow Nearby devices, then try again. (${msg})`;
+  }
+
+  if (low.includes('bluetooth is turned off') || low.includes('bluetooth is disabled') ||
+      low.includes('enable it in settings')) {
+    return `Bluetooth is switched off on this device. Turn it on, then tap Connect. (${msg})`;
+  }
+
+  if (low.includes('no print service') || low.includes('config-only')) {
+    return `This printer's Bluetooth cannot receive labels — only settings. Print from the ` +
+           `Krawings app on the Android tablet instead. (${msg})`;
+  }
+
+  if (low.includes('web bluetooth not supported')) {
+    return `This browser cannot talk to the printer. Use the Krawings app on the Android ` +
+           `tablet. (${msg})`;
+  }
+
+  // ── Generic link problems ──
 
   // The socket died — printer asleep, powered off, or out of range.
   if (low.includes('broken pipe') || low.includes('socket') || low.includes('closed') ||
@@ -31,15 +74,6 @@ export function explainPrintFailure(raw: string | null | undefined): string {
   if (low.includes('attribute length') || low.includes('notsupported') || low.includes('gatt')) {
     return `This browser could not send the label over Bluetooth. Print from the Krawings app ` +
            `on the Android tablet, which uses the printer's serial connection. (${msg})`;
-  }
-
-  if (low.includes('permission')) {
-    return `Android is blocking Bluetooth for this app. Open Settings → Apps → Krawings ` +
-           `→ Permissions and allow Nearby devices, then try again. (${msg})`;
-  }
-
-  if (low.includes('bluetooth is turned off') || low.includes('disabled')) {
-    return `Bluetooth is switched off on this device. Turn it on, then tap Connect. (${msg})`;
   }
 
   return `The printer refused the label: ${msg}. Check it is on and awake, then tap Print again.`;

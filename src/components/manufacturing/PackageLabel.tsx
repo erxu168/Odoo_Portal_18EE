@@ -351,7 +351,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           } else {
             setError(
               `Container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'} did not print. ` +
-              explainPrintFailure(ble.printError())
+              explainPrintFailure(ble.lastError())
             );
             break;
           }

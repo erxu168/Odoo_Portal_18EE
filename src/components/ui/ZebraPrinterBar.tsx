@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import type { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
+import { explainPrintFailure } from '@/lib/print-errors';
 
 /**
  * THE printer bar — connection status, Connect / Change, the paired-device
@@ -45,7 +46,7 @@ export default function ZebraPrinterBar({ ble, onError }: {
           <button onClick={ble.disconnect} className="text-blue-500 active:text-blue-700">Change</button>
         ) : (
           <button
-            onClick={async () => { onError?.(null); const ok = await ble.connect(); if (!ok && ble.error) onError?.(ble.error); }}
+            onClick={async () => { onError?.(null); const ok = await ble.connect(); if (!ok) onError?.(explainPrintFailure(ble.lastError())); }}
             disabled={!ble.isSupported || ble.status === 'scanning' || ble.status === 'connecting'}
             className="text-blue-600 font-bold active:text-blue-800 disabled:opacity-50">
             Connect
@@ -86,7 +87,7 @@ export default function ZebraPrinterBar({ ble, onError }: {
           <div className="flex flex-wrap gap-2">
             {ble.paired.map((d: { address: string; name?: string }) => (
               <button key={d.address}
-                onClick={async () => { onError?.(null); const ok = await ble.connectTo(d.address, d.name); if (!ok && ble.error) onError?.(ble.error); }}
+                onClick={async () => { onError?.(null); const ok = await ble.connectTo(d.address, d.name); if (!ok) onError?.(explainPrintFailure(ble.lastError())); }}
                 className="px-3 h-9 rounded-lg border border-gray-300 bg-white text-[13px] font-bold text-gray-800 active:bg-gray-100">
                 {d.name || d.address}
               </button>

@@ -310,7 +310,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
       if (ok) {
         setPrintedSeqs(prev => new Set([...Array.from(prev), seq]));
       } else {
-        setError(printFailure(seq, ble.printError()));
+        setError(printFailure(seq, ble.lastError()));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Print failed');
@@ -331,7 +331,7 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
         const zpl = await fetchZpl(i);
         if (!zpl) break;
         const ok = await ble.print(zpl);
-        if (!ok) { setError(printFailure(seq, ble.printError())); break; }
+        if (!ok) { setError(printFailure(seq, ble.lastError())); break; }
         setPrintedSeqs(prev => new Set([...Array.from(prev), seq]));
         if (i < labels.length - 1) await new Promise(r => setTimeout(r, 500));
       }

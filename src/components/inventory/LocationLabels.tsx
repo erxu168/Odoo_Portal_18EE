@@ -144,7 +144,14 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
   async function connectZebra() {
     setZebraMsg(null);
     const ok = await zebra.connect();
-    if (!ok) setZebraMsg(zebra.error || 'Could not connect to the printer.');
+    // Same staleness trap as the print path: `zebra.error` here is the value
+    // from BEFORE the connect, so this always fell through to the generic
+    // sentence and "Bluetooth is off" never reached anyone. Cancelling the
+    // browser's chooser is not a failure, so it says nothing at all.
+    if (!ok) {
+      const why = zebra.lastError();
+      setZebraMsg(why ? explainPrintFailure(why) : null);
+    }
   }
 
   /**
@@ -176,8 +183,8 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
         // `zebra.error` here is React state from the render that made this
         // handler — it holds the value from BEFORE the print, so it was almost
         // always null and this read "the printer stopped responding" no matter
-        // what actually happened. printError() is a ref, and current.
-        setZebraMsg(`${done} of ${labels.length} printed, then: ${explainPrintFailure(zebra.printError())}`);
+        // what actually happened. lastError() is a ref, and current.
+        setZebraMsg(`${done} of ${labels.length} printed, then: ${explainPrintFailure(zebra.lastError())}`);
         return;
       }
       done += 1;

@@ -18,6 +18,28 @@ const ALL_OPTIONAL_SERVICES = [ZEBRA_PARSER_SERVICE, ZEBRA_FE79_SERVICE, DIS_SER
 const MAX_CHUNK = 512;
 const MIN_CHUNK = 20;   // the guaranteed floor: MTU 23 - 3 ATT header bytes
 
+/** Marks a print whose bytes may or may not have reached the printer. */
+const DELIVERY_UNCERTAIN = '[delivery-uncertain]';
+
+/**
+ * Did Chrome refuse this write because the PAYLOAD IS TOO LONG for the link?
+ *
+ * Only that answer makes resending the same bytes safe — the value is rejected
+ * locally, before anything goes on the wire. A NetworkError (busy stack, the
+ * connection changed, the operation was invalidated) can land AFTER the bytes
+ * were transmitted, and a write-without-response is never acknowledged, so
+ * retrying one of those can print the label twice. (Codex review of 627df661.)
+ */
+function isLengthRejection(err: unknown): boolean {
+  const e = err as { name?: string; message?: string } | null;
+  const text = `${e?.name ?? ''} ${e?.message ?? String(err)}`.toLowerCase();
+  return text.includes('notsupportederror')
+    || text.includes('attribute length')
+    || text.includes('value length')
+    || text.includes('longer than')
+    || text.includes('exceeds');
+}
+
 export type BleStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'printing' | 'error' | 'unsupported';
 
 export interface UseZebraBluetoothReturn {
@@ -29,15 +51,19 @@ export interface UseZebraBluetoothReturn {
   disconnect: () => void;
   print: (zpl: string) => Promise<boolean>;
   /**
-   * Why the LAST print returned false — read it AFTER awaiting print().
+   * Why the last connect() / connectTo() / print() returned false — read it
+   * straight after awaiting the call.
    *
    * A function, not the `error` field, because `error` is React state: a screen
    * that does `const ok = await ble.print(z)` is holding the `ble` object from
    * the render that created the handler, so reading `ble.error` on the next
-   * line gets the value from BEFORE the print. That is how every screen ended
-   * up showing a bare "Print failed" while the real reason sat unread.
+   * line gets the value from BEFORE the call. That is how every screen ended up
+   * showing a bare "Print failed" while the real reason sat unread — and why
+   * LocationLabels always said "the printer stopped responding" no matter what
+   * happened. Covers CONNECT too: the same read follows every ble.connect(),
+   * so "Bluetooth is off" and "permission denied" were vanishing the same way.
    */
-  printError: () => string | null;
+  lastError: () => string | null;
   isConnected: boolean;
   isSupported: boolean;
   printerName: string | null;
@@ -74,7 +100,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const serverRef = useRef<BleAny>(null);
   const serviceUuidRef = useRef<string>('');
   const nativeAddressRef = useRef<string>('');
-  const printErrorRef = useRef<string | null>(null);
+  const lastErrorRef = useRef<string | null>(null);
 
   const nativeBT = getNativeBT();
   const isNative = !!nativeBT;
@@ -121,10 +147,12 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
 
       setStatus('scanning');
       setError(null);
+      lastErrorRef.current = null;
 
       const { enabled } = await nativeBT.isEnabled();
       if (!enabled) {
-        setError('Bluetooth is turned off. Enable it in Settings.');
+        lastErrorRef.current = 'Bluetooth is turned off. Enable it in Settings.';
+        setError(lastErrorRef.current);
         setStatus('error');
         return false;
       }
@@ -144,11 +172,10 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
         // as e.g. "D2J203404050"), which no name rule can recognise. Say what
         // was actually found and let them point at the right one.
         setPaired(devices || []);
-        setError(
-          (devices || []).length > 0
-            ? 'None of the paired devices is named like a Zebra. Many printers use their serial number as the Bluetooth name — pick yours from the list.'
-            : 'No paired Bluetooth devices at all. Pair the printer in Android Settings \u2192 Bluetooth first.'
-        );
+        lastErrorRef.current = (devices || []).length > 0
+          ? 'None of the paired devices is named like a Zebra. Many printers use their serial number as the Bluetooth name — pick yours from the list.'
+          : 'No paired Bluetooth devices at all. Pair the printer in Android Settings \u2192 Bluetooth first.';
+        setError(lastErrorRef.current);
         setStatus('error');
         return false;
       }
@@ -163,6 +190,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      lastErrorRef.current = msg;
       setError(`BT connection failed: ${msg}`);
       setStatus('error');
       return false;
@@ -183,40 +211,60 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     try {
       setStatus('printing');
       setError(null);
-      printErrorRef.current = null;
+      lastErrorRef.current = null;
       await nativeBT.write({ data: zpl });
       setStatus('connected');
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // ONE reconnect-and-resend on ANY write failure we have an address for.
+
+      // Resend AUTOMATICALLY only when nothing can have reached the printer.
       //
-      // This used to fire only when the message contained 'not connected',
-      // 'socket' or 'closed'. A printer that has gone to sleep — far and away
-      // the common case — fails the write with "Broken pipe", which matches
-      // none of those, so the retry that exists precisely for a dead socket
-      // was skipped and staff got a hard failure on a printer that was fine
-      // two minutes earlier. Matching on an OS error string was never going
-      // to hold; there is nothing to lose by simply trying once.
-      //
-      // Safe against double-printing: a broken socket delivered nothing, and
-      // a partially-written format has no ^XZ, so the printer never renders
-      // it — the retry's ^XA starts a fresh format and the fragment dies.
+      // The plugin's `outputStream == null` guard rejects with "Not connected"
+      // BEFORE it writes a byte, so resending there is free. Anything else is
+      // an IOException from write() or flush(), and an Android Bluetooth write
+      // is asynchronous — it cannot confirm delivery, so the whole format may
+      // already have reached the printer. Resending on that would put a second
+      // sticker, with the same lot number, on a second tub. For a traceability
+      // label that is worse than a wasted tap. (Codex review of 627df661; the
+      // first cut resent on any failure, reasoning that a fresh ^XA discards a
+      // half-written format. Zebra documents ~JX for that, not ^XA — the
+      // assumption was mine, not the printer's.)
+      const nothingSent = /not connected/i.test(msg);
+
       if (nativeAddressRef.current) {
+        let reconnected = false;
         try {
           await nativeBT.connect({ address: nativeAddressRef.current });
-          await nativeBT.write({ data: zpl });
-          setStatus('connected');
-          return true;
+          reconnected = true;
         } catch (retryErr: unknown) {
           const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-          printErrorRef.current = `${msg} (reconnect also failed: ${retryMsg})`;
-          setError(`Print failed: ${printErrorRef.current}`);
+          lastErrorRef.current = `${msg} (reconnect also failed: ${retryMsg})`;
+          setError(`Print failed: ${lastErrorRef.current}`);
           setStatus('error');
           return false;
         }
+        if (reconnected && nothingSent) {
+          try {
+            await nativeBT.write({ data: zpl });
+            setStatus('connected');
+            return true;
+          } catch (retryErr: unknown) {
+            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+            lastErrorRef.current = `${msg} (resend also failed: ${retryMsg})`;
+            setError(`Print failed: ${lastErrorRef.current}`);
+            setStatus('error');
+            return false;
+          }
+        }
+        // Reconnected, but we cannot say whether the label came out. Say so —
+        // the marker is what routes this to the "check the printer" message.
+        lastErrorRef.current = `${DELIVERY_UNCERTAIN} ${msg}`;
+        setError(`Print failed: ${msg}`);
+        setStatus('connected');   // the link IS back; one tap should print
+        return false;
       }
-      printErrorRef.current = msg;
+      lastErrorRef.current = msg;
       setError(`Print failed: ${msg}`);
       setStatus('error');
       return false;
@@ -227,12 +275,14 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const connectBle = useCallback(async (): Promise<boolean> => {
     if (!isBleSupported) {
       setStatus('unsupported');
-      setError('Web Bluetooth not supported. Use the Krawings app on Android for BT Classic printing.');
+      lastErrorRef.current = 'Web Bluetooth not supported. Use the Krawings app on Android for BT Classic printing.';
+      setError(lastErrorRef.current);
       return false;
     }
     try {
       setStatus('scanning');
       setError(null);
+      lastErrorRef.current = null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nav = navigator as any;
       let device: BleAny = null;
@@ -287,11 +337,11 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
         } catch { /* not found */ }
       }
       if (!writeChar) {
-        setError(
-          `Connected to ${device.name} but no print service found.\n` +
-          `The ZD420T base BLE is config-only.\n` +
-          `Use the Krawings Android app for BT Classic printing, or install the Ethernet module.`
-        );
+        lastErrorRef.current =
+          `Connected to ${device.name} but no print service found. ` +
+          `The ZD420T base BLE is config-only. ` +
+          `Use the Krawings Android app for BT Classic printing, or install the Ethernet module.`;
+        setError(lastErrorRef.current);
         setStatus('error');
         return false;
       }
@@ -302,6 +352,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('cancelled') || msg.includes('canceled')) { setStatus('idle'); return false; }
+      lastErrorRef.current = msg;
       setError(`Connection failed: ${msg}`);
       setStatus('error');
       return false;
@@ -317,14 +368,14 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
 
   const printBle = useCallback(async (zpl: string): Promise<boolean> => {
     if (!writeCharRef.current) {
-      printErrorRef.current = 'Not connected';
+      lastErrorRef.current = 'Not connected';
       setError('Not connected');
       return false;
     }
     try {
       setStatus('printing');
       setError(null);
-      printErrorRef.current = null;
+      lastErrorRef.current = null;
       const encoder = new TextEncoder();
       const data = encoder.encode(zpl);
       // Chunk DOWN until the link accepts it, rather than sending a fixed 512.
@@ -348,9 +399,20 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
             await writeCharRef.current.writeValue(chunk);
           }
         } catch (writeErr: unknown) {
-          if (chunkSize > MIN_CHUNK) {
+          // Shrink ONLY for a length rejection, and ONLY while nothing has
+          // gone out yet. The MTU is a property of the link, so a too-big
+          // chunk always fails on the first one; a failure part-way through is
+          // something else entirely and must not be re-sent — those bytes may
+          // already be at the printer.
+          if (off === 0 && chunkSize > MIN_CHUNK && isLengthRejection(writeErr)) {
             chunkSize = Math.max(MIN_CHUNK, Math.floor(chunkSize / 2));
             continue;
+          }
+          if (off > 0) {
+            lastErrorRef.current = `${DELIVERY_UNCERTAIN} ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`;
+            setError(`Print failed: ${lastErrorRef.current}`);
+            setStatus('error');
+            return false;
           }
           throw writeErr;
         }
@@ -360,7 +422,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      printErrorRef.current = msg;
+      lastErrorRef.current = msg;
       setError(`Print failed: ${msg}`);
       setStatus('error');
       return false;
@@ -381,7 +443,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   }, [isNative, printNative, printBle]);
 
   /** The reason the last print() returned false. Stable across renders. */
-  const printError = useCallback(() => printErrorRef.current, []);
+  const lastError = useCallback(() => lastErrorRef.current, []);
 
   /**
    * Connect to a device the user picked from the paired list.
@@ -395,6 +457,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     try {
       setStatus('connecting');
       setError(null);
+      lastErrorRef.current = null;
       await nativeBT.connect({ address });
       nativeAddressRef.current = address;
       setPrinterName(name || 'Zebra Printer');
@@ -403,11 +466,12 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      lastErrorRef.current = msg;
       setError(`Could not connect to ${name || address}: ${msg}`);
       setStatus('error');
       return false;
     }
   }, [nativeBT]);
 
-  return { connect, connectTo, paired, disconnect, print, printError, isConnected, isSupported, printerName, status, error };
+  return { connect, connectTo, paired, disconnect, print, lastError, isConnected, isSupported, printerName, status, error };
 }

@@ -83,8 +83,13 @@ export default function ShelfLabelPrint({ jobs, onClose }: {
         // "printing failed". The REASON goes in the banner once — repeating it
         // per sticker would bury the list it sits above.
         else {
+          // Read the reason NOW, not inside the updater: the batch carries on,
+          // and the next ble.print() clears the ref. React may run the updater
+          // after that, which would blame this failure on a later label — or
+          // on nothing at all. (Codex review of 627df661.)
+          const reason = explainPrintFailure(ble.lastError());
           setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
-          setError((prev) => prev ?? explainPrintFailure(ble.printError()));
+          setError((prev) => prev ?? reason);
         }
       } catch {
         setFailed((f) => [...f, `${j.productName} — ${j.spotLabel || 'no place'}`]);
