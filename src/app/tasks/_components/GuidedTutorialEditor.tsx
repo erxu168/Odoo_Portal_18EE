@@ -34,9 +34,10 @@ import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/l
 import { compressImage } from './photoUpload';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 import RichTextEditor from '@/components/ui/RichTextEditor';
-import { toEditorHtml, richTextToPlain } from '@/lib/rich-text';
+import { toEditorHtml, richTextToPlain, plainTextToRichText } from '@/lib/rich-text';
 import { useConfirm } from '@/components/ui/useConfirm';
 import GuideQuestionsEditor, { type GuideQuestionRead } from './GuideQuestionsEditor';
+import GuideImprovePanel from './GuideImprovePanel';
 
 /*
  * GuidedTutorialEditor — manager/admin editor for a REUSABLE library guide
@@ -883,6 +884,24 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                     </div>
                   </SortableContext>
                 </DndContext>
+              )}
+
+              {/* Finishing the draft sits with the steps it rewrites. It
+                  PROPOSES only: keeping a suggestion edits the step here, and
+                  the ordinary Save is still what commits it. */}
+              {steps.length > 0 && (
+                <GuideImprovePanel
+                  guideId={guideId}
+                  disabled={frozen}
+                  stepText={(n) => richTextToPlain(steps[n - 1]?.explanation || '')}
+                  onApply={(n, text) => {
+                    const target = steps[n - 1];
+                    if (!target) return;
+                    // The editor stores rich text; the model returns plain
+                    // words, so they are wrapped rather than injected raw.
+                    patchStep(target.key, { explanation: plainTextToRichText(text) });
+                  }}
+                />
               )}
 
               {/* Questions come AFTER the steps, because a question points at
