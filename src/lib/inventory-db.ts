@@ -3095,11 +3095,18 @@ export function applyMeasuredPackSize(
     // AND rescale every restaurant's par by the wrong divisor — the pars would
     // be silently wrong and nothing would say so. Re-read inside the
     // transaction and refuse if it moved. (Codex, 2026-08-08.)
-    const live = db.prepare('SELECT units_per_crate FROM product_flags WHERE odoo_product_id = ?')
-      .get(productId) as { units_per_crate: number | null } | undefined;
+    const live = db.prepare(
+      'SELECT units_per_crate, pack_varies FROM product_flags WHERE odoo_product_id = ?',
+    ).get(productId) as { units_per_crate: number | null; pack_varies: number | null } | undefined;
     const liveSize = live?.units_per_crate != null && live.units_per_crate > 0
       ? Number(live.units_per_crate) : null;
     if (liveSize !== (from != null && from > 0 ? from : null)) return -1;   // -1 = conflict
+    // The gate lives HERE, not only in the route. A check made before the
+    // transaction opens can go stale, and a future caller of this helper would
+    // otherwise inherit a way to overwrite a supplier-declared pack weight with
+    // a measurement — the exact thing the whole question exists to prevent.
+    // (Codex, 2026-08-08. Its own unit tests were bypassing the route's check.)
+    if (live?.pack_varies !== 1) return -1;
 
     setProductCrateSize(productId, to, userId);
     // No previous size means no pack-based par to preserve: the stored base

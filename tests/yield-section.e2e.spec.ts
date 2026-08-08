@@ -95,11 +95,15 @@ test('a kg product can be weighed in and out, and the numbers add up', async ({ 
     await expect(page.getByRole('button', { name: /Record a yield test/i }))
       .toBeVisible({ timeout: 30000 });   // the form closed, so the save landed
 
-    // It reached the database with the numbers that were typed.
+    // CAPTURE THE ID BEFORE ASSERTING ANYTHING. Working it out afterwards by
+    // diffing two list snapshots means a failed assertion leaves `createdId`
+    // null and the finally block with nothing to delete — the cleanup fails
+    // exactly when the test does. (Codex, 2026-08-08.)
     const after = await listTests(page, PLANTAIN);
     const mine = after.filter((t) => !beforeIds.has(t.id));
+    createdId = mine.length ? mine[0].id : null;
+
     expect(mine).toHaveLength(1);
-    createdId = mine[0].id;
     expect(mine[0].raw_qty).toBeCloseTo(Number(RAW), 6);
     expect(mine[0].pieces).toBe(Number(PIECES));
     expect(mine[0].usable_qty).toBeCloseTo(Number(USABLE), 6);

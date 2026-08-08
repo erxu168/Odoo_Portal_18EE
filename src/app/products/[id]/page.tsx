@@ -26,7 +26,6 @@ function ProductRecord({ params }: { params: { id: string } }) {
   const [product, setProduct] = useState<any | null>(null);
   const [hasImage, setHasImage] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
-  const [canRecordYield, setCanRecordYield] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,8 +50,6 @@ function ProductRecord({ params }: { params: { id: string } }) {
             ? me.capabilities
             : me?.role ? allowedActionKeysForRole(me.role as Role, {}) : [];
           setCanEdit(caps.includes(RECORD_EDIT_CAP.product));
-          // Its own key: staff see this page read-only but may still weigh.
-          setCanRecordYield(caps.includes('inventory.yield.record'));
         })
         .catch(() => { /* stays read-only */ });
 
@@ -93,7 +90,6 @@ function ProductRecord({ params }: { params: { id: string } }) {
       product={product}
       hasImage={hasImage}
       readOnly={!canEdit}
-      canRecordYield={canRecordYield}
       justCreated={justCreated}
       onClose={back}
       onChanged={(patch) => {

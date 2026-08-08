@@ -52,15 +52,9 @@ async function downscale(file: File, maxDim = 1024, quality = 0.7): Promise<stri
   } catch { return dataUrl; }
 }
 
-export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, canRecordYield, fullPageHref, baseZ = 100, justCreated = false }: {
+export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100, justCreated = false }: {
   product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false; active?: boolean; is_draft?: boolean };
   hasImage: boolean;
-  /**
-   * May this person record a yield test? Separate from `readOnly` because
-   * weighing is a KITCHEN job on a page staff otherwise see read-only. Left
-   * undefined by callers that predate it, which keeps their old behaviour.
-   */
-  canRecordYield?: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
   onChanged: (patch: {
@@ -1022,7 +1016,6 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             product={product}
             uomName={uomName}
             standardPrice={standardPrice}
-            canRecord={canRecordYield}
             flags={{
               units_per_crate: savedPackSize.trim() === '' ? null : Number(savedPackSize),
               pack_label: packLabel || null,

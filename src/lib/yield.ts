@@ -181,12 +181,13 @@ export function summarise(tests: readonly YieldTest[], window = ROLLING_WINDOW):
 export function trueCost(purchasePrice: number | null | undefined, fraction: number | null): number | null {
   if (typeof purchasePrice !== 'number' || !Number.isFinite(purchasePrice) || purchasePrice <= 0) return null;
   if (typeof fraction !== 'number' || !Number.isFinite(fraction) || fraction <= 0) return null;
-  const cost = purchasePrice / fraction;
-  // Both operands can be finite and the quotient still overflow — a yield of
-  // 1e-308 gives Infinity, and "\u20acInfinity / kg" is not a price. Checking the
-  // RESULT is the only guard that holds. (Codex, 2026-08-08.)
-  if (!Number.isFinite(cost)) return null;
-  return Math.round(cost * 100) / 100;
+  // Check the number that is actually RETURNED. Both operands can be finite and
+  // the quotient overflow (a yield of 1e-308); and a quotient can be finite
+  // while ROUNDING it overflows (2 / 1e-307 is 2e307, times 100 is Infinity).
+  // Guarding the operands, or even the quotient, still let "\u20acInfinity / kg"
+  // reach a price line. (Codex, 2026-08-08.)
+  const cost = Math.round((purchasePrice / fraction) * 100) / 100;
+  return Number.isFinite(cost) ? cost : null;
 }
 
 /** Everything wrong with a test, in the words the person typing it needs. */

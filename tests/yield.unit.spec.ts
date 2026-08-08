@@ -266,6 +266,7 @@ test('applying a measured size keeps every restaurant\'s par the same in packs',
   db.initInventoryTables();
   const P = 7917;
   db.setProductCrateSize(P, 0.03, 1);
+  db.setProductPackVaries(P, true, 1);
   // Two restaurants, both wanting ten bunches on hand: 0.30 kg at 0.030 each.
   db.setProductPar(P, CO, 0.3, 0.6, 1);
   db.setProductPar(P, CO_OTHER, 0.3, null, 1);
@@ -284,6 +285,7 @@ test('a pack size that moved under us is refused, not overwritten', () => {
   db.initInventoryTables();
   const P = 7919;
   db.setProductCrateSize(P, 0.03, 1);
+  db.setProductPackVaries(P, true, 1);
   db.setProductPar(P, CO, 0.3, null, 1);
 
   // Somebody else set it to 0.04 after this caller read 0.03. Writing anyway
@@ -307,14 +309,30 @@ test('an idempotency key never leaves the server', () => {
 });
 
 test('an impossibly small yield gives no price rather than Infinity', () => {
-  expect(Y.trueCost(2, 1e-308)).toBeNull();
+  expect(Y.trueCost(2, 1e-308)).toBeNull();     // the quotient overflows
+  expect(Y.trueCost(2, 1e-307)).toBeNull();     // the quotient is finite, rounding is not
   expect(Y.trueCost(2, 0.5)).toBe(4);
+});
+
+test('the measured write refuses a pack nobody said varies', () => {
+  db.initInventoryTables();
+  const P = 7921;
+  db.setProductCrateSize(P, 10, 1);             // a declared 10 kg bucket
+  db.setProductPackVaries(P, null, 1);          // nobody has answered
+  expect(db.applyMeasuredPackSize(P, 10, 9.85, 1).conflict).toBe(true);
+  db.setProductPackVaries(P, false, 1);         // answered: it is exact
+  expect(db.applyMeasuredPackSize(P, 10, 9.85, 1).conflict).toBe(true);
+  expect(db.getProductFlags([P])[0].units_per_crate).toBe(10);
+  db.setProductPackVaries(P, true, 1);          // only now
+  expect(db.applyMeasuredPackSize(P, 10, 9.85, 1).conflict).toBeUndefined();
+  expect(db.getProductFlags([P])[0].units_per_crate).toBe(9.85);
 });
 
 test('setting a FIRST pack size does not touch a par', () => {
   db.initInventoryTables();
   const P = 7918;
   db.setProductCrateSize(P, null, 1);
+  db.setProductPackVaries(P, true, 1);
   db.setProductPar(P, CO, 5, null, 1);
   const { parsRescaled } = db.applyMeasuredPackSize(P, null, 0.25, 1);
   expect(parsRescaled).toBe(0);

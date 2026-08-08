@@ -21,7 +21,7 @@ import {
   initInventoryTables, getYieldTests, addYieldTest, deleteYieldTest,
   type YieldTestRow,
 } from '@/lib/inventory-db';
-import { summarise, validate, normalisePieces, type YieldTest } from '@/lib/yield';
+import { summarise, validate, normalisePieces, eligibility, type YieldTest } from '@/lib/yield';
 import { indexSupplierPrices, resolveBuyPrice, type ResolvedPrice } from '@/lib/purchase-price';
 import { getOdoo } from '@/lib/odoo';
 
@@ -71,6 +71,19 @@ async function buyPrice(productId: number): Promise<ResolvedPrice | null> {
   }
 }
 
+/** The product's base unit, straight from Odoo. Null when Odoo cannot be asked. */
+async function productUom(productId: number): Promise<string | null> {
+  try {
+    const rows = await getOdoo().searchRead('product.product', [['id', '=', productId]], ['uom_id'], { limit: 1 });
+    const u = (rows as { uom_id?: [number, string] }[])[0]?.uom_id;
+    // A product that does not exist has no unit, and '' fails eligibility —
+    // which is the right answer for "record a test against product 99999".
+    return Array.isArray(u) ? u[1] : '';
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: Request, { params }: { params: { product_id: string } }) {
   const denied = moduleForbidden('inventory');
   if (denied) return denied;
@@ -84,7 +97,12 @@ export async function GET(request: Request, { params }: { params: { product_id: 
     initInventoryTables();
     const tests = getYieldTests(productId);
     const price = await buyPrice(productId);
-    return NextResponse.json({ tests, summary: summarise(tests.map(asTest)), price });
+    // WHO IS ASKING is answered here, not by the caller. ProductDetail is
+    // mounted from three screens and only one of them knows the user's
+    // capabilities; the other two would have had to guess from "can this person
+    // edit the product", which is a different question. (Codex, 2026-08-08.)
+    const canRecord = roleCan(user.role, 'inventory.yield.record', getPermissionOverrides());
+    return NextResponse.json({ tests, summary: summarise(tests.map(asTest)), price, can_record: canRecord });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[yield GET]', msg);
@@ -132,10 +150,35 @@ export async function POST(request: Request, { params }: { params: { product_id:
     if (raw_qty == null || usable_qty == null) {
       return NextResponse.json({ error: 'Both weights are required.' }, { status: 400 });
     }
-    const pieces = body.pieces == null || body.pieces === '' ? null : strict(body.pieces);
+    // Blank means "nobody counted". NONSENSE does not: `strict('abc')` is null
+    // too, and treating the two the same silently dropped a typo'd piece count
+    // and saved the test without it. (Codex, 2026-08-08.)
+    let pieces: number | null = null;
+    if (body.pieces != null && body.pieces !== '') {
+      pieces = strict(body.pieces);
+      if (pieces == null) {
+        return NextResponse.json({ error: 'Pieces must be a number, or left empty.' }, { status: 400 });
+      }
+    }
 
     const bad = validate({ raw_qty, usable_qty, pieces });
     if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+
+    // THE UNIT DECIDES whether this product can have a yield test at all, and
+    // the browser is not allowed to answer that. The screen can be showing a
+    // stale unit (ProductDetail is reused across products without a key, so a
+    // switch from a kg product to a Units one can leave the old unit in its
+    // props), and a direct request answers nothing at all. Checked here, once,
+    // on an action a kitchen performs a few times a week. (Codex, 2026-08-08.)
+    const uom = await productUom(productId);
+    if (uom == null) {
+      return NextResponse.json(
+        { error: 'Could not reach Odoo to check this product. Nothing was saved.' },
+        { status: 503 },
+      );
+    }
+    const elig = eligibility(uom);
+    if (!elig.canTest) return NextResponse.json({ error: elig.reason }, { status: 400 });
 
     initInventoryTables();
     const note = typeof body.note === 'string' && body.note.trim()
@@ -144,14 +187,17 @@ export async function POST(request: Request, { params }: { params: { product_id:
     // cannot have the second save silently return the first product's test.
     const clientKey = typeof body.client_key === 'string' && body.client_key.trim()
       ? `${productId}:${body.client_key.trim().slice(0, 80)}` : null;
-    addYieldTest({
+    // Return the row itself, not just the new list: a caller that has to undo
+    // its own write must know WHICH row is its own, and diffing two list
+    // snapshots to work that out fails exactly when it matters.
+    const created = addYieldTest({
       productId, companyId: company, rawQty: raw_qty,
       pieces: normalisePieces(pieces), usableQty: usable_qty, note, userId: user.id,
       clientKey,
     });
 
     const tests = getYieldTests(productId);
-    return NextResponse.json({ success: true, tests, summary: summarise(tests.map(asTest)) });
+    return NextResponse.json({ success: true, test: created, tests, summary: summarise(tests.map(asTest)) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[yield POST]', msg);

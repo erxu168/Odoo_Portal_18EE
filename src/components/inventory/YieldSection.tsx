@@ -46,11 +46,11 @@ interface Props {
    */
   uomName?: string;
   /**
-   * May this person record a measurement? Separate from `readOnly`, which
-   * covers editing the PRODUCT. Weighing is a kitchen job; staff see this page
-   * read-only and must still be able to do it.
+   * Whether this person may record a measurement is answered by the SERVER (the
+   * GET returns `can_record`) rather than by a prop — see the route. Weighing is
+   * a kitchen job, so it is deliberately not the same permission as editing the
+   * product, and `readOnly` must not stand in for it.
    */
-  canRecord?: boolean;
   /**
    * The page's own Cost field, used ONLY as a live override while it is being
    * edited — the resolved supplier price from the server is what is shown
@@ -103,7 +103,7 @@ const card = 'bg-white border border-gray-200 rounded-xl p-3';
 const labelCls = 'block text-[var(--fs-xs)] font-bold text-gray-500 uppercase tracking-wide mb-1.5';
 
 export default function YieldSection({
-  product, uomName, standardPrice, flags, readOnly, canRecord, onPackSizeChanged,
+  product, uomName, standardPrice, flags, readOnly, onPackSizeChanged,
 }: Props) {
   const uom = (uomName || product.uom_id?.[1] || '').trim();
   const elig = useMemo(() => eligibility(uom), [uom]);
@@ -111,6 +111,8 @@ export default function YieldSection({
   const [tests, setTests] = useState<YieldTest[] | null>(null);
   const [summary, setSummary] = useState<YieldSummary | null>(null);
   const [resolved, setResolved] = useState<ResolvedPrice | null>(null);
+  // Null until the server says. Nothing that writes is offered before then.
+  const [canRecord, setCanRecord] = useState<boolean | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,12 +149,13 @@ export default function YieldSection({
       setTests(d.tests || []);
       setSummary(d.summary || null);
       setResolved(d.price || null);
+      setCanRecord(!!d.can_record);
     } catch { /* a missing history is not worth an error on a product page */ }
   }, [product.id]);
 
   useEffect(() => {
     shownFor.current = product.id;
-    setTests(null); setSummary(null); setResolved(null);
+    setTests(null); setSummary(null); setResolved(null); setCanRecord(null);
     setVariesLocal(undefined); setError(null); setOpen(false); setShowAll(false);
     setRawV(null); setPiecesV(null); setUsableV(null);
     nonce.current = newNonce();
@@ -176,7 +179,7 @@ export default function YieldSection({
     () => (summary ? packOffer(uom, flags?.units_per_crate, summary, varies) : null),
     [summary, uom, flags?.units_per_crate, varies],
   );
-  const mayRecord = canRecord ?? !readOnly;
+  const mayRecord = canRecord === true;
   const askClassify = !!summary && !readOnly && needsPackClassification(uom, varies, summary);
 
   // A live warning while typing, so the two weights cannot be entered the wrong
@@ -329,11 +332,16 @@ export default function YieldSection({
             )}
             {cost == null && (
               <p className="mt-2 text-[var(--fs-xs)] text-gray-400">
-                {summary.fraction === 0
-                  ? 'The tests found nothing usable at all, so there is no cost per usable '
-                    + `${uom} to work out.`
-                  : 'No buying price for this product yet, so there is nothing to work the '
-                    + 'true cost out from.'}
+                {/* Three different reasons, and saying the wrong one sends
+                    somebody to fix a price that is already fine. */}
+                {price == null
+                  ? 'No buying price for this product yet, so there is nothing to work the '
+                    + 'true cost out from.'
+                  : !summary.fraction
+                    ? 'The tests found nothing usable at all, so there is no cost per usable '
+                      + `${uom} to work out.`
+                    : `The yield is so small that a cost per usable ${uom} is not a number `
+                      + 'anyone could use — check the weights on those tests.'}
               </p>
             )}
 
