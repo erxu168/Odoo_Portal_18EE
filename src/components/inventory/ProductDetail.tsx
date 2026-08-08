@@ -18,6 +18,7 @@ import { plainFromOdooHtml } from '@/lib/odoo-html';
 import { currentCompanyTax, hasConflictingTax, type TaxOption } from '@/lib/product-tax';
 import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 import ShelfLabelSection from './ShelfLabelSection';
+import YieldSection from './YieldSection';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -51,9 +52,15 @@ async function downscale(file: File, maxDim = 1024, quality = 0.7): Promise<stri
   } catch { return dataUrl; }
 }
 
-export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100, justCreated = false }: {
+export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, canRecordYield, fullPageHref, baseZ = 100, justCreated = false }: {
   product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false; active?: boolean; is_draft?: boolean };
   hasImage: boolean;
+  /**
+   * May this person record a yield test? Separate from `readOnly` because
+   * weighing is a KITCHEN job on a page staff otherwise see read-only. Left
+   * undefined by callers that predate it, which keeps their old behaviour.
+   */
+  canRecordYield?: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
   onChanged: (patch: {
@@ -152,6 +159,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   // The pack size the SERVER has — parFactor below reads this, not packSize,
   // so a half-typed "0.2" on its way to "0.28" never rescales the par fields.
   const [savedPackSize, setSavedPackSize] = useState('');
+  // Tri-state: null means nobody has said whether one pack weighs a variable
+  // amount. YieldSection needs the distinction — see src/lib/yield.ts.
+  const [packVaries, setPackVaries] = useState<boolean | null>(null);
   const [looseLabel, setLooseLabel] = useState('');
   const [levelShape, setLevelShape] = useState<string>('');   // '' = off
   // Why the stock switch refused — shown INLINE under the toggle, persistently.
@@ -313,6 +323,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         setSavedPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
         setLooseLabel(f.loose_label || '');
         setLevelShape(f.level_shape || '');
+        setPackVaries(f.pack_varies ?? null);
         levelConfirmed.current = f.level_shape || '';
       }
     })
@@ -414,6 +425,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           setSavedPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
           setLooseLabel(f.loose_label || '');
           setLevelShape(f.level_shape || '');
+          setPackVaries(f.pack_varies ?? null);
           levelConfirmed.current = f.level_shape || '';
         }
         setUoms(uomRes.uoms || []);
@@ -1002,6 +1014,30 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               </div>
             </div>
           )}
+
+          {/* YIELD — what the Cost above is really buying once the peel is in the
+              bin. Sits directly under the money because it modifies that number,
+              and reads `standardPrice` live so editing Cost updates it at once. */}
+          <YieldSection
+            product={product}
+            uomName={uomName}
+            standardPrice={standardPrice}
+            canRecord={canRecordYield}
+            flags={{
+              units_per_crate: savedPackSize.trim() === '' ? null : Number(savedPackSize),
+              pack_label: packLabel || null,
+              pack_varies: packVaries,
+            }}
+            readOnly={readOnly}
+            onPackSizeChanged={(size) => {
+              // Keep BOTH copies in step: `packSize` is what the field shows,
+              // `savedPackSize` is what the par maths reads. Updating only one
+              // leaves the screen and its own arithmetic disagreeing.
+              setPackSize(String(size));
+              setSavedPackSize(String(size));
+              onChanged({ flags: { units_per_crate: size } });
+            }}
+          />
 
           {/* TAX. Two fields, not one, because Odoo keeps two and they are not
               the same money: what a supplier charges you and what you charge a

@@ -743,6 +743,41 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     )
   `);
 
+  // Yield tests: raw weighed in, pieces counted, usable weighed out. One row per
+  // weighing session — the maths that reads them lives in src/lib/yield.ts.
+  //
+  // Rows are kept FOREVER and never edited, only deleted: an average that can be
+  // quietly adjusted is not a measurement. company_id records who weighed it,
+  // and the averages pool across companies deliberately — peel is peel, and one
+  // restaurant's four tests should not be invisible to the other while both
+  // share the product record (and its pack size) already.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS product_yield_tests (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      odoo_product_id INTEGER NOT NULL,
+      company_id      INTEGER NOT NULL,
+      raw_qty         REAL NOT NULL,
+      pieces          INTEGER,
+      usable_qty      REAL NOT NULL,
+      note            TEXT,
+      created_at      TEXT NOT NULL,
+      created_by      INTEGER,
+      client_key      TEXT
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_yield_product ON product_yield_tests(odoo_product_id)');
+  // A retried save on a flaky phone must not become a second measurement — a
+  // duplicated test silently drags the average toward whichever batch got sent
+  // twice. Same guard as waste_events; partial so old rows without one are fine.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_yield_client_key ON product_yield_tests(client_key) WHERE client_key IS NOT NULL');
+
+  // Does one pack of this product weigh a VARIABLE amount (a bunch of thyme) or
+  // a DECLARED one (a 10 kg bucket of ketchup)? Null = nobody has said, and the
+  // portal will not offer to overwrite the pack size until somebody has. See the
+  // header of src/lib/yield.ts for why the data alone cannot answer this.
+  const pfCols3 = (db.prepare("PRAGMA table_info('product_flags')").all() as { name: string }[]).map(c => c.name);
+  if (!pfCols3.includes('pack_varies')) db.exec('ALTER TABLE product_flags ADD COLUMN pack_varies INTEGER');
+
   // ── ONE-TIME data migrations — LAST, so every table above exists ──
   // Flags table created independently too — the big schema exec above is one
   // unit; a legacy-schema failure there must not leave the flag lookups broken.
@@ -2794,6 +2829,9 @@ export interface ProductFlag {
   count_mode: CountMode | null;    // 'simple' | 'pack_loose' — null = infer from units_per_crate
   loose_label: string | null;      // single-unit word for pack_loose mode ('bottles'…)
   level_shape: LevelShape | null;  // container drawing for level marking; null = off
+  // Does one pack weigh a VARIABLE amount (a bunch of thyme) or a DECLARED one
+  // (a 10 kg bucket)? null = nobody has said, and yield may not touch the size.
+  pack_varies: boolean | null;
   updated_by: number | null;
   updated_at: string | null;
 }
@@ -2817,9 +2855,28 @@ export function getProductFlags(ids?: number[]): ProductFlag[] {
     count_mode: (r.count_mode as CountMode) ?? null,
     loose_label: r.loose_label ?? null,
     level_shape: (r.level_shape as LevelShape) ?? null,
+    // Tri-state, so keep null distinct from false: "nobody has said" is not the
+    // same answer as "the pack is exact", and only the second one is a decision.
+    pack_varies: r.pack_varies == null ? null : !!r.pack_varies,
     updated_by: r.updated_by,
     updated_at: r.updated_at,
   }));
+}
+
+/**
+ * Record whether one pack of this product weighs a variable amount. Null puts
+ * it back to unasked. See the yield.ts header for why this cannot be inferred.
+ */
+export function setProductPackVaries(productId: number, varies: boolean | null, userId: number) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, pack_varies, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      pack_varies = excluded.pack_varies,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, varies == null ? null : (varies ? 1 : 0), userId, now());
 }
 
 /**
@@ -2902,6 +2959,192 @@ export function setProductCountMode(
       updated_by = excluded.updated_by,
       updated_at = excluded.updated_at
   `).run(productId, mode, loose, userId, now());
+}
+
+// ===
+// YIELD TESTS (raw in, pieces, usable out — see src/lib/yield.ts)
+// ===
+
+/**
+ * Every test for a product, newest first, with the name of whoever weighed it.
+ *
+ * NOT filtered by company: the averages pool across restaurants on purpose (see
+ * the table comment), so a screen that showed only its own tests would print a
+ * different number from the one the maths used.
+ */
+export function getYieldTests(productId: number): YieldTestRow[] {
+  const db = getDb();
+  return db.prepare(`
+    -- Named columns, never SELECT *: client_key is an idempotency token and has
+    -- no business leaving the server just because it shares a row.
+    SELECT y.id, y.odoo_product_id, y.company_id, y.raw_qty, y.pieces, y.usable_qty, y.note, y.created_at, y.created_by, u.name AS created_by_name
+    FROM product_yield_tests y
+    LEFT JOIN portal_users u ON u.id = y.created_by
+    WHERE y.odoo_product_id = ?
+    ORDER BY y.created_at DESC, y.id DESC
+  `).all(productId) as YieldTestRow[];
+}
+
+export interface YieldTestRow {
+  id: number;
+  odoo_product_id: number;
+  company_id: number;
+  raw_qty: number;
+  pieces: number | null;
+  usable_qty: number;
+  note: string | null;
+  created_at: string;
+  created_by: number | null;
+  created_by_name: string | null;
+}
+
+/**
+ * Record a weighing. A repeated clientKey returns the test already stored
+ * instead of adding a second one — a phone that retries a save on a bad
+ * connection must not quietly double-weight the average.
+ */
+export function addYieldTest(t: {
+  productId: number;
+  companyId: number;
+  rawQty: number;
+  pieces: number | null;
+  usableQty: number;
+  note: string | null;
+  userId: number;
+  clientKey?: string | null;
+}): YieldTestRow {
+  const db = getDb();
+  const byId = db.prepare(`
+    SELECT y.id, y.odoo_product_id, y.company_id, y.raw_qty, y.pieces, y.usable_qty, y.note, y.created_at, y.created_by, u.name AS created_by_name
+    FROM product_yield_tests y LEFT JOIN portal_users u ON u.id = y.created_by
+    WHERE y.id = ?
+  `);
+  const key = t.clientKey || null;
+  const insert = db.prepare(`
+    INSERT INTO product_yield_tests
+      (odoo_product_id, company_id, raw_qty, pieces, usable_qty, note, created_at, created_by, client_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const findByKey = db.prepare('SELECT id FROM product_yield_tests WHERE client_key = ?');
+
+  if (!key) {
+    const info = insert.run(t.productId, t.companyId, t.rawQty, t.pieces, t.usableQty, t.note, now(), t.userId, null);
+    return byId.get(info.lastInsertRowid as number) as YieldTestRow;
+  }
+  // INSERT FIRST, then fall back to the existing row. A check-then-insert leaves
+  // a window where two concurrent retries both find nothing and both try to
+  // write; the unique index stops the duplicate, but one caller gets a 500
+  // instead of the test it already saved. Letting the index be the referee and
+  // catching the violation has no such window. (Codex, 2026-08-08.)
+  try {
+    const info = insert.run(t.productId, t.companyId, t.rawQty, t.pieces, t.usableQty, t.note, now(), t.userId, key);
+    return byId.get(info.lastInsertRowid as number) as YieldTestRow;
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code !== 'SQLITE_CONSTRAINT_UNIQUE' && code !== 'SQLITE_CONSTRAINT') throw err;
+    const seen = findByKey.get(key) as { id: number } | undefined;
+    if (!seen) throw err;                   // a different constraint failed
+    return byId.get(seen.id) as YieldTestRow;
+  }
+}
+
+/**
+ * Delete one test. Returns false when it does not exist OR belongs to another
+ * restaurant — a manager may remove their own kitchen's mistaken weighing, not
+ * somebody else's measurement, even though both feed the same average.
+ */
+export function deleteYieldTest(testId: number, companyId: number, productId?: number): boolean {
+  const db = getDb();
+  // The product is matched too when the caller knows it: a route that deletes
+  // by id alone would happily remove a test belonging to a DIFFERENT product
+  // and then return that other product's (unchanged) list as if it had worked.
+  const sql = productId != null
+    ? 'DELETE FROM product_yield_tests WHERE id = ? AND company_id = ? AND odoo_product_id = ?'
+    : 'DELETE FROM product_yield_tests WHERE id = ? AND company_id = ?';
+  const args: number[] = productId != null ? [testId, companyId, productId] : [testId, companyId];
+  return db.prepare(sql).run(...args).changes > 0;
+}
+
+/**
+ * Change a product's pack size AND keep every restaurant's par meaning the same
+ * thing, in one transaction.
+ *
+ * A measure-based product's par is STORED in base units but ENTERED and SHOWN in
+ * packs (parEntryFactor, crate-units.ts). So moving 1 bunch from 0.030 kg to
+ * 0.026 kg leaves a stored 0.30 kg untouched and silently turns a manager's "10
+ * bunches" into "11.5 bunches" on screen. Nobody typed that, and nobody would
+ * see it happen. Rescaling holds the pack figure still and moves the base.
+ *
+ * Pars are per-restaurant while the pack size is one value for everyone, so
+ * every company's row moves — the size changed for all of them.
+ *
+ * Only for the yield path, where the new number arrives from a MEASUREMENT
+ * rather than from someone typing it while looking at the screen.
+ */
+export function applyMeasuredPackSize(
+  productId: number,
+  from: number | null,
+  to: number,
+  userId: number,
+): { parsRescaled: number; conflict?: true } {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    // COMPARE AND SWAP. `from` was read before the transaction opened, so
+    // between the read and here another manager (or another tab) could have
+    // changed the pack size. Writing anyway would overwrite their newer number
+    // AND rescale every restaurant's par by the wrong divisor — the pars would
+    // be silently wrong and nothing would say so. Re-read inside the
+    // transaction and refuse if it moved. (Codex, 2026-08-08.)
+    const live = db.prepare('SELECT units_per_crate FROM product_flags WHERE odoo_product_id = ?')
+      .get(productId) as { units_per_crate: number | null } | undefined;
+    const liveSize = live?.units_per_crate != null && live.units_per_crate > 0
+      ? Number(live.units_per_crate) : null;
+    if (liveSize !== (from != null && from > 0 ? from : null)) return -1;   // -1 = conflict
+
+    setProductCrateSize(productId, to, userId);
+    // No previous size means no pack-based par to preserve: the stored base
+    // number WAS the entry number, and rescaling it would invent a change.
+    if (from == null || !(from > 0)) return 0;
+    const rows = db.prepare(
+      'SELECT company_id, par_min, par_max FROM product_par WHERE odoo_product_id = ?',
+    ).all(productId) as { company_id: number; par_min: number | null; par_max: number | null }[];
+    const scale = (v: number | null) =>
+      v == null || !Number.isFinite(v) ? null : roundQtyLocal((v / from) * to);
+    let n = 0;
+    for (const r of rows) {
+      const lo = scale(r.par_min);
+      const hi = scale(r.par_max);
+      if (lo == null && hi == null) continue;
+      db.prepare(
+        'UPDATE product_par SET par_min = ?, par_max = ?, updated_by = ?, updated_at = ? '
+        + 'WHERE odoo_product_id = ? AND company_id = ?',
+      ).run(lo, hi, userId, now(), productId, r.company_id);
+      n++;
+    }
+    return n;
+  });
+  const n = tx();
+  return n < 0 ? { parsRescaled: 0, conflict: true } : { parsRescaled: n };
+}
+
+/** Same rounding as crate-units.roundQty — kept local so this file has no cycle. */
+function roundQtyLocal(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Number.isInteger(n) ? n : Math.round(n * 1e6) / 1e6;
+}
+
+/** How many tests each of these products has — for a list badge. */
+export function getYieldTestCounts(productIds: number[]): Map<number, number> {
+  const out = new Map<number, number>();
+  if (!productIds.length) return out;
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT odoo_product_id AS id, COUNT(*) AS n FROM product_yield_tests
+    WHERE odoo_product_id IN (${productIds.map(() => '?').join(',')})
+    GROUP BY odoo_product_id
+  `).all(...productIds) as { id: number; n: number }[];
+  for (const r of rows) out.set(r.id, r.n);
+  return out;
 }
 
 // ===

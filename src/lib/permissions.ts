@@ -86,6 +86,14 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   // Says "delete" out loud: this key now authorises permanent deletion, and
   // whoever grants it on the permissions screen has to know that.
   { key: 'inventory.productsettings.manage', module: 'products', label: 'Edit product settings, archive and DELETE products', defaultRoles: ['manager', 'admin'] },
+  // Recording a yield test is a KITCHEN job — the person peeling the plantains
+  // weighs them. So it is deliberately NOT bundled into productsettings.manage
+  // (manager+), which gates every other edit on the product page: staff see that
+  // page read-only, and without its own key they could never do the one thing
+  // Ethan asked them to do ("let's have staff enter how many pieces as well").
+  // CHANGING a pack size from those measurements stays manager+ — that rewrites
+  // how every future count converts.
+  { key: 'inventory.yield.record',          module: 'products',  label: 'Record a yield test (weigh raw in, usable out)',  defaultRoles: ['staff', 'manager', 'admin'] },
   { key: 'inventory.location.manage',       module: 'inventory', label: 'Set up count locations (map, shelves, photos)',     defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.floorplan.view',        module: 'inventory', label: 'View the floorplan map',                         defaultRoles: ['staff', 'manager', 'admin'] },
   { key: 'inventory.product.create',        module: 'inventory', label: 'Create a product via scan',                      defaultRoles: ['staff', 'manager', 'admin'] },

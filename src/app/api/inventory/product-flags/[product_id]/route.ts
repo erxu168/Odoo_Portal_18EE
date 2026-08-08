@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel, setProductCountMode, setProductLevelShape, getProductFlags } from '@/lib/inventory-db';
+import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel, setProductCountMode, setProductLevelShape, setProductPackVaries, getProductFlags } from '@/lib/inventory-db';
 import { moduleForbidden } from '@/lib/module-access';
 
 export async function PUT(
@@ -66,8 +66,17 @@ export async function PUT(
       }
       shapeParsed = candidate;
     }
+    // Tri-state on purpose: true = a bunch, false = a declared 10 kg bucket,
+    // null = nobody has said. Anything else is a caller bug, not a third answer.
+    let variesParsed: boolean | null | undefined;
+    if ('pack_varies' in body) {
+      const raw = body.pack_varies;
+      if (raw === null) variesParsed = null;
+      else if (typeof raw === 'boolean') variesParsed = raw;
+      else return NextResponse.json({ error: 'Invalid pack_varies' }, { status: 400 });
+    }
 
-    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; count_mode?: string | null; loose_label?: string | null; level_shape?: string | null } = { success: true };
+    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; count_mode?: string | null; loose_label?: string | null; level_shape?: string | null; pack_varies?: boolean | null } = { success: true };
 
     if ('requires_photo' in body) {
       const requiresPhoto = !!body.requires_photo;
@@ -111,6 +120,12 @@ export async function PUT(
       const shape = (shapeParsed ?? null) as 'round' | 'rect' | 'barrel' | 'bottle' | null;   // validated above
       setProductLevelShape(productId, shape, user.id);
       result.level_shape = shape;
+    }
+
+    if ('pack_varies' in body) {
+      const varies = variesParsed as boolean | null;   // validated above
+      setProductPackVaries(productId, varies, user.id);
+      result.pack_varies = varies;
     }
 
     return NextResponse.json(result);
