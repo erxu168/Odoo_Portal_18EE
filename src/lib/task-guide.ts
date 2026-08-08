@@ -179,6 +179,9 @@ export interface LibraryGuide {
   published: boolean;
   template_line_count: number;
   steps: GuideStepRead[];
+  /** The few questions this guide asks. Saved through their own endpoint, not
+   *  with the steps — see saveGuideQuestions. */
+  questions?: GuideQuestion[];
 }
 
 export async function listLibraryGuides(allowedCompanyIds: number[]): Promise<LibraryGuideSummary[]> {

@@ -36,6 +36,7 @@ import PhotoSourceSheet from '@/components/ui/PhotoSourceSheet';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import { toEditorHtml, richTextToPlain } from '@/lib/rich-text';
 import { useConfirm } from '@/components/ui/useConfirm';
+import GuideQuestionsEditor, { type GuideQuestionRead } from './GuideQuestionsEditor';
 
 /*
  * GuidedTutorialEditor — manager/admin editor for a REUSABLE library guide
@@ -160,6 +161,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
   const [name, setName] = useState(guideName);
   const [usedCount, setUsedCount] = useState(0);
   const [published, setPublished] = useState(false);
+  const [questions, setQuestions] = useState<GuideQuestionRead[]>([]);
   const [revision, setRevision] = useState(0);
 
   const [loading, setLoading] = useState(true);
@@ -250,6 +252,7 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
       const raw: GuideStepRead[] = Array.isArray(body.steps) ? body.steps : [];
       setSteps(raw.map(hydrate));
       if (typeof body.name === 'string') setName(body.name);
+      setQuestions(Array.isArray(body.questions) ? body.questions : []);
       setUsedCount(Number(body.template_line_count) || 0);
       setPublished(!!body.published);
       setRevision(Number(body.revision) || 0);
@@ -880,6 +883,22 @@ export default function GuidedTutorialEditor({ guideId, guideName, onClose, onSa
                     </div>
                   </SortableContext>
                 </DndContext>
+              )}
+
+              {/* Questions come AFTER the steps, because a question points at
+                  one — writing them first would mean choosing step numbers that
+                  do not exist yet. Their own save, deliberately separate from
+                  the step save above. */}
+              {steps.length > 0 && (
+                <div className="rounded-xl border border-gray-200 bg-white p-3">
+                  <GuideQuestionsEditor
+                    guideId={guideId}
+                    stepCount={steps.length}
+                    initial={questions}
+                    disabled={frozen}
+                    onSaved={() => { void load({ silent: true }); }}
+                  />
+                </div>
               )}
 
               {/* Add-step control */}
