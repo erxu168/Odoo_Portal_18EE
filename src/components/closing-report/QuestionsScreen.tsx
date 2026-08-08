@@ -60,14 +60,16 @@ export default function QuestionsScreen() {
     setLoading(true);
     setLoadError('');
     try {
+      // Fetch BOTH before any state update: setting deptId triggers the
+      // questions fetch, which bumps the shared token — a settings response
+      // arriving after that would be dropped as stale and the toggle never shows.
       const d = await api<DeptsPayload>('/api/closing-report/departments');
+      const s = await api<SettingsPayload>('/api/closing-report/settings');
       if (my !== token.current) return;
       const all = d.all_departments || d.departments;
       setAllDepts(all);
-      setDeptId((prev) => (prev != null && all.some((x) => x.id === prev) ? prev : all[0]?.id ?? null));
-      const s = await api<SettingsPayload>('/api/closing-report/settings');
-      if (my !== token.current) return;
       setSettings(s);
+      setDeptId((prev) => (prev != null && all.some((x) => x.id === prev) ? prev : all[0]?.id ?? null));
       if (all.length === 0) setLoading(false);
     } catch (e) {
       if (my !== token.current) return;
