@@ -87,6 +87,9 @@ sources explicitly:
   `UploadWidget` also carries `capture` and is imported by `hr/RoteKarteInfo`
   only — review it when that screen is next touched.
 
+- **Closing Report** (2026-08-08): problem-answer photos on `/closing-report`
+  use `PhotoCaptureStrip` (max 3/answer) — the conformant strip, no new input built.
+
 Every photo field in the portal offers camera + gallery + file upload + drag.
 Two were worse than missing drag and are the reason to re-audit rather than trust
 a rule:

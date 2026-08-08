@@ -114,6 +114,7 @@ test('every module with pages is gated by a ModuleGate layout', () => {
   // module id -> the app folder that serves it (only ids with their own folder)
   const FOLDERS: Record<string, string> = {
     'shift-handover': 'shift-handover',
+    'closing-report': 'closing-report',
     production: 'manufacturing',
     recipes: 'recipes',
     'production-guide': 'recipes',

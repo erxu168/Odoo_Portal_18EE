@@ -155,7 +155,7 @@ export default function DashboardHome() {
   // the SortableTileGrid would append the unknown id at the BOTTOM. Prepend any
   // freshly-promoted tile so it surfaces at the top for everyone (self-cleaning:
   // once a user re-saves their order it already contains the id and this no-ops).
-  const PROMOTED_TILE_IDS = ['shift-handover'];
+  const PROMOTED_TILE_IDS = ['shift-handover', 'closing-report'];
   const normalizedTileOrder = savedOrder
     ? [...PROMOTED_TILE_IDS.filter((id) => !savedOrder.includes(id)), ...savedOrder]
     : savedOrder;

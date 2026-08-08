@@ -14,6 +14,7 @@ import { useToast } from '../_components/useToast';
 import AppHeader from '@/components/ui/AppHeader';
 import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
 import { berlinToday } from '@/lib/berlin-date';
+import ClosingReportCard from '@/components/closing-report/ClosingReportCard';
 
 interface TodayResponse {
   context: EmployeeContext | null;
@@ -361,6 +362,7 @@ export default function StaffPage() {
             />
           </>
         )}
+        {isToday && <ClosingReportCard departmentId={ctx?.department_id ?? null} />}
       </div>
 
       {showAdd && (

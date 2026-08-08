@@ -161,6 +161,13 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'handover.production.record', module: 'shift-handover', label: 'Post notes, photos & storage',                defaultRoles: ['staff', 'manager', 'admin'] },
   { key: 'handover.configure',         module: 'shift-handover', label: 'Edit anyone’s notes & manage log types', defaultRoles: ['manager', 'admin'] },
 
+  // ── Closing Report — one end-of-night questionnaire per department. Staff fill
+  // it in; managers review, follow up problems as tasks, and own the questions.
+  { key: 'closing.view',   module: 'closing-report', label: 'See closing reports',                       defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'closing.submit', module: 'closing-report', label: 'Fill in / correct the report',              defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'closing.review', module: 'closing-report', label: 'Review reports, trends & follow-up tasks',  defaultRoles: ['manager', 'admin'] },
+  { key: 'closing.manage', module: 'closing-report', label: 'Edit questions & settings',                 defaultRoles: ['manager', 'admin'] },
+
   // ── KDS Cooking Timer — station tablet timers (queue/start/advance are the staff
   // tablet, unauthenticated device endpoints). Only the SETUP screen (stations +
   // per-product cook profiles & step chains) is manager work. ──

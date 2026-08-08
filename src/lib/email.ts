@@ -554,3 +554,56 @@ export async function sendKioskPinResetEmail(toEmail: string, toName: string, re
     `,
   });
 }
+
+/**
+ * Closing Report — morning email to a manager listing departments that did NOT
+ * submit last night's closing report. Sent by /api/cron/closing-report-missing,
+ * per-company toggle (default OFF), claimed once per company+night.
+ */
+export async function sendClosingReportMissingEmail(
+  toEmail: string,
+  toName: string,
+  nightLabel: string,
+  missingDeptNames: string[],
+  companyId?: number,
+): Promise<void> {
+  const brand = await getCompanyBrandName(companyId);
+  const deptListText = missingDeptNames.map((d) => `  • ${d}`).join('\n');
+  const deptListHtml = missingDeptNames
+    .map((d) => `<li style="color: #374151; font-size: 15px; line-height: 1.8;">${escapeHtml(d)}</li>`)
+    .join('');
+
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Portal" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: `Closing report missing — ${nightLabel}`,
+    text: [
+      `Hi ${toName},`,
+      '',
+      `These departments did not submit a closing report for the night of ${nightLabel}:`,
+      '',
+      deptListText,
+      '',
+      'Open the portal to see the evening in review:',
+      `${PORTAL_URL}/closing-report/manager`,
+      '',
+      `— Krawings ${brand}`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 26px; font-weight: 800; color: #1A1F2E;">${escapeHtml(brand)}</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px; letter-spacing: 1px;">CLOSING REPORT</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${escapeHtml(toName)},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">These departments did not submit a closing report for the night of <b>${escapeHtml(nightLabel)}</b>:</p>
+        <ul style="margin: 12px 0 20px; padding-left: 20px;">${deptListHtml}</ul>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${PORTAL_URL}/closing-report/manager" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Open the review</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${escapeHtml(brand)} &middot; Closing Report</p>
+      </div>
+    `,
+  });
+}
