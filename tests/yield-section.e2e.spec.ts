@@ -27,7 +27,10 @@ const BASE = process.env.SMOKE_BASE_URL || 'https://portal.krawings.de';
 const EMAIL = process.env.SMOKE_MANAGER_EMAIL;
 const PW = process.env.SMOKE_MANAGER_PASSWORD;
 
-const PLANTAIN = 1692;       // "Plantains Yellow Color" — kg, the product he described
+// VARIANT ids (product.product), not template ids. /products/[id] resolves a
+// variant, and a template id lands on "Product not found" — Plantains is
+// template 1692 but variant 1698, which is exactly how this test first failed.
+const PLANTAIN = 1698;       // "Plantains Yellow Color" — kg, the product he described
 const FRIED_PLANTAIN = 1633; // "Fried Plantain" — Units, so a yield test cannot apply
 
 // Deliberately odd, so the row this test created is unmistakable among real ones.
@@ -78,7 +81,9 @@ test('a kg product can be weighed in and out, and the numbers add up', async ({ 
 
     // Three fields, in the order a person works: weigh, count, prep, weigh.
     await page.getByLabel('Raw weight').fill(RAW);
-    await page.getByLabel(/How many/i).fill(PIECES);
+    // EXACT, not /How many/: the pack-size field above is "How many kg in one
+    // piece", and a loose match hits both.
+    await page.getByLabel('How many pieces', { exact: true }).fill(PIECES);
     await page.getByLabel('Usable weight').fill(USABLE);
 
     // The live preview does the sum before anything is saved. This one is a pure

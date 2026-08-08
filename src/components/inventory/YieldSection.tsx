@@ -520,11 +520,14 @@ export default function YieldSection({
           <div className="mt-3 pt-3 border-t border-gray-100">
             {shown.map((t) => (
               <div key={t.id} className="flex items-baseline gap-2 py-1.5 text-[var(--fs-xs)]">
+                {/* Short date and no unit: both are stated above, and spelling
+                    them out here cost the row so much width that the reading
+                    itself truncated to "0.27 -> 0.23 k...". */}
                 <span className="tabular-nums text-gray-500 shrink-0">
-                  {(t.created_at || '').slice(0, 10)}
+                  {(t.created_at || '').slice(8, 10)}.{(t.created_at || '').slice(5, 7)}.
                 </span>
                 <span className="min-w-0 flex-1 truncate">
-                  {round2(t.raw_qty)} → {round2(t.usable_qty)} {uom}
+                  {round2(t.raw_qty)} → {round2(t.usable_qty)}
                   {t.pieces ? ` · ${t.pieces} ${pluralizePack(packLabel, t.pieces)}` : ''}
                 </span>
                 <span className="tabular-nums font-bold shrink-0">
