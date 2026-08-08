@@ -44,9 +44,16 @@ const inFlight = new Set<number>();
 
 /** Bill first, ask questions later is not an option: a refusal and a truncated
  *  reply both cost money, so every outcome that reached the API is recorded. */
+function write(user: { id: number; name: string }, detail: Record<string, unknown>) {
+  logAudit({ user_id: user.id, user_name: user.name, action: AUDIT_ACTION, module: 'tasks', detail: JSON.stringify(detail) });
+}
+
+/** Recording the OUTCOME must never fail the manager's work — the money is
+ *  already spent and the draft is in hand. Reserving is the opposite: see the
+ *  call site. */
 function audit(user: { id: number; name: string }, detail: Record<string, unknown>) {
   try {
-    logAudit({ user_id: user.id, user_name: user.name, action: AUDIT_ACTION, module: 'tasks', detail: JSON.stringify(detail) });
+    write(user, detail);
   } catch (e) {
     console.error('[ai] audit log failed for guide generation:', e);
   }
@@ -132,6 +139,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'The daily limit for writing guides has been reached across the business.' },
         { status: 429 },
+      );
+    }
+
+    // RESERVE before spending. The ceilings are counted from the audit log, so
+    // writing the row only after a successful call made the accounting
+    // fail OPEN: if SQLite stayed readable but writes failed, neither limit ever
+    // rose again and the spend became unbounded. Reserving first means a failure
+    // to record is a failure to proceed.
+    try {
+      write(user, { title, photos: photos.length, outcome: 'started' });
+    } catch {
+      return NextResponse.json(
+        { error: 'Could not record this request, so it was not sent. Try again.' },
+        { status: 503 },
       );
     }
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError, type PortalUser } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
+import { userCompanyAllowed } from '@/lib/company-scope';
 import { templateLineBelongsToTemplate, getTemplateCompany } from '@/lib/odoo-tasks';
 import { readTemplateGuide, saveTemplateGuide, deleteTemplateGuide } from '@/lib/task-guide';
 import { sanitizeSteps } from '@/lib/task-guide-validate';
@@ -18,11 +18,14 @@ function ids(params: { id: string; lineId: string }): { templateId: number; line
 /** Line must belong to the template AND the template's company must be allowed. */
 async function assertScope(user: PortalUser, templateId: number, lineId: number): Promise<void> {
   if (!(await templateLineBelongsToTemplate(templateId, lineId))) throw new AuthError('Not found', 404);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (allowed.length) {
-    const company = await getTemplateCompany(templateId);
-    if (company !== null && !allowed.includes(company)) throw new AuthError('Forbidden', 403);
-  }
+  const company = await getTemplateCompany(templateId);
+  // Fails CLOSED. This used to skip the check entirely when the caller's company
+  // list was empty, and skip it again when the template had no company — and
+  // this route reaches portal_save_guide, whose aggregate rebuild unlinks every
+  // step and reissues every id. One request could replace another restaurant's
+  // guide. An unrestricted admin is still allowed, as everywhere else.
+  if (company === null) throw new AuthError('Not found', 404);
+  if (!userCompanyAllowed(user, company)) throw new AuthError('Forbidden', 403);
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {

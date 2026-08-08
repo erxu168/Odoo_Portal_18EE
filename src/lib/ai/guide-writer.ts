@@ -282,7 +282,10 @@ export function sanitizeGenerated(raw: unknown, photoCount: number): GeneratedGu
   const unusedPhotos: number[] = [];
   for (let i = 0; i < photoCount; i++) if (!usedPhotos.has(i)) unusedPhotos.push(i);
 
-  const name = typeof g.name === 'string' && g.name.trim() ? g.name.trim().slice(0, 200) : '';
+  // 120, not 200: the guide create rejects anything longer, so a generated
+  // name of 121 characters made every attempt to KEEP a paid draft fail with no
+  // way to edit it — discard or pay again.
+  const name = typeof g.name === 'string' && g.name.trim() ? g.name.trim().slice(0, 120) : '';
   return { name, steps, questions, unusedPhotos };
 }
 
